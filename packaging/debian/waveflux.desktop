@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=WaveFlux
+GenericName=Audio Player
+Comment=Minimalist desktop audio player with waveform navigation
+Exec=waveflux
+Icon=waveflux
+Terminal=false
+Categories=AudioVideo;Audio;Player;Qt;
+StartupNotify=true

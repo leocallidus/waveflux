@@ -1,0 +1,65 @@
+pkgname=waveflux-git
+pkgver=1.0.0.r1.g00000000
+pkgrel=1
+pkgdesc="Minimalist desktop audio player with dynamic waveform visualization"
+arch=('x86_64' 'aarch64')
+url="https://github.com/leocallidus/waveflux"
+license=('MIT')
+options=('!debug')
+depends=(
+  'qt6-base'
+  'qt6-declarative'
+  'qt6-quickcontrols2'
+  'kirigami'
+  'kcoreaddons'
+  'ki18n'
+  'gstreamer'
+  'gst-plugins-base'
+  'gst-plugins-good'
+  'gst-plugins-bad'
+  'taglib'
+)
+makedepends=(
+  'git'
+  'cmake'
+  'ninja'
+  'pkgconf'
+  'gcc'
+)
+optdepends=(
+  'gst-plugins-ugly: extra proprietary codec support'
+)
+provides=('waveflux')
+conflicts=('waveflux')
+source=("${pkgname%-git}::git+${url}.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "${srcdir}/${pkgname%-git}"
+  local base rev hash
+  base="$(sed -nE 's/^[[:space:]]*project\([^)]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -n1)"
+  rev="$(git rev-list --count HEAD)"
+  hash="$(git rev-parse --short=8 HEAD)"
+  printf '%s.r%s.g%s\n' "${base:-0.0.0}" "${rev}" "${hash}"
+}
+
+build() {
+  cmake -S "${srcdir}/${pkgname%-git}" \
+        -B "${srcdir}/build" \
+        -GNinja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DBUILD_TESTING=OFF
+  cmake --build "${srcdir}/build"
+}
+
+package() {
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
+
+  install -Dm644 "${srcdir}/${pkgname%-git}/packaging/aur/waveflux.desktop" \
+    "${pkgdir}/usr/share/applications/waveflux.desktop"
+  install -Dm644 "${srcdir}/${pkgname%-git}/resources/icons/waveflux.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/waveflux.svg"
+  install -Dm644 "${srcdir}/${pkgname%-git}/README.md" \
+    "${pkgdir}/usr/share/doc/waveflux/README.md"
+}

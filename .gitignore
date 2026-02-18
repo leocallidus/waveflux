@@ -1,0 +1,31 @@
+# Build and packaging outputs
+/build/
+/build-*/
+/dist/
+
+# CMake/Ninja generated files
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Build system directories
+CMakeFiles/
+Testing/
+waveflux_autogen/
+.cmake/
+.qt/
+.rcc/
+WaveFlux/
+meta_types/
+qmltypes/
+
+# IDE/editor metadata
+.idea/
+.vscode/
+
+# OS/filesystem noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,69 @@
+%global debug_package %{nil}
+
+Name:           @PACKAGE_NAME@
+Version:        @VERSION@
+Release:        @RELEASE@%{?dist}
+Summary:        Minimalist desktop audio player with waveform navigation
+License:        MIT
+URL:            https://github.com/leocallidus/waveflux
+Source0:        @SOURCE_ARCHIVE@
+Packager:       @PACKAGER@
+
+BuildRequires:  cmake
+BuildRequires:  gcc-c++
+BuildRequires:  ninja-build
+BuildRequires:  pkgconf-pkg-config
+BuildRequires:  qt6-qtbase-devel
+BuildRequires:  qt6-qtdeclarative-devel
+BuildRequires:  kf6-kirigami-devel
+BuildRequires:  kf6-kcoreaddons-devel
+BuildRequires:  kf6-ki18n-devel
+BuildRequires:  gstreamer1-devel
+BuildRequires:  gstreamer1-plugins-base-devel
+BuildRequires:  taglib-devel
+
+Requires:       qt6-qtbase
+Requires:       qt6-qtdeclarative
+Requires:       kf6-kirigami
+Requires:       kf6-kcoreaddons
+Requires:       kf6-ki18n
+Requires:       gstreamer1
+Requires:       gstreamer1-plugins-base
+Requires:       gstreamer1-plugins-good
+Requires:       gstreamer1-plugins-bad-free
+Requires:       taglib
+Recommends:     gstreamer1-plugins-ugly
+
+%description
+WaveFlux is a Linux desktop audio player built with Qt 6, Kirigami, and GStreamer.
+It focuses on fast local-library workflows, waveform-based navigation, and precise playback controls.
+
+%prep
+%autosetup -n @SOURCE_DIRNAME@
+
+%build
+cmake -S . -B build -GNinja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=OFF \
+  -DCMAKE_INSTALL_PREFIX=%{_prefix}
+cmake --build build -j%{_smp_build_ncpus}
+
+%install
+DESTDIR=%{buildroot} cmake --install build
+
+install -Dm0644 packaging/debian/waveflux.desktop \
+  %{buildroot}%{_datadir}/applications/waveflux.desktop
+install -Dm0644 resources/icons/waveflux.svg \
+  %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/waveflux.svg
+install -Dm0644 README.md \
+  %{buildroot}%{_datadir}/doc/%{name}/README.md
+
+%files
+%{_bindir}/waveflux
+%{_datadir}/applications/waveflux.desktop
+%{_datadir}/icons/hicolor/scalable/apps/waveflux.svg
+%doc %{_datadir}/doc/%{name}/README.md
+
+%changelog
+* Wed Feb 18 2026 @PACKAGER@ - @VERSION@-@RELEASE@
+- Add local RPM package spec template for WaveFlux.

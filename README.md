@@ -74,7 +74,7 @@ metadata editing, and desktop integration on both Windows and Linux.
 
 | Main Player Window | Setting Dialog | Compact Skin |
 |:---------:|:--------:|:-----------:|
-| ![Main Player Window](screenshot/main-player-window) | ![Setting Dialog](screenshot/settings_dialog.png) | ![Compact Skin](screenshot/compact-skin.png) |
+| ![Main Player Window](screenshots/main-player-window) | ![Setting Dialog](screenshots/settings_dialog.png) | ![Compact Skin](screenshots/compact-skin.png) |
 
 </div>
 

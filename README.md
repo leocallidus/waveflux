@@ -274,7 +274,7 @@ Enable runtime profiling:
 
 ```powershell
 $env:WAVEFLUX_PROFILE='1'
-E:\audioplayer\waveflux\build-win-runtime\waveflux.exe
+waveflux\build-win-runtime\waveflux.exe
 ```
 
 Memory budget validation:

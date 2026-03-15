@@ -1,13 +1,11 @@
 # WaveFlux
 
-![WaveFlux icon](resources/icons/waveflux.svg)
-
-[![License](https://img.shields.io/badge/license-MIT-22c55e.svg)](/E:/audioplayer/waveflux/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-22c55e.svg)](#)
 [![C++](https://img.shields.io/badge/C++-%2300599C.svg?logo=c%2B%2B&logoColor=white)](#)
 [![Qt 6.5](https://img.shields.io/badge/Qt-6.5-41cd52.svg)](https://www.qt.io/)
 [![GStreamer](https://img.shields.io/badge/GStreamer-1.0-ff3131.svg)](https://gstreamer.freedesktop.org/)
-[![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#)(https://sqlite.org/index.html)
-[![CMake](https://img.shields.io/badge/CMake-064F8C?logo=cmake&logoColor=fff)](#)(https://cmake.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](https://sqlite.org/index.html)
+[![CMake](https://img.shields.io/badge/CMake-064F8C?logo=cmake&logoColor=fff)](https://cmake.org/)
 [![Windows](https://custom-icon-badges.demolab.com/badge/Windows-0078D6?logo=windows11&logoColor=white)](#)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](#)
 

@@ -1,11 +1,23 @@
 cmake_minimum_required(VERSION 3.21)
-project(waveflux VERSION 1.0.0 LANGUAGES CXX)
+project(waveflux VERSION 1.1.0 LANGUAGES CXX)
+
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
+set(WAVEFLUX_ENABLE_DBUS_INTEGRATION_DEFAULT ON)
+if(WIN32)
+    set(WAVEFLUX_ENABLE_DBUS_INTEGRATION_DEFAULT OFF)
+endif()
+
+option(WAVEFLUX_ENABLE_DBUS_INTEGRATION
+    "Enable D-Bus-based desktop integrations (MPRIS, XDG portal file picker)."
+    ${WAVEFLUX_ENABLE_DBUS_INTEGRATION_DEFAULT}
+)
 
 # Find Qt6 packages
 find_package(Qt6 6.5 REQUIRED COMPONENTS
@@ -14,12 +26,15 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Qml
     Gui
     Sql
-    DBus
     Concurrent
     Widgets
     Test
     QuickControls2
 )
+
+if(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+endif()
 
 # Find Kirigami
 find_package(KF6Kirigami REQUIRED)
@@ -77,9 +92,7 @@ set(SOURCES
     src/PlaylistProfilesManager.cpp
     src/EqualizerPresetManager.cpp
     src/AppSettingsManager.cpp
-    src/MprisService.cpp
     src/TrayManager.cpp
-    src/XdgPortalFilePicker.cpp
     src/PeaksCacheManager.cpp
     src/PerformanceProfiler.cpp
     src/library/DatabaseManager.cpp
@@ -88,6 +101,25 @@ set(SOURCES
     src/library/SearchRepository.cpp
     src/library/SmartCollectionsEngine.cpp
 )
+
+if(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
+    list(APPEND SOURCES
+        src/MprisService.cpp
+        src/XdgPortalFilePicker.cpp
+    )
+else()
+    list(APPEND SOURCES
+        src/MprisService_stub.cpp
+        src/XdgPortalFilePicker_native.cpp
+    )
+endif()
+
+if(WIN32)
+    list(APPEND SOURCES
+        src/WindowsMediaControlsService.cpp
+        resources/waveflux.rc
+    )
+endif()
 
 set(HEADERS
     src/AudioEngine.h
@@ -116,22 +148,33 @@ set(HEADERS
     src/library/SmartCollectionsEngine.h
 )
 
+if(WIN32)
+    list(APPEND HEADERS
+        src/WindowsMediaControlsService.h
+    )
+endif()
+
 # Create executable
 qt_add_executable(waveflux
     ${SOURCES}
     ${HEADERS}
 )
 
+if(WIN32)
+    set_target_properties(waveflux PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
 # Add QML module
 file(GLOB WAVEFLUX_ICON_RESOURCES
     CONFIGURE_DEPENDS
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "resources/icons/*.svg"
+    "resources/icons/*.ico"
 )
 
 qt_add_qml_module(waveflux
     URI WaveFlux
-    VERSION 1.0
+    VERSION 1.1
     QML_FILES
         qml/Main.qml
         qml/CompactSkin.qml
@@ -143,6 +186,18 @@ qt_add_qml_module(waveflux
         qml/components/SettingSliderRow.qml
         qml/components/SettingComboRow.qml
         qml/components/SettingHintText.qml
+        qml/components/AccentSlider.qml
+        qml/components/AccentSwitch.qml
+        qml/components/AccentCheckBox.qml
+        qml/components/AccentComboBox.qml
+        qml/components/SettingsTabButton.qml
+        qml/components/SettingsTabBar.qml
+        qml/components/SettingsSectionPage.qml
+        qml/components/SettingsSearchResults.qml
+        qml/components/AccentMenu.qml
+        qml/components/AccentMenuItem.qml
+        qml/components/AccentMenuSeparator.qml
+        qml/components/AccentColorDialog.qml
         qml/WaveformView.qml
         qml/PlayerControls.qml
         qml/PlaylistView.qml
@@ -175,7 +230,6 @@ target_link_libraries(waveflux PRIVATE
     Qt6::Qml
     Qt6::Gui
     Qt6::Sql
-    Qt6::DBus
     Qt6::Concurrent
     Qt6::Widgets
     Qt6::QuickControls2
@@ -188,10 +242,43 @@ target_link_libraries(waveflux PRIVATE
     ${TAGLIB_LIBRARIES}
 )
 
+if(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
+    target_link_libraries(waveflux PRIVATE Qt6::DBus)
+endif()
+
+if(WIN32)
+    target_link_libraries(waveflux PRIVATE
+        runtimeobject
+        windowsapp
+        ole32
+        psapi
+        propsys
+        shcore
+        shlwapi
+        shell32
+    )
+endif()
+
 # Compiler definitions
 target_compile_definitions(waveflux PRIVATE
-    $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
+    $<$<CONFIG:Debug>:QT_QML_DEBUG>
+    $<$<BOOL:${WAVEFLUX_ENABLE_DBUS_INTEGRATION}>:WAVEFLUX_ENABLE_DBUS_INTEGRATION>
 )
+
+if(WIN32)
+    set(WAVEFLUX_MSYS2_UCRT64_ROOT "C:/msys64/ucrt64" CACHE PATH
+        "Path to the MSYS2 UCRT64 prefix used to deploy Windows runtime dependencies.")
+
+    add_custom_command(TARGET waveflux POST_BUILD
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/deploy-windows-runtime.ps1"
+            -ExePath "$<TARGET_FILE:waveflux>"
+            -QmlDir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+            -MsysPrefix "${WAVEFLUX_MSYS2_UCRT64_ROOT}"
+        VERBATIM
+        COMMENT "Deploying Windows runtime dependencies for waveflux"
+    )
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
@@ -203,4 +290,5 @@ install(TARGETS waveflux
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )

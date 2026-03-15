@@ -1,0 +1,3 @@
+// Keep this file touched when updating the embedded Windows icon so the
+// resource compiler rebuilds the .rc object even if the referenced .ico changed.
+IDI_APP_ICON ICON "icons/waveflux.ico"

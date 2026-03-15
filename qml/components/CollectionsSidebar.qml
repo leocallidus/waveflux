@@ -7,6 +7,8 @@ import "../IconResolver.js" as IconResolver
 Rectangle {
     id: root
 
+    property bool playlistsSectionVisible: true
+    property bool collectionsSectionVisible: true
     property int selectedCollectionId: -1
     property bool collectionModeActive: false
     property int selectedPlaylistProfileId: -1
@@ -519,10 +521,29 @@ Rectangle {
         function onEnabledChanged() { root.refreshCollections() }
     }
 
-    ColumnLayout {
+    Flickable {
+        id: sidebarFlickable
         anchors.fill: parent
         anchors.margins: 10
-        spacing: 8
+        clip: true
+        contentWidth: width
+        contentHeight: sidebarColumn.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
+
+        ColumnLayout {
+            id: sidebarColumn
+            width: sidebarFlickable.width
+            spacing: 8
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            visible: root.playlistsSectionVisible
 
         RowLayout {
             Layout.fillWidth: true
@@ -549,12 +570,116 @@ Rectangle {
             }
         }
 
-        Button {
+        Rectangle {
             Layout.fillWidth: true
-            text: root.tr("collections.currentPlaylist")
-            onClicked: root.playlistRequested()
-            highlighted: !root.collectionModeActive && root.selectedPlaylistProfileId < 0
-            font.pixelSize: 11
+            Layout.preferredHeight: 48
+            radius: themeManager.borderRadiusLarge
+            readonly property bool selected: !root.collectionModeActive && root.selectedPlaylistProfileId < 0
+            color: {
+                if (selected) {
+                    return Qt.rgba(themeManager.primaryColor.r,
+                                   themeManager.primaryColor.g,
+                                   themeManager.primaryColor.b,
+                                   themeManager.darkMode ? 0.18 : 0.11)
+                }
+                if (currentPlaylistMouseArea.containsMouse) {
+                    return Qt.rgba(themeManager.primaryColor.r,
+                                   themeManager.primaryColor.g,
+                                   themeManager.primaryColor.b,
+                                   themeManager.darkMode ? 0.09 : 0.06)
+                }
+                return Qt.rgba(themeManager.surfaceColor.r,
+                               themeManager.surfaceColor.g,
+                               themeManager.surfaceColor.b,
+                               themeManager.darkMode ? 0.62 : 0.88)
+            }
+            border.width: 1
+            border.color: selected
+                          ? themeManager.primaryColor
+                          : (currentPlaylistMouseArea.containsMouse
+                             ? Qt.rgba(themeManager.primaryColor.r,
+                                       themeManager.primaryColor.g,
+                                       themeManager.primaryColor.b,
+                                       0.42)
+                             : Qt.rgba(themeManager.borderColor.r,
+                                       themeManager.borderColor.g,
+                                       themeManager.borderColor.b,
+                                       0.76))
+
+            Behavior on color {
+                ColorAnimation { duration: 120 }
+            }
+
+            Behavior on border.color {
+                ColorAnimation { duration: 120 }
+            }
+
+            MouseArea {
+                id: currentPlaylistMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.playlistRequested()
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 10
+
+                Rectangle {
+                    Layout.preferredWidth: 4
+                    Layout.fillHeight: true
+                    radius: 2
+                    color: parent.parent.selected
+                           ? themeManager.primaryColor
+                           : Qt.rgba(themeManager.primaryColor.r,
+                                     themeManager.primaryColor.g,
+                                     themeManager.primaryColor.b,
+                                     0.42)
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.tr("collections.currentPlaylist")
+                        color: themeManager.textColor
+                        elide: Text.ElideRight
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 11
+                        font.bold: parent.parent.parent.selected
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: trackModel.count > 0
+                              ? root.tr("playlists.trackCount").arg(trackModel.count)
+                              : root.tr("playlists.empty")
+                        color: parent.parent.parent.selected
+                               ? Qt.rgba(themeManager.textColor.r,
+                                         themeManager.textColor.g,
+                                         themeManager.textColor.b,
+                                         0.82)
+                               : themeManager.textMutedColor
+                        elide: Text.ElideRight
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 9
+                    }
+                }
+
+                Label {
+                    text: "\u25b6"
+                    color: parent.parent.selected
+                           ? themeManager.primaryColor
+                           : themeManager.textMutedColor
+                    font.pixelSize: 10
+                    opacity: currentPlaylistMouseArea.containsMouse || parent.parent.selected ? 1.0 : 0.7
+                }
+            }
         }
 
         Label {
@@ -676,11 +801,29 @@ Rectangle {
             }
         }
 
+        Label {
+            Layout.fillWidth: true
+            visible: root.playlistsEnabled && playlistProfilesManager.lastError.length > 0
+            text: playlistProfilesManager.lastError
+            color: "#d66"
+            wrapMode: Text.WordWrap
+            font.pixelSize: 10
+        }
+
+        }
+
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             color: themeManager.borderColor
+            visible: root.playlistsSectionVisible && root.collectionsSectionVisible
         }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 8
+            visible: root.collectionsSectionVisible
 
         RowLayout {
             Layout.fillWidth: true
@@ -812,25 +955,20 @@ Rectangle {
 
         Label {
             Layout.fillWidth: true
-            visible: root.playlistsEnabled && playlistProfilesManager.lastError.length > 0
-            text: playlistProfilesManager.lastError
-            color: "#d66"
-            wrapMode: Text.WordWrap
-            font.pixelSize: 10
-        }
-
-        Label {
-            Layout.fillWidth: true
             visible: root.collectionsEnabled && smartCollectionsEngine.lastError.length > 0
             text: smartCollectionsEngine.lastError
             color: "#d66"
             wrapMode: Text.WordWrap
             font.pixelSize: 10
         }
+
+        }
+        }
     }
 
     Dialog {
         id: savePlaylistDialog
+        parent: Overlay.overlay
         modal: true
         title: root.tr("playlists.saveCurrent")
         standardButtons: Dialog.NoButton
@@ -861,15 +999,75 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Button {
+                    id: savePlaylistCancelButton
                     text: root.tr("collections.cancel")
                     onClicked: savePlaylistDialog.close()
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadius
+                        color: savePlaylistCancelButton.down
+                               ? Qt.rgba(themeManager.borderColor.r,
+                                         themeManager.borderColor.g,
+                                         themeManager.borderColor.b,
+                                         0.34)
+                               : themeManager.surfaceColor
+                        border.width: 1
+                        border.color: themeManager.borderColor
+                    }
+
+                    contentItem: Label {
+                        text: savePlaylistCancelButton.text
+                        color: savePlaylistCancelButton.enabled ? themeManager.textColor : themeManager.textMutedColor
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: themeManager.fontFamily
+                    }
                 }
 
                 Button {
+                    id: savePlaylistApplyButton
                     text: root.tr("playlists.save")
-                    highlighted: true
                     enabled: savePlaylistNameField.text.trim().length > 0
                     onClicked: root.saveCurrentPlaylist()
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadius
+                        color: !savePlaylistApplyButton.enabled
+                               ? Qt.rgba(themeManager.primaryColor.r,
+                                         themeManager.primaryColor.g,
+                                         themeManager.primaryColor.b,
+                                         0.32)
+                               : (savePlaylistApplyButton.down
+                                  ? Qt.darker(themeManager.primaryColor, 1.16)
+                                  : themeManager.primaryColor)
+                        border.width: 1
+                        border.color: !savePlaylistApplyButton.enabled
+                                      ? Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                0.36)
+                                      : Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                0.92)
+                    }
+
+                    contentItem: Label {
+                        text: savePlaylistApplyButton.text
+                        color: savePlaylistApplyButton.enabled
+                               ? Qt.rgba(themeManager.backgroundColor.r,
+                                         themeManager.backgroundColor.g,
+                                         themeManager.backgroundColor.b,
+                                         0.98)
+                               : Qt.rgba(themeManager.backgroundColor.r,
+                                         themeManager.backgroundColor.g,
+                                         themeManager.backgroundColor.b,
+                                         0.62)
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: themeManager.fontFamily
+                        font.bold: true
+                    }
                 }
             }
         }
@@ -899,12 +1097,13 @@ Rectangle {
 
     Dialog {
         id: editPlaylistDialog
+        parent: Overlay.overlay
         modal: true
         title: root.tr("playlists.editTitle")
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(700, 420, root.popupContainerWidth(editPlaylistDialog))
-        height: root.fitPopupSize(520, 320, root.popupContainerHeight(editPlaylistDialog))
+        width: root.fitPopupSize(920, 640, root.popupContainerWidth(editPlaylistDialog))
+        height: root.fitPopupSize(640, 420, root.popupContainerHeight(editPlaylistDialog))
         x: root.popupCenteredX(editPlaylistDialog)
         y: root.popupCenteredY(editPlaylistDialog)
 
@@ -1072,18 +1271,78 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Button {
+                    id: editPlaylistCancelButton
                     text: root.tr("collections.cancel")
                     onClicked: {
                         editPlaylistDialog.close()
                         root.clearEditPlaylistRequest()
                     }
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadius
+                        color: editPlaylistCancelButton.down
+                               ? Qt.rgba(themeManager.borderColor.r,
+                                         themeManager.borderColor.g,
+                                         themeManager.borderColor.b,
+                                         0.34)
+                               : themeManager.surfaceColor
+                        border.width: 1
+                        border.color: themeManager.borderColor
+                    }
+
+                    contentItem: Label {
+                        text: editPlaylistCancelButton.text
+                        color: editPlaylistCancelButton.enabled ? themeManager.textColor : themeManager.textMutedColor
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: themeManager.fontFamily
+                    }
                 }
 
                 Button {
+                    id: editPlaylistApplyButton
                     text: root.tr("playlists.saveChanges")
-                    highlighted: true
                     enabled: editPlaylistNameField.text.trim().length > 0
                     onClicked: root.saveEditedPlaylist()
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadius
+                        color: !editPlaylistApplyButton.enabled
+                               ? Qt.rgba(themeManager.primaryColor.r,
+                                         themeManager.primaryColor.g,
+                                         themeManager.primaryColor.b,
+                                         0.32)
+                               : (editPlaylistApplyButton.down
+                                  ? Qt.darker(themeManager.primaryColor, 1.16)
+                                  : themeManager.primaryColor)
+                        border.width: 1
+                        border.color: !editPlaylistApplyButton.enabled
+                                      ? Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                0.36)
+                                      : Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                0.92)
+                    }
+
+                    contentItem: Label {
+                        text: editPlaylistApplyButton.text
+                        color: editPlaylistApplyButton.enabled
+                               ? Qt.rgba(themeManager.backgroundColor.r,
+                                         themeManager.backgroundColor.g,
+                                         themeManager.backgroundColor.b,
+                                         0.98)
+                               : Qt.rgba(themeManager.backgroundColor.r,
+                                         themeManager.backgroundColor.g,
+                                         themeManager.backgroundColor.b,
+                                         0.62)
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: themeManager.fontFamily
+                        font.bold: true
+                    }
                 }
             }
         }

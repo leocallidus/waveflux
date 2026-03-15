@@ -64,7 +64,7 @@ RowLayout {
         opacity: root.rowEnabled ? 1.0 : 0.55
     }
 
-    ComboBox {
+    AccentComboBox {
         id: comboBox
         Layout.preferredWidth: root.comboWidth
         Layout.minimumHeight: 34

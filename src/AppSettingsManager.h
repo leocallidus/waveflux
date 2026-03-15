@@ -75,6 +75,8 @@ public:
     Q_INVOKABLE QStringList supportedLanguages() const;
     Q_INVOKABLE QVariantMap loadPlaybackContextProgress() const;
     Q_INVOKABLE void savePlaybackContextProgress(const QVariantMap &progress);
+    Q_INVOKABLE QVariantMap loadNormalPlaylistSortState() const;
+    Q_INVOKABLE void saveNormalPlaylistSortState(const QVariantMap &state);
 
 public slots:
     void setLanguage(const QString &language);

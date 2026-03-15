@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
-import WaveFlux 1.0
+import WaveFlux 1.1
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -22,6 +22,9 @@ Item {
     property int selectedPlaylistProfileId: -1
     property string waveformKeyboardBadgeText: ""
     property bool waveformKeyboardBadgeVisible: false
+    property string searchQuery: ""
+    property string debouncedSearchQuery: ""
+    property string pendingSearchText: ""
     property var selectedFilePaths: []
     property int selectionAnchorIndex: -1
     property bool ctrlDragSelecting: false
@@ -31,12 +34,21 @@ Item {
     property var cueSegments: []
     readonly property int selectedCount: selectedFilePaths.length
     readonly property bool isPlaying: audioEngine ? audioEngine.state === 1 : false
+    readonly property real cueOverlayPixelsPerSegment: cueSegments.length > 0
+                                                       ? (compactWaveform.width / cueSegments.length)
+                                                       : compactWaveform.width
     readonly property bool cueOverlaySuppressedByZoom: appSettings.cueWaveformOverlayAutoHideOnZoom
                                                        && (compactWaveform.zoom > 1.001 || compactWaveform.quickScrubActive)
+    readonly property bool cueOverlaySuppressedByDensity: root.cueOverlayPixelsPerSegment < 1.35
     readonly property bool cueOverlayVisible: appSettings.cueWaveformOverlayEnabled
                                               && !root.cueOverlaySuppressedByZoom
+                                              && !root.cueOverlaySuppressedByDensity
                                               && cueSegments.length > 0
                                               && audioEngine.duration > 0
+    readonly property int compactControlsRowHeight: 34
+    readonly property string normalizedSearchQuery: debouncedSearchQuery.trim().toLowerCase()
+    readonly property int searchRevision: trackModel.searchRevision
+    property int appliedSearchRevision: searchRevision
 
     function uiActiveIndex() {
         const pending = playbackController.pendingTrackIndex
@@ -78,10 +90,59 @@ Item {
     signal smartCollectionRequested(int collectionId, string collectionName)
     signal playlistProfileRequested(int playlistId, string playlistName)
     signal createSmartCollectionRequested()
+    signal equalizerRequested()
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
+    }
+
+    function searchFieldHasActiveFocus() {
+        return compactSearchField && compactSearchField.activeFocus
+    }
+
+    function clearSearchFieldFocus() {
+        if (compactSearchField) {
+            compactSearchField.focus = false
+        }
+    }
+
+    function searchFieldContainsPoint(point, relativeToItem) {
+        if (!compactSearchField || !compactSearchField.visible || !relativeToItem || !point) {
+            return false
+        }
+        const topLeft = compactSearchField.mapToItem(relativeToItem, 0, 0)
+        return point.x >= topLeft.x
+                && point.x <= topLeft.x + compactSearchField.width
+                && point.y >= topLeft.y
+                && point.y <= topLeft.y + compactSearchField.height
+    }
+
+    function shouldYieldSearchShortcut(event) {
+        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+        const alt = (event.modifiers & Qt.AltModifier) !== 0
+        const meta = (event.modifiers & Qt.MetaModifier) !== 0
+        const key = event.key
+
+        if (ctrl || alt || meta) {
+            return true
+        }
+        return key >= Qt.Key_F1 && key <= Qt.Key_F35
+    }
+
+    function shuffleTooltipText() {
+        return playbackController.shuffleEnabled ? tr("player.shuffleDisable")
+                                                : tr("player.shuffleEnable")
+    }
+
+    function repeatTooltipText() {
+        if (playbackController.repeatMode === 2) {
+            return tr("player.repeatOne")
+        }
+        if (playbackController.repeatMode === 1) {
+            return tr("player.repeatAll")
+        }
+        return tr("player.repeatOff")
     }
 
     function formatTime(ms) {
@@ -181,6 +242,78 @@ Item {
         })
     }
 
+    function locateCurrentTrack() {
+        const current = root.uiActiveIndex()
+        if (current < 0) {
+            return
+        }
+        root.playlistVisible = true
+        Qt.callLater(function() {
+            const delayedCurrent = root.uiActiveIndex()
+            if (delayedCurrent < 0) {
+                return
+            }
+            const viewportHeight = compactPlaylist.height
+            if (viewportHeight <= 0) {
+                compactPlaylist.positionViewAtIndex(delayedCurrent, ListView.Center)
+                return
+            }
+            const rowHeight = 24
+            if (root.normalizedSearchQuery.length > 0 && root.matchesTrackAt(delayedCurrent)) {
+                const visibleRow = root.matchCountBefore(delayedCurrent)
+                const visibleCount = root.matchCount()
+                const contentHeight = Math.max(visibleCount * rowHeight, viewportHeight)
+                const centerY = (visibleRow + 0.5) * rowHeight
+                compactPlaylist.contentY = Math.max(
+                            0,
+                            Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
+                return
+            }
+            const contentHeight = Math.max(trackModel.count * rowHeight, viewportHeight)
+            const centerY = (delayedCurrent + 0.5) * rowHeight
+            compactPlaylist.contentY = Math.max(
+                        0,
+                        Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
+        })
+    }
+
+    function searchDebounceIntervalMs() {
+        const count = trackModel.count
+        if (count < 1000) return 40
+        if (count < 5000) return 70
+        if (count < 20000) return 110
+        return 150
+    }
+
+    function scheduleDebouncedSearchUpdate(text) {
+        if (text === debouncedSearchQuery) {
+            return
+        }
+        if (text.length === 0) {
+            searchDebounceTimer.stop()
+            debouncedSearchQuery = ""
+            return
+        }
+        pendingSearchText = text
+        searchDebounceTimer.interval = searchDebounceIntervalMs()
+        searchDebounceTimer.restart()
+    }
+
+    function matchCount() {
+        const _searchRevision = root.appliedSearchRevision
+        return trackModel.countMatchingAdvancedNormalized(root.normalizedSearchQuery, 0, 0)
+    }
+
+    function matchCountBefore(index) {
+        const _searchRevision = root.appliedSearchRevision
+        return trackModel.countMatchingAdvancedNormalizedBefore(index, root.normalizedSearchQuery, 0, 0)
+    }
+
+    function matchesTrackAt(index) {
+        const _searchRevision = root.appliedSearchRevision
+        return trackModel.matchesSearchAdvancedNormalized(index, root.normalizedSearchQuery, 0, 0)
+    }
+
     function moveTrackToTrash(filePath, originalIndex) {
         if (!filePath || filePath.length === 0) {
             return
@@ -259,6 +392,27 @@ Item {
         if (selectionAnchorIndex >= trackModel.count) {
             selectionAnchorIndex = -1
         }
+    }
+
+    onSearchRevisionChanged: {
+        if (searchRevision === appliedSearchRevision) {
+            return
+        }
+        searchRevisionThrottleTimer.restart()
+    }
+
+    Timer {
+        id: searchDebounceTimer
+        interval: 90
+        repeat: false
+        onTriggered: root.debouncedSearchQuery = root.pendingSearchText
+    }
+
+    Timer {
+        id: searchRevisionThrottleTimer
+        interval: 33
+        repeat: false
+        onTriggered: root.appliedSearchRevision = root.searchRevision
     }
 
     function selectOnlyIndex(index) {
@@ -417,90 +571,20 @@ Item {
         Rectangle {
             id: controlPanel
             Layout.fillWidth: true
-            Layout.preferredHeight: appSettings.compactWaveformHeight + 4
-            Layout.minimumHeight: 28
-            Layout.maximumHeight: 84
+            Layout.preferredHeight: appSettings.compactWaveformHeight + root.compactControlsRowHeight + 10
+            Layout.minimumHeight: root.compactControlsRowHeight + 28
+            Layout.maximumHeight: 1000 + root.compactControlsRowHeight + 12
             color: themeManager.backgroundColor
             border.width: 1
             border.color: themeManager.borderColor
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 4
                 anchors.rightMargin: 4
-                spacing: 2
-
-                // Transport buttons
-                ToolButton {
-                    id: prevButton
-                    icon.source: IconResolver.themed("media-skip-backward", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    onClicked: playbackController.previousTrack()
-                    enabled: playbackController.canGoPrevious
-                }
-
-                ToolButton {
-                    id: playPauseButton
-                    display: AbstractButton.TextOnly
-                    implicitWidth: 32
-                    implicitHeight: 32
-                    onClicked: audioEngine.togglePlayPause()
-
-                    contentItem: Label {
-                        text: root.isPlaying ? "||" : ">"
-                        color: themeManager.backgroundColor
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: root.isPlaying ? 12 : 16
-                        font.bold: true
-                    }
-
-                    background: Rectangle {
-                        radius: width * 0.5
-                        color: themeManager.primaryColor
-                    }
-                }
-
-                ToolButton {
-                    id: nextButton
-                    icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    onClicked: playbackController.nextTrack()
-                    enabled: playbackController.canGoNext
-                }
-
-                // Album art (small)
-                Rectangle {
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
-                    radius: 2
-                    color: themeManager.surfaceColor
-                    border.width: 1
-                    border.color: themeManager.borderColor
-                    visible: trackModel.currentAlbumArt.length > 0
-
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 1
-                        source: trackModel.currentAlbumArt
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                    }
-                }
-
-                // Waveform with seek
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.margins: 2
                     color: themeManager.surfaceColor
                     radius: 2
                     clip: true
@@ -508,7 +592,7 @@ Item {
                     WaveformItem {
                         id: compactWaveform
                         anchors.fill: parent
-                        peaks: waveformProvider.peaks
+                        provider: waveformProvider
                         progress: audioEngine.duration > 0 ? audioEngine.position / audioEngine.duration : 0
                         loading: waveformProvider.loading
                         generationProgress: waveformProvider.progress
@@ -561,7 +645,7 @@ Item {
                         z: 1
 
                         Repeater {
-                            model: root.cueSegments.length
+                            model: root.cueOverlayVisible ? root.cueSegments.length : 0
 
                             Rectangle {
                                 required property int index
@@ -577,12 +661,14 @@ Item {
                                 readonly property real endX: compactWaveform.trackToView(endTrackPos) * parent.width
                                 readonly property real leftX: Math.max(0, Math.min(startX, endX))
                                 readonly property real rightX: Math.min(parent.width, Math.max(startX, endX))
+                                readonly property real rawWidth: Math.max(0, rightX - leftX)
                                 readonly property bool isActive: root.cueSegmentModelIndex(segment) === root.activeCueSegmentModelIndex
                                 readonly property string segmentName: String(segment.name || "")
                                 readonly property string segmentDuration: root.formatSegmentDuration(Number(segment.durationMs || 0))
 
+                                visible: isActive || rawWidth >= 1.1
                                 x: leftX
-                                width: Math.max(1, rightX - leftX)
+                                width: isActive ? Math.max(1, rawWidth) : rawWidth
                                 height: parent.height
                                 color: isActive
                                        ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.18)
@@ -591,6 +677,7 @@ Item {
                                           : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.04))
 
                                 Rectangle {
+                                    visible: parent.width >= (isActive ? 1.0 : 1.35)
                                     anchors.left: parent.left
                                     anchors.top: parent.top
                                     anchors.bottom: parent.bottom
@@ -630,205 +717,333 @@ Item {
                     }
                 }
 
-                // Time display
-                Label {
-                    text: root.formatTime(audioEngine.position)
-                    color: themeManager.primaryColor
-                    font.family: themeManager.monoFontFamily
-                    font.pixelSize: 11
-                    font.bold: true
-                    Layout.preferredWidth: 36
-                    horizontalAlignment: Text.AlignRight
-                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: root.compactControlsRowHeight
+                    spacing: 4
 
-                Label {
-                    text: "/"
-                    color: themeManager.textMutedColor
-                    font.family: themeManager.monoFontFamily
-                    font.pixelSize: 10
-                }
+                    ToolButton {
+                        id: shuffleButton
+                        icon.source: IconResolver.themed("media-playlist-shuffle", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        enabled: trackModel.count > 1
+                        opacity: playbackController.shuffleEnabled ? 1.0 : 0.72
+                        onClicked: playbackController.toggleShuffle()
+                        ToolTip.text: root.shuffleTooltipText()
+                        ToolTip.visible: hovered
+                    }
 
-                Label {
-                    text: root.formatTime(audioEngine.duration)
-                    color: themeManager.textSecondaryColor
-                    font.family: themeManager.monoFontFamily
-                    font.pixelSize: 11
-                    Layout.preferredWidth: 36
-                }
+                    ToolButton {
+                        id: prevButton
+                        icon.source: IconResolver.themed("media-skip-backward", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        onClicked: playbackController.previousTrack()
+                        enabled: playbackController.canGoPrevious
+                    }
 
-                // Volume slider (vertical-style but horizontal for space)
-                ToolButton {
-                    icon.source: IconResolver.themed(audioEngine.volume < 0.01 ? "audio-volume-muted" : "audio-volume-medium", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 24
-                    implicitHeight: 24
-                    onClicked: {
-                        if (audioEngine.volume > 0) {
-                            audioEngine.volume = 0
-                        } else {
-                            audioEngine.volume = 0.7
+                    ToolButton {
+                        id: playPauseButton
+                        display: AbstractButton.TextOnly
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        onClicked: audioEngine.togglePlayPause()
+
+                        contentItem: Label {
+                            text: root.isPlaying ? "||" : ">"
+                            color: themeManager.backgroundColor
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: root.isPlaying ? 12 : 16
+                            font.bold: true
                         }
-                    }
-                }
-
-                Slider {
-                    id: volumeSlider
-                    from: 0
-                    to: 1
-                    value: audioEngine ? audioEngine.volume : 0.5
-                    Layout.preferredWidth: 60
-                    Layout.maximumWidth: 80
-                    onMoved: {
-                        if (audioEngine) audioEngine.volume = value
-                    }
-                }
-
-                ToolButton {
-                    id: queueButton
-                    icon.source: IconResolver.themed("queue", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    onPressed: root.queuePopupWasOpenOnPress = compactQueuePopup.visible
-                    onClicked: {
-                        if (root.queuePopupWasOpenOnPress) {
-                            compactQueuePopup.close()
-                        } else if (compactQueuePopup.visible) {
-                            compactQueuePopup.close()
-                        } else {
-                            compactCollectionsPopup.close()
-                            compactQueuePopup.open()
-                        }
-                    }
-                    ToolTip.text: root.tr("queue.open")
-                    ToolTip.visible: hovered
-
-                    Label {
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.rightMargin: -3
-                        anchors.topMargin: -3
-                        visible: playbackController.queueCount > 0
-                        text: playbackController.queueCount > 99 ? "99+" : String(playbackController.queueCount)
-                        color: themeManager.backgroundColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: 8
-                        font.bold: true
-                        padding: 2
 
                         background: Rectangle {
-                            radius: 7
+                            radius: width * 0.5
                             color: themeManager.primaryColor
                         }
                     }
-                }
 
-                ToolButton {
-                    id: collectionsButton
-                    visible: true
-                    icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    onPressed: root.collectionsPopupWasOpenOnPress = compactCollectionsPopup.visible
-                    onClicked: root.toggleCollectionsPopup(false)
-                    ToolTip.text: root.tr("collections.openPanel")
-                    ToolTip.visible: hovered
+                    ToolButton {
+                        id: nextButton
+                        icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        onClicked: playbackController.nextTrack()
+                        enabled: playbackController.canGoNext
+                    }
 
-                    Label {
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.rightMargin: -3
-                        anchors.topMargin: -3
-                        visible: root.collectionModeActive
-                        text: "\u2605"
-                        color: themeManager.primaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: 8
-                        font.bold: true
-                        padding: 2
+                    ToolButton {
+                        id: repeatButton
+                        icon.source: playbackController.repeatMode === 2
+                                     ? (themeManager.darkMode
+                                        ? "qrc:/WaveFlux/resources/icons/repeat-one-dark.svg"
+                                        : "qrc:/WaveFlux/resources/icons/repeat-one-light.svg")
+                                     : (themeManager.darkMode
+                                        ? "qrc:/WaveFlux/resources/icons/repeat-dark.svg"
+                                        : "qrc:/WaveFlux/resources/icons/repeat-light.svg")
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        enabled: trackModel.count > 0
+                        opacity: playbackController.repeatMode === 0 ? 0.72 : 1.0
+                        onClicked: playbackController.toggleRepeatMode()
+                        ToolTip.text: root.repeatTooltipText()
+                        ToolTip.visible: hovered
+                    }
 
-                        background: Rectangle {
-                            radius: 7
-                            color: themeManager.surfaceColor
-                            border.width: 1
-                            border.color: themeManager.primaryColor
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 2
+                        color: themeManager.surfaceColor
+                        border.width: 1
+                        border.color: themeManager.borderColor
+                        visible: trackModel.currentAlbumArt.length > 0
+
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            source: trackModel.currentAlbumArt
+                            sourceSize.width: Math.max(1, Math.ceil(width))
+                            sourceSize.height: Math.max(1, Math.ceil(height))
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: false
+                            smooth: true
+                            mipmap: true
                         }
                     }
-                }
 
-                // Menu button
-                ToolButton {
-                    id: menuButton
-                    icon.source: IconResolver.themed("application-menu", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    onClicked: compactMenu.popup()
+                    Label {
+                        text: root.formatTime(audioEngine.position)
+                        color: themeManager.primaryColor
+                        font.family: themeManager.monoFontFamily
+                        font.pixelSize: 11
+                        font.bold: true
+                        Layout.preferredWidth: 36
+                        horizontalAlignment: Text.AlignRight
+                    }
 
-                    Menu {
-                        id: compactMenu
+                    Label {
+                        text: "/"
+                        color: themeManager.textMutedColor
+                        font.family: themeManager.monoFontFamily
+                        font.pixelSize: 10
+                    }
 
-                        Action {
-                            text: root.tr("main.openFiles")
-                            icon.source: IconResolver.themed("document-open", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            onTriggered: root.openFilesRequested()
+                    Label {
+                        text: root.formatTime(audioEngine.duration)
+                        color: themeManager.textSecondaryColor
+                        font.family: themeManager.monoFontFamily
+                        font.pixelSize: 11
+                        Layout.preferredWidth: 36
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    ToolButton {
+                        icon.source: IconResolver.themed(audioEngine.volume < 0.01 ? "audio-volume-muted" : "audio-volume-medium", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 24
+                        implicitHeight: 24
+                        onClicked: {
+                            if (audioEngine.volume > 0) {
+                                audioEngine.volume = 0
+                            } else {
+                                audioEngine.volume = 0.7
+                            }
                         }
+                    }
 
-                        Action {
-                            text: root.tr("main.addFolder")
-                            icon.source: IconResolver.themed("folder-open", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            onTriggered: root.addFolderRequested()
+                    AccentSlider {
+                        id: volumeSlider
+                        from: 0
+                        to: 1
+                        value: audioEngine ? audioEngine.volume : 0.5
+                        Layout.preferredWidth: 60
+                        Layout.maximumWidth: 88
+                        onMoved: {
+                            if (audioEngine) audioEngine.volume = value
                         }
+                    }
 
-                        MenuSeparator {}
-
-                        Action {
-                            text: root.tr("main.exportPlaylist")
-                            icon.source: IconResolver.themed("document-save", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            enabled: trackModel.count > 0
-                            onTriggered: root.exportPlaylistRequested()
+                    ToolButton {
+                        id: queueButton
+                        icon.source: IconResolver.themed("queue", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        onPressed: root.queuePopupWasOpenOnPress = compactQueuePopup.visible
+                        onClicked: {
+                            if (root.queuePopupWasOpenOnPress) {
+                                compactQueuePopup.close()
+                            } else if (compactQueuePopup.visible) {
+                                compactQueuePopup.close()
+                            } else {
+                                compactCollectionsPopup.close()
+                                compactQueuePopup.open()
+                            }
                         }
+                        ToolTip.text: root.tr("queue.open")
+                        ToolTip.visible: hovered
 
-                        Action {
-                            text: root.tr("main.clearPlaylist")
-                            icon.source: IconResolver.themed("edit-clear", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            enabled: trackModel.count > 0
-                            onTriggered: root.clearPlaylistRequested()
+                        Label {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.rightMargin: -3
+                            anchors.topMargin: -3
+                            visible: playbackController.queueCount > 0
+                            text: playbackController.queueCount > 99 ? "99+" : String(playbackController.queueCount)
+                            color: themeManager.backgroundColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 8
+                            font.bold: true
+                            padding: 2
+
+                            background: Rectangle {
+                                radius: 7
+                                color: themeManager.primaryColor
+                            }
                         }
+                    }
 
-                        MenuSeparator {}
+                    ToolButton {
+                        id: collectionsButton
+                        visible: true
+                        icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        onPressed: root.collectionsPopupWasOpenOnPress = compactCollectionsPopup.visible
+                        onClicked: root.toggleCollectionsPopup(false)
+                        ToolTip.text: root.tr("collections.openPanel")
+                        ToolTip.visible: hovered
 
-                        Action {
-                            text: root.playlistVisible ? root.tr("compact.hidePlaylist") : root.tr("compact.showPlaylist")
-                            icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            onTriggered: root.playlistVisible = !root.playlistVisible
+                        Label {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.rightMargin: -3
+                            anchors.topMargin: -3
+                            visible: root.collectionModeActive
+                            text: "\u2605"
+                            color: themeManager.primaryColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 8
+                            font.bold: true
+                            padding: 2
+
+                            background: Rectangle {
+                                radius: 7
+                                color: themeManager.surfaceColor
+                                border.width: 1
+                                border.color: themeManager.primaryColor
+                            }
                         }
+                    }
 
-                        Action {
-                            text: root.tr("collections.openPanel")
-                            icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            enabled: true
-                            onTriggered: root.toggleCollectionsPopup(true)
-                        }
+                    ToolButton {
+                        id: menuButton
+                        icon.source: IconResolver.themed("application-menu", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        onClicked: compactMenu.popup()
 
-                        MenuSeparator {}
+                        AccentMenu {
+                            id: compactMenu
 
-                        Action {
-                            text: root.tr("main.settings")
-                            icon.source: IconResolver.themed("configure", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            onTriggered: root.settingsRequested()
+                            AccentMenuItem {
+                                text: root.tr("main.openFiles")
+                                icon.source: IconResolver.themed("document-open", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.openFilesRequested()
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("main.addFolder")
+                                icon.source: IconResolver.themed("folder-open", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.addFolderRequested()
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                text: root.tr("main.exportPlaylist")
+                                icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: trackModel.count > 0
+                                onTriggered: root.exportPlaylistRequested()
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("main.clearPlaylist")
+                                icon.source: IconResolver.themed("edit-clear", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: trackModel.count > 0
+                                onTriggered: root.clearPlaylistRequested()
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                text: root.playlistVisible ? root.tr("compact.hidePlaylist") : root.tr("compact.showPlaylist")
+                                icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.playlistVisible = !root.playlistVisible
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("playlist.locateCurrent")
+                                icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: playbackController.activeTrackIndex >= 0
+                                onTriggered: root.locateCurrentTrack()
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("collections.openPanel")
+                                icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: true
+                                onTriggered: root.toggleCollectionsPopup(true)
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                text: audioEngine.equalizerAvailable
+                                      ? root.tr("player.equalizer")
+                                      : root.tr("player.equalizerUnavailable")
+                                icon.source: themeManager.darkMode
+                                             ? "qrc:/WaveFlux/resources/icons/equalizer-dark.svg"
+                                             : "qrc:/WaveFlux/resources/icons/equalizer-light.svg"
+                                onTriggered: root.equalizerRequested()
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                text: root.tr("main.settings")
+                                icon.source: IconResolver.themed("configure", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.settingsRequested()
+                            }
                         }
                     }
                 }
@@ -1057,25 +1272,101 @@ Item {
             visible: root.playlistVisible
             color: themeManager.backgroundColor
 
-            ListView {
-                id: compactPlaylist
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 1
-                clip: true
-                model: trackModel
-                currentIndex: root.uiActiveIndex()
-                highlightFollowsCurrentItem: true
-                highlightMoveDuration: 100
+                spacing: 0
 
-                ScrollBar.vertical: ScrollBar {
-                    width: 6
-                    policy: ScrollBar.AsNeeded
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 34
+                    Layout.minimumHeight: 34
+                    color: themeManager.surfaceColor
+                    border.width: 0
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        Label {
+                            text: "\u2315"
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 12
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        TextField {
+                            id: compactSearchField
+                            Layout.fillWidth: true
+                            placeholderText: root.tr("header.searchPlaceholder")
+                            text: root.searchQuery
+                            selectByMouse: true
+                            color: themeManager.textColor
+                            placeholderTextColor: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            background: Rectangle {
+                                radius: themeManager.borderRadius
+                                color: Qt.rgba(themeManager.backgroundColor.r,
+                                               themeManager.backgroundColor.g,
+                                               themeManager.backgroundColor.b,
+                                               themeManager.darkMode ? 0.84 : 0.98)
+                                border.width: compactSearchField.activeFocus ? 1 : 0
+                                border.color: themeManager.primaryColor
+                            }
+                            onTextEdited: {
+                                root.searchQuery = text
+                                root.scheduleDebouncedSearchUpdate(text)
+                            }
+                            Keys.priority: Keys.BeforeItem
+                            Keys.onShortcutOverride: function(event) {
+                                if (root.shouldYieldSearchShortcut(event)) {
+                                    event.accepted = false
+                                }
+                            }
+                        }
+
+                        ToolButton {
+                            visible: compactSearchField.text.length > 0
+                            display: AbstractButton.TextOnly
+                            text: "\u2715"
+                            implicitWidth: 22
+                            implicitHeight: 22
+                            onClicked: {
+                                compactSearchField.clear()
+                                root.searchQuery = ""
+                                root.pendingSearchText = ""
+                                root.debouncedSearchQuery = ""
+                            }
+                        }
+                    }
                 }
 
-                delegate: Rectangle {
+                ListView {
+                    id: compactPlaylist
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: trackModel
+                    currentIndex: root.uiActiveIndex()
+                    highlightFollowsCurrentItem: true
+                    highlightMoveDuration: 100
+
+                    ScrollBar.vertical: ScrollBar {
+                        width: 6
+                        policy: ScrollBar.AsNeeded
+                    }
+
+                    delegate: Rectangle {
                     id: trackDelegate
                     width: ListView.view.width - 6
-                    height: 24
+                    readonly property bool matchesSearch: root.normalizedSearchQuery.length === 0
+                                                         || root.matchesTrackAt(trackDelegate.index)
+                    visible: matchesSearch
+                    height: matchesSearch ? 24 : 0
 
                     required property int index
                     required property string title
@@ -1235,27 +1526,41 @@ Item {
                     }
                 }
 
-                // Empty state
-                Label {
-                    anchors.centerIn: parent
-                    visible: trackModel.count === 0
-                    text: root.collectionModeActive
-                          ? root.tr("collections.emptyTracks")
-                          : root.tr("playlist.dropHint")
-                    color: themeManager.textMutedColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
+                    // Empty state
+                    Label {
+                        anchors.centerIn: parent
+                        visible: trackModel.count === 0
+                        text: root.collectionModeActive
+                              ? root.tr("collections.emptyTracks")
+                              : root.tr("playlist.dropHint")
+                        color: themeManager.textMutedColor
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Label {
+                        anchors.centerIn: parent
+                        visible: trackModel.count > 0
+                                 && root.normalizedSearchQuery.length > 0
+                                 && root.matchCount() === 0
+                        text: root.tr("playlist.noMatches")
+                        color: themeManager.textMutedColor
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
 
-            Menu {
+            AccentMenu {
                 id: trackContextMenu
                 property int trackIndex: -1
                 property string trackFilePath: ""
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.play")
                     icon.source: IconResolver.themed("media-playback-start", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1264,7 +1569,7 @@ Item {
                     }
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.playNext")
                     icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1272,7 +1577,7 @@ Item {
                     onTriggered: playbackController.playNextInQueue(trackContextMenu.trackIndex)
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.addToQueue")
                     icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1280,23 +1585,23 @@ Item {
                     onTriggered: playbackController.addToQueue(trackContextMenu.trackIndex)
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.openInFileManager")
                     icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     onTriggered: xdgPortalFilePicker.openInFileManager(trackContextMenu.trackFilePath)
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.editTags")
                     icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     onTriggered: root.editTagsRequested(trackContextMenu.trackFilePath)
                 }
 
-                MenuSeparator {}
+                AccentMenuSeparator {}
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.editTagsSelected")
                     icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1304,7 +1609,7 @@ Item {
                     onTriggered: root.editTagsSelectionRequested(root.selectedFilePathsSnapshot())
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.exportSelected")
                     icon.source: IconResolver.themed("document-save", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1312,7 +1617,7 @@ Item {
                     onTriggered: root.exportSelectionRequested(root.selectedFilePathsSnapshot())
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.removeSelected")
                     icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1320,25 +1625,25 @@ Item {
                     onTriggered: root.removeSelectedTracks()
                 }
 
-                MenuSeparator {}
+                AccentMenuSeparator {}
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.moveToTrash")
                     icon.source: IconResolver.themed("user-trash", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     onTriggered: root.requestMoveTrackToTrash(trackContextMenu.trackIndex, trackContextMenu.trackFilePath)
                 }
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.remove")
                     icon.source: IconResolver.themed("list-remove", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     onTriggered: trackModel.removeAt(trackContextMenu.trackIndex)
                 }
 
-                MenuSeparator {}
+                AccentMenuSeparator {}
 
-                Action {
+                AccentMenuItem {
                     text: root.tr("playlist.clearQueue")
                     icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1456,7 +1761,11 @@ Item {
         }
     }
 
-    Component.onCompleted: refreshCueSegments()
+    Component.onCompleted: {
+        debouncedSearchQuery = searchQuery
+        appliedSearchRevision = searchRevision
+        refreshCueSegments()
+    }
 
     Connections {
         target: audioEngine

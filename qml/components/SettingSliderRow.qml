@@ -67,7 +67,7 @@ RowLayout {
         opacity: root.rowEnabled ? 1.0 : 0.55
     }
 
-    Slider {
+    AccentSlider {
         id: slider
         Layout.fillWidth: true
         Layout.minimumWidth: root.sliderMinWidth

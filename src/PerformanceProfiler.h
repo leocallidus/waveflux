@@ -20,6 +20,11 @@ class PerformanceProfiler : public QObject
     Q_PROPERTY(int playlistTrackCount READ playlistTrackCount NOTIFY playlistTrackCountChanged)
     Q_PROPERTY(QString lastExportPath READ lastExportPath NOTIFY lastExportPathChanged)
     Q_PROPERTY(QString lastExportError READ lastExportError NOTIFY lastExportErrorChanged)
+    Q_PROPERTY(qint64 workingSetBytes READ workingSetBytes NOTIFY metricsChanged)
+    Q_PROPERTY(qint64 peakWorkingSetBytes READ peakWorkingSetBytes NOTIFY metricsChanged)
+    Q_PROPERTY(qint64 privateBytes READ privateBytes NOTIFY metricsChanged)
+    Q_PROPERTY(qint64 commitBytes READ commitBytes NOTIFY metricsChanged)
+    Q_PROPERTY(QString lastMemoryCheckpointLabel READ lastMemoryCheckpointLabel NOTIFY metricsChanged)
 
     Q_PROPERTY(double sceneFps READ sceneFps NOTIFY metricsChanged)
     Q_PROPERTY(double sceneFrameMsAvg READ sceneFrameMsAvg NOTIFY metricsChanged)
@@ -104,6 +109,12 @@ public:
 
     QString lastExportPath() const;
     QString lastExportError() const;
+    qint64 workingSetBytes() const;
+    qint64 peakWorkingSetBytes() const;
+    qint64 privateBytes() const;
+    qint64 commitBytes() const;
+    QString lastMemoryCheckpointLabel() const;
+    Q_INVOKABLE void captureMemoryCheckpoint(const QString &label);
 
 signals:
     void enabledChanged();
@@ -123,6 +134,21 @@ private:
         qint64 count = 0;
         double total = 0.0;
         double worst = 0.0;
+    };
+
+    struct MemorySnapshot {
+        qint64 workingSetBytes = 0;
+        qint64 peakWorkingSetBytes = 0;
+        qint64 privateBytes = 0;
+        qint64 commitBytes = 0;
+    };
+
+    struct MemoryCheckpoint {
+        QString label;
+        QString timestampUtc;
+        int playlistTrackCount = 0;
+        bool fullscreenWaveformActive = false;
+        MemorySnapshot memory;
     };
 
     static PerformanceProfiler *s_instance;
@@ -177,11 +203,19 @@ private:
     double m_searchFailuresPerSec = 0.0;
     QString m_lastExportPath;
     QString m_lastExportError;
+    MemorySnapshot m_memorySnapshot;
+    QVector<MemoryCheckpoint> m_memoryCheckpoints;
+    QString m_lastMemoryCheckpointLabel;
 
     QString renderApiNameLocked() const;
     QString profilingDirectoryPath() const;
     bool setLastExportResultLocked(const QString &path, const QString &error,
                                    bool *pathChanged = nullptr, bool *errorChanged = nullptr);
+    static MemorySnapshot sampleProcessMemory();
+    static QString formatMemoryMiB(qint64 bytes);
+    void appendMemoryCheckpointLocked(const QString &label,
+                                     const QString &timestampUtc,
+                                     const MemorySnapshot &memorySnapshot);
 };
 
 #endif // PERFORMANCEPROFILER_H

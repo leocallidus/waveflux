@@ -1,9 +1,12 @@
 #include "WaveformItem.h"
 #include "PerformanceProfiler.h"
+#include "WaveformProvider.h"
+#include <QGuiApplication>
 #include <QPainter>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QQuickWindow>
+#include <QWindow>
 #include <QString>
 #include <algorithm>
 #include <cmath>
@@ -14,12 +17,56 @@ WaveformItem::WaveformItem(QQuickItem *parent)
     setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
     setAntialiasing(false);
     setOpaquePainting(true);
+#ifdef Q_OS_WIN
+    // FBO-backed QQuickPaintedItem is faster, but on Windows it proved prone
+    // to stale frames when skins/layouts switch between visible waveform items.
+    setRenderTarget(QQuickPaintedItem::Image);
+#else
     setRenderTarget(QQuickPaintedItem::FramebufferObject);
     setPerformanceHint(QQuickPaintedItem::FastFBOResizing, true);
+#endif
 
     m_repaintTimer.setSingleShot(true);
     connect(&m_repaintTimer, &QTimer::timeout, this, &WaveformItem::flushScheduledRepaint);
     m_repaintClock.start();
+
+    connect(this, &QQuickItem::visibleChanged, this, [this]() {
+        if (isVisible()) {
+            forceFullRedraw();
+        } else {
+            releaseTransientCaches(true);
+        }
+    });
+    connect(this, &QQuickItem::windowChanged, this, [this](QQuickWindow *) {
+        if (window()) {
+            forceFullRedraw();
+        } else {
+            releaseTransientCaches(true);
+        }
+    });
+    connect(this, &QQuickItem::widthChanged, this, [this]() {
+        forceFullRedraw();
+    });
+    connect(this, &QQuickItem::heightChanged, this, [this]() {
+        forceFullRedraw();
+    });
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+        switch (state) {
+        case Qt::ApplicationActive:
+            if (isVisible() && window()) {
+                forceFullRedraw();
+            }
+            break;
+        case Qt::ApplicationHidden:
+        case Qt::ApplicationSuspended:
+            releaseTransientCaches(true);
+            break;
+        case Qt::ApplicationInactive:
+            releaseTransientCaches(false);
+            break;
+        }
+    });
 
     m_panInertiaTimer.setInterval(kPanInertiaIntervalMs);
     connect(&m_panInertiaTimer, &QTimer::timeout, this, [this]() {
@@ -251,22 +298,18 @@ void WaveformItem::paint(QPainter *painter)
         updateCachedPeaks();
         m_lastPeakCacheWidthBucket = peakCacheWidthBucket;
         m_lastHeight = 0; // force path rebuild
-        m_lastGeneratedPixel = -1;
         waveGeometryChanged = true;
     }
 
     if (w != m_lastWidth) {
         m_lastWidth = w;
         m_lastHeight = 0; // force path rebuild
-        m_lastGeneratedPixel = -1;
         waveGeometryChanged = true;
     }
 
-    const int generatedPixel = m_loading ? trackPositionToPixel(m_generationProgress, w) : w;
-    if (h != m_lastHeight || generatedPixel != m_lastGeneratedPixel) {
-        rebuildWavePath(w, h, generatedPixel);
+    if (h != m_lastHeight) {
+        rebuildWavePath(w, h);
         m_lastHeight = h;
-        m_lastGeneratedPixel = generatedPixel;
         waveGeometryChanged = true;
     }
 
@@ -297,14 +340,18 @@ void WaveformItem::paint(QPainter *painter)
     painter->setRenderHint(QPainter::Antialiasing, false);
     
     const int progressX = trackPositionToPixel(m_progress, w);
-    const QRectF leftRect(0, 0, qMax(0, progressX), h);
-    const QRectF rightRect(progressX, 0, qMax(0, w - progressX), h);
+    const int generatedEnd = m_loading
+        ? std::clamp(trackPositionToPixel(m_generationProgress, w), 0, w)
+        : w;
+    const int playedEnd = std::clamp(progressX, 0, generatedEnd);
+    const QRectF playedRect(0, 0, qMax(0, playedEnd), h);
+    const QRectF unplayedRect(playedEnd, 0, qMax(0, generatedEnd - playedEnd), h);
 
     if (m_waveLayersDirty ||
-        m_cachedUnplayedLayer.isNull() ||
-        m_cachedPlayedLayer.isNull() ||
-        m_cachedUnplayedLayer.width() != w ||
-        m_cachedUnplayedLayer.height() != h) {
+        (!m_cachedUnplayedLayer.isNull() &&
+         (m_cachedUnplayedLayer.width() != w || m_cachedUnplayedLayer.height() != h)) ||
+        (!m_cachedPlayedLayer.isNull() &&
+         (m_cachedPlayedLayer.width() != w || m_cachedPlayedLayer.height() != h))) {
         rebuildWaveLayers(w, h);
     }
 
@@ -319,11 +366,40 @@ void WaveformItem::paint(QPainter *painter)
         painter->drawImage(target, layer, target);
     };
 
-    drawLayerSegment(rightRect, m_cachedUnplayedLayer);
-    drawLayerSegment(leftRect, m_cachedPlayedLayer);
+    if (!m_cachedUnplayedLayer.isNull() && !m_cachedPlayedLayer.isNull()) {
+        drawLayerSegment(unplayedRect, m_cachedUnplayedLayer);
+        drawLayerSegment(playedRect, m_cachedPlayedLayer);
+    } else {
+        const auto drawWaveSegment = [&](const QRectF &clipRect, const QColor &fill, const QColor &stroke) {
+            if (clipRect.width() <= 0.0 || clipRect.height() <= 0.0 || m_cachedWavePath.isEmpty()) {
+                return;
+            }
+            painter->save();
+            painter->setClipRect(clipRect);
+            painter->setBrush(fill);
+            QPen pen(stroke);
+            pen.setWidthF(1.0);
+            painter->setPen(pen);
+            painter->drawPath(m_cachedWavePath);
+            painter->restore();
+        };
+
+        QColor unplayedFill = m_waveformColor;
+        unplayedFill.setAlpha(90);
+        QColor unplayedStroke = m_waveformColor;
+        unplayedStroke.setAlpha(165);
+
+        QColor playedFill = m_progressColor;
+        playedFill.setAlpha(210);
+        QColor playedStroke = m_progressColor.lighter(112);
+        playedStroke.setAlpha(235);
+
+        drawWaveSegment(unplayedRect, unplayedFill, unplayedStroke);
+        drawWaveSegment(playedRect, playedFill, playedStroke);
+    }
 
     if (m_loading) {
-        const int generationX = trackPositionToPixel(m_generationProgress, w);
+        const int generationX = generatedEnd;
         const QColor pendingOverlay = QColor(m_backgroundColor.red(), m_backgroundColor.green(),
                                              m_backgroundColor.blue(), 130);
         painter->fillRect(QRectF(generationX, 0, std::max(0, w - generationX), h), pendingOverlay);
@@ -345,17 +421,39 @@ void WaveformItem::setPeaks(const QVector<float> &peaks)
 {
     if (m_peaks != peaks) {
         m_peaks = peaks;
-        rebuildLodLevels();
-        invalidateWaveLayers();
-        m_lastPeakCacheWidthBucket = -1;
-        m_lastWidth = 0; // Force recache
-        m_lastHeight = 0;
-        m_lastGeneratedPixel = -1;
-        m_lastProgressPixel = -1;
-        m_cachedWavePath = QPainterPath();
-        requestRepaint();
+        refreshSourceData(true);
         emit peaksChanged();
     }
+}
+
+void WaveformItem::setProvider(QObject *provider)
+{
+    auto *nextProvider = qobject_cast<WaveformProvider *>(provider);
+    if (m_provider == nextProvider) {
+        return;
+    }
+
+    if (m_provider) {
+        disconnect(m_provider, nullptr, this, nullptr);
+    }
+
+    m_provider = nextProvider;
+    if (m_provider) {
+        connect(m_provider, &QObject::destroyed, this, [this]() {
+            m_provider = nullptr;
+            refreshSourceData(false);
+            emit providerChanged();
+            emit peaksChanged();
+        });
+        connect(m_provider, &WaveformProvider::peaksReady, this, [this]() {
+            refreshSourceData(isVisible() && window());
+            emit peaksChanged();
+        });
+    }
+
+    refreshSourceData(isVisible() && window());
+    emit providerChanged();
+    emit peaksChanged();
 }
 
 void WaveformItem::setProgress(double progress)
@@ -413,9 +511,6 @@ void WaveformItem::setLoading(bool loading)
 {
     if (m_loading != loading) {
         m_loading = loading;
-        invalidateWaveLayers();
-        m_lastHeight = 0;
-        m_lastGeneratedPixel = -1;
         requestRepaint();
         emit loadingChanged();
     }
@@ -432,9 +527,6 @@ void WaveformItem::setGenerationProgress(double progress)
     const int oldGenerationPixel = w > 0 ? trackPositionToPixel(m_generationProgress, w) : -1;
 
     m_generationProgress = progress;
-    invalidateWaveLayers();
-    m_lastHeight = 0;
-    m_lastGeneratedPixel = -1;
     const int newGenerationPixel = w > 0 ? trackPositionToPixel(m_generationProgress, w) : -1;
     requestRepaint(generationDirtyRect(oldGenerationPixel, newGenerationPixel));
     emit generationProgressChanged();
@@ -462,7 +554,6 @@ void WaveformItem::setZoom(double zoom)
     m_lastPeakCacheWidthBucket = -1;
     m_lastWidth = 0;
     m_lastHeight = 0;
-    m_lastGeneratedPixel = -1;
     m_lastProgressPixel = -1;
     requestRepaint();
     emit zoomChanged();
@@ -514,7 +605,6 @@ void WaveformItem::setViewCenter(double center)
     m_lastPeakCacheWidthBucket = -1;
     m_lastWidth = 0;
     m_lastHeight = 0;
-    m_lastGeneratedPixel = -1;
     m_lastProgressPixel = -1;
     requestRepaint();
     emit viewCenterChanged();
@@ -737,33 +827,31 @@ void WaveformItem::rebuildLodLevels()
 {
     m_lodLevels.clear();
 
-    if (m_peaks.isEmpty()) {
+    const QVector<float> &peaks = sourcePeaks();
+    if (peaks.isEmpty()) {
         return;
     }
 
-    LodLevel baseLevel;
-    baseLevel.peaks = m_peaks;
-    m_lodLevels.push_back(std::move(baseLevel));
-
-    while (!m_lodLevels.isEmpty() && m_lodLevels.back().peaks.size() > kLodBuildStopThreshold) {
-        const QVector<float> &source = m_lodLevels.back().peaks;
-        const int sourceSize = static_cast<int>(source.size());
+    const QVector<float> *source = &peaks;
+    while (source->size() > kLodBuildStopThreshold) {
+        const int sourceSize = static_cast<int>(source->size());
         QVector<float> next;
         next.resize((sourceSize + 1) / 2);
 
         for (int i = 0; i < next.size(); ++i) {
             const int firstIndex = i * 2;
             const int secondIndex = std::min(firstIndex + 1, sourceSize - 1);
-            next[i] = std::max(source[firstIndex], source[secondIndex]);
+            next[i] = std::max((*source)[firstIndex], (*source)[secondIndex]);
         }
 
-        if (next.size() == source.size()) {
+        if (next.size() == source->size()) {
             break;
         }
 
         LodLevel level;
         level.peaks = std::move(next);
         m_lodLevels.push_back(std::move(level));
+        source = &m_lodLevels.back().peaks;
     }
 }
 
@@ -819,20 +907,21 @@ QVector<float> WaveformItem::downsampleMaxRange(const QVector<float> &input,
 void WaveformItem::updateCachedPeaks()
 {
     const int widthPx = static_cast<int>(width());
+    const QVector<float> &peaks = sourcePeaks();
 
-    if (m_peaks.isEmpty() || widthPx <= 0 || m_lodLevels.isEmpty()) {
-        m_cachedPeaks.clear();
+    if (peaks.isEmpty() || widthPx <= 0) {
+        QVector<float>().swap(m_cachedPeaks);
         return;
     }
 
     const int targetSamples = effectiveTargetSamples(widthPx);
     if (targetSamples <= 0) {
-        m_cachedPeaks.clear();
+        QVector<float>().swap(m_cachedPeaks);
         return;
     }
 
     const int preferredSourceSamples = targetSamples * kLodSelectionOversample;
-    const QVector<float> *source = &m_lodLevels.back().peaks; // fallback to coarsest
+    const QVector<float> *source = &peaks;
 
     // Pick the first level that is close enough to the render budget.
     // This keeps detail while avoiding expensive per-frame paths.
@@ -845,7 +934,7 @@ void WaveformItem::updateCachedPeaks()
 
     const int sourceSize = static_cast<int>(source->size());
     if (sourceSize <= 0) {
-        m_cachedPeaks.clear();
+        QVector<float>().swap(m_cachedPeaks);
         return;
     }
 
@@ -856,10 +945,10 @@ void WaveformItem::updateCachedPeaks()
     m_cachedPeaks = downsampleMaxRange(*source, startIndex, endIndex, targetSamples);
 }
 
-void WaveformItem::rebuildWavePath(int fullWidth, int h, int drawWidth)
+void WaveformItem::rebuildWavePath(int fullWidth, int h)
 {
     m_cachedWavePath = QPainterPath();
-    if (m_cachedPeaks.isEmpty() || fullWidth <= 1 || h <= 1 || drawWidth <= 0) {
+    if (m_cachedPeaks.isEmpty() || fullWidth <= 1 || h <= 1) {
         return;
     }
 
@@ -868,7 +957,7 @@ void WaveformItem::rebuildWavePath(int fullWidth, int h, int drawWidth)
         return;
     }
 
-    const int widthToUse = std::clamp(drawWidth, 1, fullWidth);
+    const int widthToUse = fullWidth;
     const qreal centerY = h * 0.5;
     const qreal maxHeight = (h * 0.5) * 0.88;
 
@@ -898,6 +987,83 @@ void WaveformItem::invalidateWaveLayers()
     m_waveLayersDirty = true;
 }
 
+const QVector<float> &WaveformItem::sourcePeaks() const
+{
+    if (m_provider) {
+        return m_provider->peaksRef();
+    }
+    return m_peaks;
+}
+
+bool WaveformItem::usesProviderSource() const
+{
+    return m_provider != nullptr;
+}
+
+void WaveformItem::refreshSourceData(bool allowLodRebuild)
+{
+    if (!allowLodRebuild) {
+        releaseTransientCaches(true);
+        if (!isVisible()) {
+            return;
+        }
+        requestRepaint();
+        return;
+    }
+
+    rebuildLodLevels();
+    releaseTransientCaches(false);
+    requestRepaint();
+}
+
+void WaveformItem::releaseTransientCaches(bool releaseLodLevels)
+{
+    m_lastPeakCacheWidthBucket = -1;
+    m_lastWidth = 0;
+    m_lastHeight = 0;
+    m_lastProgressPixel = -1;
+    m_cachedWavePath = QPainterPath();
+    m_cachedUnplayedLayer = QImage();
+    m_cachedPlayedLayer = QImage();
+    QVector<float>().swap(m_cachedPeaks);
+    if (releaseLodLevels) {
+        QVector<LodLevel>().swap(m_lodLevels);
+    }
+    invalidateWaveLayers();
+}
+
+void WaveformItem::forceFullRedraw()
+{
+    if (m_lodLevels.isEmpty() && !sourcePeaks().isEmpty()) {
+        rebuildLodLevels();
+    }
+    releaseTransientCaches(false);
+    requestRepaint();
+}
+
+qsizetype WaveformItem::layerCacheBudgetBytes() const
+{
+    const QQuickWindow *win = window();
+    const bool fullscreen = win && win->visibility() == QWindow::FullScreen;
+    return fullscreen ? kFullscreenLayerCacheBudgetBytes : kDefaultLayerCacheBudgetBytes;
+}
+
+bool WaveformItem::canCacheWaveLayers(int w, int h) const
+{
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+
+    const qreal dpr = window() ? std::max<qreal>(1.0, window()->devicePixelRatio()) : 1.0;
+    const qsizetype bytesPerLayer = static_cast<qsizetype>(
+        std::ceil(static_cast<double>(w) * dpr) * std::ceil(static_cast<double>(h) * dpr) * 4.0);
+    if (bytesPerLayer <= 0) {
+        return false;
+    }
+
+    return bytesPerLayer * 2 <= layerCacheBudgetBytes();
+}
+
 void WaveformItem::rebuildWaveLayers(int w, int h)
 {
     m_cachedUnplayedLayer = QImage();
@@ -905,6 +1071,10 @@ void WaveformItem::rebuildWaveLayers(int w, int h)
     m_waveLayersDirty = false;
 
     if (w <= 0 || h <= 0 || m_cachedWavePath.isEmpty()) {
+        return;
+    }
+
+    if (!canCacheWaveLayers(w, h)) {
         return;
     }
 

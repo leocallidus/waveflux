@@ -119,8 +119,8 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
         });
 
         connect(m_trackModel, &TrackModel::trackSelected, this, [this](const QString &filePath) {
-            onTrackSelectionRequested(filePath);
             startTrackLoadWatch();
+            onTrackSelectionRequested(filePath);
         });
 
         connect(m_trackModel, &TrackModel::countChanged, this, [this]() {
@@ -203,6 +203,9 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
         });
 
         connect(m_audioEngine, &AudioEngine::positionChanged, this, [this](qint64 positionMs) {
+            if (m_trackLoading && m_audioEngine && !m_audioEngine->currentFile().isEmpty() && positionMs >= 0) {
+                onLoadSuccess();
+            }
             onAudioPositionChanged(positionMs);
         });
 
@@ -1062,7 +1065,75 @@ void PlaybackController::requestPlayIndex(int index, const QString &reason)
 
 void PlaybackController::nextTrack()
 {
-    navigateToNextTrackInternal(SessionEndReason::UserSkip);
+    if (!m_trackModel || !m_audioEngine) {
+        return;
+    }
+
+    const int count = m_trackModel->rowCount();
+    const int current = effectiveCurrentIndex();
+    if (count <= 0 || current < 0) {
+        traceTransitionEvent("navigate_next_no_target", m_activeTrackTransitionId);
+        return;
+    }
+
+    int nextIndex = takeNextQueuedIndex();
+    if (nextIndex < 0) {
+        if (!m_shuffleEnabled) {
+            if (current + 1 < count) {
+                nextIndex = current + 1;
+            } else if (m_repeatMode == RepeatAll) {
+                nextIndex = 0;
+            }
+        } else {
+            if (!isShuffleStateValid()) {
+                regenerateShuffleOrder(current);
+            } else {
+                syncShuffleToCurrentTrack();
+            }
+
+            int currentPos = m_shufflePosition;
+            if (currentPos < 0) {
+                currentPos = currentShufflePosition();
+                if (currentPos >= 0) {
+                    m_shufflePosition = currentPos;
+                }
+            }
+
+            if (currentPos >= 0) {
+                int nextPos = currentPos + 1;
+                if (nextPos >= m_shuffleOrder.size()) {
+                    if (m_repeatMode == RepeatAll) {
+                        regenerateShuffleOrder();
+                        nextPos = 0;
+                    } else {
+                        nextPos = -1;
+                    }
+                }
+
+                if (nextPos >= 0) {
+                    m_shufflePosition = nextPos;
+                    nextIndex = m_shuffleOrder.value(nextPos, -1);
+                }
+            }
+        }
+    }
+
+    if (nextIndex < 0) {
+        traceTransitionEvent("navigate_next_no_target", m_activeTrackTransitionId);
+        return;
+    }
+
+    if (nextIndex == current) {
+        navigateToNextTrackInternal(SessionEndReason::UserSkip);
+        return;
+    }
+
+    traceTransitionEvent("next_track_direct_request", m_activeTrackTransitionId, {
+        {QStringLiteral("nextIndex"), nextIndex},
+        {QStringLiteral("reason"), QStringLiteral("user_skip")}
+    });
+    finalizeActiveSession(SessionEndReason::UserSkip, QDateTime::currentMSecsSinceEpoch());
+    requestPlayIndex(nextIndex, QStringLiteral("playback_controller.next_track"));
 }
 
 void PlaybackController::previousTrack()
@@ -1141,6 +1212,19 @@ void PlaybackController::navigateToNextTrackInternal(SessionEndReason reason)
     clearGaplessTransitionState();
     setPendingTrackIndex(nextIndex);
     setTransitionState(TransitionPendingCommit);
+
+    // Navigation commands use the playing track as the anchor, not the table
+    // selection. If selection already points at the target row, setCurrentIndex()
+    // becomes a no-op and would skip the actual load; explicitly request the
+    // load in that case.
+    const QString targetPath = m_trackModel->getFilePath(nextIndex);
+    if (m_trackModel->currentIndex() == nextIndex
+        && !targetPath.isEmpty()
+        && (!m_audioEngine || m_audioEngine->currentFile() != targetPath)) {
+        onTrackSelectionRequested(targetPath);
+        return;
+    }
+
     m_trackModel->setCurrentIndex(nextIndex);
 }
 
@@ -1167,6 +1251,15 @@ void PlaybackController::navigateToPreviousTrackInternal(SessionEndReason reason
     clearGaplessTransitionState();
     setPendingTrackIndex(prevIndex);
     setTransitionState(TransitionPendingCommit);
+
+    const QString targetPath = m_trackModel->getFilePath(prevIndex);
+    if (m_trackModel->currentIndex() == prevIndex
+        && !targetPath.isEmpty()
+        && (!m_audioEngine || m_audioEngine->currentFile() != targetPath)) {
+        onTrackSelectionRequested(targetPath);
+        return;
+    }
+
     m_trackModel->setCurrentIndex(prevIndex);
 }
 
@@ -1262,26 +1355,26 @@ void PlaybackController::handleTrackEndedInternal(quint64 eosTransitionId, bool 
             beginPlaybackSession(currentPath, nowMs);
         }
         clearGaplessTransitionState();
-        setPendingTrackIndex(-1);
-        setTransitionState(TransitionIdle);
-
-        qint64 restartPositionMs = 0;
-        if (m_audioEngine->reversePlayback()) {
-            const qint64 cueEndMs = m_trackModel->cueEndMs(currentIndex);
-            if (cueEndMs > 0) {
-                restartPositionMs = cueEndMs;
-            }
-            if (restartPositionMs <= 0) {
-                restartPositionMs = m_audioEngine->duration();
-            }
-            if (restartPositionMs <= 0) {
-                restartPositionMs = resolveDurationForFile(currentPath);
-            }
+        if (currentIndex < 0 || currentPath.isEmpty()) {
+            setPendingTrackIndex(-1);
+            setTransitionState(TransitionIdle);
+            return;
         }
 
-        m_audioEngine->seekWithSource(restartPositionMs,
-                                      QStringLiteral("playback_controller.repeat_one_restart"));
-        m_audioEngine->play();
+        const quint64 repeatTransitionId = nextTrackTransitionId();
+        m_activeTrackTransitionId = qMax(m_activeTrackTransitionId, repeatTransitionId);
+        traceTransitionEvent("handle_track_ended_repeat_one_reload",
+                             repeatTransitionId,
+                             {
+                                 {QStringLiteral("currentIndex"), currentIndex},
+                                 {QStringLiteral("currentPath"), currentPath}
+                             });
+
+        setPendingTrackIndex(currentIndex);
+        setTransitionState(TransitionPendingCommit);
+        scheduleCueSeekForCurrentTrack(currentPath);
+        startTrackLoadWatch();
+        m_audioEngine->loadFileWithTransition(currentPath, repeatTransitionId);
         return;
     }
 
@@ -1864,11 +1957,15 @@ void PlaybackController::onLoadFailure(const QString &message)
 
     emit errorRaised(message);
 
-    if (m_consecutiveErrors >= m_maxConsecutiveErrors || !canGoNext()) {
+    if (m_consecutiveErrors >= m_maxConsecutiveErrors) {
         setPendingTrackIndex(-1);
         setTransitionState(TransitionIdle);
         m_audioEngine->stop();
         emit errorRaised(QStringLiteral("Playback stopped after repeated load failures."));
+    } else if (!canGoNext()) {
+        setPendingTrackIndex(-1);
+        setTransitionState(TransitionIdle);
+        m_audioEngine->stop();
     } else {
         nextTrack();
     }
@@ -2304,6 +2401,10 @@ void PlaybackController::onCurrentFileChanged(const QString &filePath)
 
     if (fileTransitionId > 0) {
         m_activeTrackTransitionId = qMax(m_activeTrackTransitionId, fileTransitionId);
+    }
+
+    if (m_trackLoading && !filePath.isEmpty()) {
+        onLoadSuccess();
     }
 
     applyPendingCueSeekIfReady(filePath);

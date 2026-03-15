@@ -224,22 +224,22 @@ void TrayManager::updateMenuText()
     }
 
     if (m_showHideAction) {
-        m_showHideAction->setText(tr("tray.showHide"));
+        m_showHideAction->setText(translateKey(QStringLiteral("tray.showHide")));
     }
     if (m_stopAction) {
-        m_stopAction->setText(tr("tray.stop"));
+        m_stopAction->setText(translateKey(QStringLiteral("tray.stop")));
     }
     if (m_previousAction) {
-        m_previousAction->setText(tr("tray.previous"));
+        m_previousAction->setText(translateKey(QStringLiteral("tray.previous")));
     }
     if (m_nextAction) {
-        m_nextAction->setText(tr("tray.next"));
+        m_nextAction->setText(translateKey(QStringLiteral("tray.next")));
     }
     if (m_settingsAction) {
-        m_settingsAction->setText(tr("tray.settings"));
+        m_settingsAction->setText(translateKey(QStringLiteral("tray.settings")));
     }
     if (m_quitAction) {
-        m_quitAction->setText(tr("tray.quit"));
+        m_quitAction->setText(translateKey(QStringLiteral("tray.quit")));
     }
 
     updatePlayPauseActionText();
@@ -252,7 +252,10 @@ void TrayManager::updatePlayPauseActionText()
     }
 
     const bool playing = m_audioEngine && m_audioEngine->state() == AudioEngine::PlayingState;
-    m_playPauseAction->setText(playing ? tr("tray.pause") : tr("tray.play"));
+    m_playPauseAction->setText(
+        playing
+            ? translateKey(QStringLiteral("tray.pause"))
+            : translateKey(QStringLiteral("tray.play")));
 }
 
 void TrayManager::toggleWindowVisibility()
@@ -282,7 +285,7 @@ void TrayManager::showMainWindow()
     m_mainWindow->requestActivate();
 }
 
-QString TrayManager::tr(const QString &key) const
+QString TrayManager::translateKey(const QString &key) const
 {
     if (!m_settingsManager) {
         return key;

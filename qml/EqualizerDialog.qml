@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "components"
 
 Dialog {
     id: root
@@ -448,6 +449,95 @@ Dialog {
         }
     }
 
+    component EqualizerPresetTabButton: TabButton {
+        id: tabButton
+
+        implicitHeight: 40
+
+        contentItem: Text {
+            text: tabButton.text
+            font.family: themeManager.fontFamily
+            font.pixelSize: 11
+            font.bold: tabButton.checked
+            color: tabButton.checked ? themeManager.textColor : themeManager.textSecondaryColor
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        background: Rectangle {
+            radius: themeManager.borderRadiusLarge
+            color: tabButton.checked
+                   ? Qt.rgba(themeManager.primaryColor.r,
+                             themeManager.primaryColor.g,
+                             themeManager.primaryColor.b,
+                             themeManager.darkMode ? 0.18 : 0.12)
+                   : (tabButton.hovered
+                      ? Qt.rgba(themeManager.primaryColor.r,
+                                themeManager.primaryColor.g,
+                                themeManager.primaryColor.b,
+                                themeManager.darkMode ? 0.10 : 0.06)
+                      : Qt.rgba(themeManager.surfaceColor.r,
+                                themeManager.surfaceColor.g,
+                                themeManager.surfaceColor.b,
+                                themeManager.darkMode ? 0.68 : 0.92))
+            border.width: 1
+            border.color: tabButton.checked
+                          ? Qt.rgba(themeManager.primaryColor.r,
+                                    themeManager.primaryColor.g,
+                                    themeManager.primaryColor.b,
+                                    0.48)
+                          : Qt.rgba(themeManager.borderColor.r,
+                                    themeManager.borderColor.g,
+                                    themeManager.borderColor.b,
+                                    0.9)
+        }
+    }
+
+    component EqualizerPresetDelegate: ItemDelegate {
+        id: presetDelegate
+
+        required property var modelData
+
+        width: ListView.view ? ListView.view.width : 0
+        implicitHeight: 38
+        leftPadding: 12
+        rightPadding: 12
+        hoverEnabled: true
+        highlighted: root.selectedPresetId === modelData.id
+        onClicked: root.selectPresetById(modelData.id)
+
+        contentItem: Text {
+            text: presetDelegate.modelData.name
+            font.family: themeManager.fontFamily
+            font.pixelSize: 11
+            font.bold: presetDelegate.highlighted
+            color: presetDelegate.highlighted ? themeManager.primaryColor : themeManager.textColor
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        background: Rectangle {
+            radius: themeManager.borderRadius
+            color: presetDelegate.highlighted
+                   ? Qt.rgba(themeManager.primaryColor.r,
+                             themeManager.primaryColor.g,
+                             themeManager.primaryColor.b,
+                             themeManager.darkMode ? 0.16 : 0.11)
+                   : (presetDelegate.hovered
+                      ? Qt.rgba(themeManager.primaryColor.r,
+                                themeManager.primaryColor.g,
+                                themeManager.primaryColor.b,
+                                themeManager.darkMode ? 0.08 : 0.05)
+                      : "transparent")
+            border.width: presetDelegate.highlighted ? 1 : 0
+            border.color: Qt.rgba(themeManager.primaryColor.r,
+                                  themeManager.primaryColor.g,
+                                  themeManager.primaryColor.b,
+                                  0.40)
+        }
+    }
+
     title: root.tr("equalizer.title")
     modal: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -562,9 +652,23 @@ Dialog {
                         TabBar {
                             id: categoryTabs
                             Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
 
-                            TabButton { text: root.tr("equalizer.builtIn") }
-                            TabButton { text: root.tr("equalizer.user") }
+                            background: Rectangle {
+                                radius: themeManager.borderRadiusLarge
+                                color: Qt.rgba(themeManager.surfaceColor.r,
+                                               themeManager.surfaceColor.g,
+                                               themeManager.surfaceColor.b,
+                                               themeManager.darkMode ? 0.52 : 0.90)
+                                border.width: 1
+                                border.color: Qt.rgba(themeManager.borderColor.r,
+                                                      themeManager.borderColor.g,
+                                                      themeManager.borderColor.b,
+                                                      0.85)
+                            }
+
+                            EqualizerPresetTabButton { text: root.tr("equalizer.builtIn") }
+                            EqualizerPresetTabButton { text: root.tr("equalizer.user") }
                         }
 
                         StackLayout {
@@ -572,20 +676,14 @@ Dialog {
                             Layout.fillHeight: true
                             currentIndex: categoryTabs.currentIndex
 
-                            ListView {
-                                id: builtInList
-                                clip: true
-                                model: root.builtInPresetItems
-                                spacing: 2
+                                ListView {
+                                    id: builtInList
+                                    clip: true
+                                    model: root.builtInPresetItems
+                                    spacing: 2
 
-                                delegate: ItemDelegate {
-                                    required property var modelData
-                                    width: ListView.view.width
-                                    text: modelData.name
-                                    highlighted: root.selectedPresetId === modelData.id
-                                    onClicked: root.selectPresetById(modelData.id)
+                                    delegate: EqualizerPresetDelegate {}
                                 }
-                            }
 
                             Item {
                                 Layout.fillWidth: true
@@ -599,13 +697,7 @@ Dialog {
                                     spacing: 2
                                     visible: model.length > 0
 
-                                    delegate: ItemDelegate {
-                                        required property var modelData
-                                        width: ListView.view.width
-                                        text: modelData.name
-                                        highlighted: root.selectedPresetId === modelData.id
-                                        onClicked: root.selectPresetById(modelData.id)
-                                    }
+                                    delegate: EqualizerPresetDelegate {}
                                 }
 
                                 Label {
@@ -807,7 +899,7 @@ Dialog {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
 
-                    ComboBox {
+                    AccentComboBox {
                         id: mergePolicyCombo
                         Layout.fillWidth: true
                         Layout.preferredWidth: 220
@@ -915,7 +1007,7 @@ Dialog {
                                 horizontalAlignment: Text.AlignHCenter
                             }
 
-                            Slider {
+                            AccentSlider {
                                 Layout.fillHeight: true
                                 Layout.alignment: Qt.AlignHCenter
                                 orientation: Qt.Vertical

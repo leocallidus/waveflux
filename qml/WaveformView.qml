@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import WaveFlux 1.0
+import WaveFlux 1.1
 
 Item {
     id: root
@@ -12,12 +12,17 @@ Item {
     readonly property bool denseMode: compactVisualMode || root.height < 72
     readonly property bool tinyMode: minimalVisualMode || root.height < 56
     readonly property bool showHoverPreview: root.showOverlays && !root.tinyMode
+    readonly property real cueOverlayPixelsPerSegment: cueSegments.length > 0
+                                                        ? (root.width / cueSegments.length)
+                                                        : root.width
     readonly property bool cueOverlaySuppressedByZoom: appSettings.cueWaveformOverlayAutoHideOnZoom
                                                        && (waveformItem.zoom > 1.001 || waveformItem.quickScrubActive)
+    readonly property bool cueOverlaySuppressedByDensity: root.cueOverlayPixelsPerSegment < (root.denseMode ? 1.35 : 1.75)
     readonly property bool cueOverlayVisible: root.showOverlays
                                                && !root.tinyMode
                                                && appSettings.cueWaveformOverlayEnabled
                                                && !root.cueOverlaySuppressedByZoom
+                                               && !root.cueOverlaySuppressedByDensity
                                                && cueSegments.length > 0
                                                && audioEngine.duration > 0
     readonly property real safeProgress: audioEngine.duration > 0
@@ -51,7 +56,7 @@ Item {
         id: waveformItem
         anchors.fill: parent
         
-        peaks: waveformProvider.peaks
+        provider: waveformProvider
         progress: root.safeProgress
         loading: waveformProvider.loading
         generationProgress: waveformProvider.progress
@@ -74,7 +79,7 @@ Item {
         z: 2
 
         Repeater {
-            model: root.cueSegments.length
+            model: root.cueOverlayVisible ? root.cueSegments.length : 0
 
             Rectangle {
                 required property int index
@@ -90,12 +95,14 @@ Item {
                 readonly property real endX: waveformItem.trackToView(endTrackPos) * root.width
                 readonly property real leftX: Math.max(0, Math.min(startX, endX))
                 readonly property real rightX: Math.min(root.width, Math.max(startX, endX))
+                readonly property real rawWidth: Math.max(0, rightX - leftX)
                 readonly property bool isActive: root.cueSegmentModelIndex(segment) === root.activeCueSegmentModelIndex
                 readonly property string segmentName: String(segment.name || "")
                 readonly property string segmentDuration: root.formatSegmentDuration(Number(segment.durationMs || 0))
 
+                visible: isActive || rawWidth >= (root.denseMode ? 1.1 : 1.5)
                 x: leftX
-                width: Math.max(1, rightX - leftX)
+                width: isActive ? Math.max(1, rawWidth) : rawWidth
                 height: parent.height
                 color: isActive
                        ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.16)
@@ -104,6 +111,7 @@ Item {
                           : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.03))
 
                 Rectangle {
+                    visible: parent.width >= (isActive ? 1.0 : 1.5)
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom

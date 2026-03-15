@@ -3,6 +3,7 @@
 #include <QtConcurrent>
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QGuiApplication>
 #include <QMetaObject>
 #include <QUrl>
 #include <gst/gst.h>
@@ -155,6 +156,14 @@ bool isRemoteSourceUri(const QString &source)
         return false;
     }
 
+    const bool looksLikeWindowsAbsolutePath =
+        trimmed.size() >= 3
+        && trimmed.at(1) == QLatin1Char(':')
+        && (trimmed.at(2) == QLatin1Char('\\') || trimmed.at(2) == QLatin1Char('/'));
+    if (looksLikeWindowsAbsolutePath) {
+        return false;
+    }
+
     const QUrl url(trimmed);
     return url.isValid() && !url.scheme().isEmpty() && !url.isLocalFile();
 }
@@ -164,6 +173,21 @@ WaveformProvider::WaveformProvider(QObject *parent)
     : QObject(parent)
     , m_cache(new PeaksCacheManager(this))
 {
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+        switch (state) {
+        case Qt::ApplicationActive:
+            restoreTrimmedCacheIfNeeded();
+            break;
+        case Qt::ApplicationHidden:
+        case Qt::ApplicationSuspended:
+            trimRuntimeCache(true);
+            break;
+        case Qt::ApplicationInactive:
+            trimRuntimeCache(false);
+            break;
+        }
+    });
 }
 
 WaveformProvider::~WaveformProvider()
@@ -183,6 +207,7 @@ void WaveformProvider::loadFile(const QString &filePath)
     m_progress = 0.0;
     emit progressChanged(m_progress);
     m_currentFilePath = filePath.trimmed();
+    m_runtimeCacheTrimmed = false;
     if (m_currentFilePath.isEmpty()) {
         return;
     }
@@ -214,11 +239,11 @@ void WaveformProvider::loadFile(const QString &filePath)
     const quint64 generationId = ++m_generationId;
     m_cancelToken = std::make_shared<std::atomic_bool>(false);
 
-    const PartialCallback partialCallback = [this, generationId](const QVector<float> &peaks, double progress) {
+    const PartialCallback partialCallback = [this, generationId](QVector<float> peaks, double progress) {
         QMetaObject::invokeMethod(
             this,
-            [this, generationId, peaks, progress]() {
-                applyPartialPeaks(peaks, progress, generationId);
+            [this, generationId, peaks = std::move(peaks), progress]() mutable {
+                applyPartialPeaks(std::move(peaks), progress, generationId);
             },
             Qt::QueuedConnection);
     };
@@ -535,7 +560,7 @@ WaveformProvider::WaveformData WaveformProvider::extractWaveform(
             QVector<float> partialPeaks = resampleMax(rawPeaks, targetSamples);
             normalizePeaks(partialPeaks);
             if (partialCallback) {
-                partialCallback(partialPeaks, progress);
+                partialCallback(std::move(partialPeaks), progress);
             }
             partialUpdateTimer.restart();
         }
@@ -636,6 +661,7 @@ void WaveformProvider::onExtractionFinished(QFutureWatcher<WaveformData> *watche
 
     if (result.success && !result.peaks.isEmpty() && sanitizePeaksForRendering(result.peaks)) {
         m_peaks = std::move(result.peaks);
+        m_runtimeCacheTrimmed = false;
         qDebug() << "WaveformProvider: Peaks ready, count:" << m_peaks.size();
 
         // Persist to disk cache for next time
@@ -657,6 +683,43 @@ void WaveformProvider::onExtractionFinished(QFutureWatcher<WaveformData> *watche
             : result.errorMessage.trimmed();
         emit error(fallbackError);
     }
+}
+
+void WaveformProvider::trimRuntimeCache(bool aggressive)
+{
+    if (m_loading || m_peaks.isEmpty()) {
+        return;
+    }
+
+    if (aggressive) {
+        m_peaks.clear();
+    } else if (m_peaks.size() > BACKGROUND_SAMPLE_COUNT) {
+        m_peaks = resampleMax(m_peaks, BACKGROUND_SAMPLE_COUNT);
+    } else {
+        return;
+    }
+
+    m_runtimeCacheTrimmed = true;
+    emit peaksReady();
+}
+
+void WaveformProvider::restoreTrimmedCacheIfNeeded()
+{
+    if (!m_runtimeCacheTrimmed || m_loading || m_currentFilePath.isEmpty()) {
+        return;
+    }
+
+    if (auto cached = m_cache->lookup(m_currentFilePath)) {
+        QVector<float> cachedPeaks = std::move(*cached);
+        if (sanitizePeaksForRendering(cachedPeaks)) {
+            m_peaks = std::move(cachedPeaks);
+            m_runtimeCacheTrimmed = false;
+            emit peaksReady();
+            return;
+        }
+    }
+
+    m_runtimeCacheTrimmed = false;
 }
 
 QVector<float> WaveformProvider::getPeaksForWidth(int width) const

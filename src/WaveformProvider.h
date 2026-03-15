@@ -34,6 +34,7 @@ public:
     
     bool isLoading() const { return m_loading; }
     QVector<float> peaks() const { return m_peaks; }
+    const QVector<float> &peaksRef() const { return m_peaks; }
     int sampleCount() const { return m_peaks.size(); }
     double progress() const { return m_progress; }
     
@@ -51,7 +52,7 @@ signals:
     void error(const QString &message);
     
 private:
-    using PartialCallback = std::function<void(const QVector<float> &, double)>;
+    using PartialCallback = std::function<void(QVector<float>, double)>;
 
     struct WaveformData {
         QVector<float> peaks;
@@ -68,6 +69,8 @@ private:
                                         const std::atomic_bool *cancelRequested);
     void applyPartialPeaks(QVector<float> peaks, double progress, quint64 generationId);
     void onExtractionFinished(QFutureWatcher<WaveformData> *watcher, quint64 generationId);
+    void trimRuntimeCache(bool aggressive);
+    void restoreTrimmedCacheIfNeeded();
     
     QVector<float> m_peaks;
     bool m_loading = false;
@@ -78,8 +81,10 @@ private:
     QString m_currentFilePath;
 
     PeaksCacheManager *m_cache = nullptr;
+    bool m_runtimeCacheTrimmed = false;
 
     static constexpr int DEFAULT_SAMPLE_COUNT = 4096;
+    static constexpr int BACKGROUND_SAMPLE_COUNT = 1024;
 };
 
 #endif // WAVEFORMPROVIDER_H

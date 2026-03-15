@@ -50,6 +50,8 @@ Rectangle {
         return lossless.indexOf(safeFormat) >= 0 ? safeFormat + " (" + root.tr("sidebar.lossless") + ")" : safeFormat
     }
 
+    readonly property int specLabelWidth: 84
+
     color: themeManager.backgroundColor
     border.width: 1
     border.color: themeManager.borderColor
@@ -117,14 +119,23 @@ Rectangle {
             }
         }
 
-        Item {
+        ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            clip: true
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 14
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+            Item {
+                width: parent.width
+                implicitHeight: detailsColumn.implicitHeight + 28
+
+                ColumnLayout {
+                    id: detailsColumn
+                    x: 14
+                    y: 14
+                    width: Math.max(0, parent.width - 28)
+                    spacing: 14
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -145,68 +156,117 @@ Rectangle {
                         columnSpacing: 8
                         rowSpacing: 4
 
-                        Label { text: root.tr("sidebar.engine"); color: themeManager.textMutedColor; font.family: themeManager.monoFontFamily; font.pixelSize: 11 }
+                        Label {
+                            text: root.tr("sidebar.engine")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
                         Label {
                             text: root.tr("sidebar.engineValue")
                             color: themeManager.textColor
                             horizontalAlignment: Text.AlignRight
                             elide: Text.ElideRight
                             Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
 
-                        Label { text: root.tr("sidebar.codec"); color: themeManager.textMutedColor; font.family: themeManager.monoFontFamily; font.pixelSize: 11 }
+                        Label {
+                            text: root.tr("sidebar.codec")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
                         Label {
                             text: root.codecLabel(root.format)
                             color: themeManager.textColor
                             horizontalAlignment: Text.AlignRight
                             elide: Text.ElideRight
                             Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
 
-                        Label { text: root.tr("sidebar.sampleRate"); color: themeManager.textMutedColor; font.family: themeManager.monoFontFamily; font.pixelSize: 11 }
+                        Label {
+                            text: root.tr("sidebar.sampleRate")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
                         Label {
                             text: root.formatSampleRate(root.sampleRate)
                             color: themeManager.primaryColor
                             font.bold: true
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
 
-                        Label { text: root.tr("sidebar.bitrate"); color: themeManager.textMutedColor; font.family: themeManager.monoFontFamily; font.pixelSize: 11 }
+                        Label {
+                            text: root.tr("sidebar.bitrate")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
                         Label {
                             text: root.formatBitrateValue(root.bitrate)
                             color: themeManager.primaryColor
                             font.bold: true
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
 
-                        Label { text: root.tr("sidebar.bitDepth"); color: themeManager.textMutedColor; font.family: themeManager.monoFontFamily; font.pixelSize: 11 }
+                        Label {
+                            text: root.tr("sidebar.bitDepth")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
                         Label {
                             text: root.bitDepth > 0 ? root.bitDepth + root.tr("sidebar.bitPcm") : root.tr("sidebar.unknown")
                             color: root.bitDepth > 16 ? themeManager.primaryColor : themeManager.textColor
                             font.bold: root.bitDepth > 16
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
 
-                        Label { text: root.tr("sidebar.bpm"); color: themeManager.textMutedColor; font.family: themeManager.monoFontFamily; font.pixelSize: 11 }
+                        Label {
+                            text: root.tr("sidebar.bpm")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
                         Label {
                             text: root.bpm > 0 ? String(root.bpm) : root.tr("sidebar.unknown")
                             color: root.bpm > 0 ? themeManager.primaryColor : themeManager.textColor
                             font.bold: root.bpm > 0
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
@@ -238,9 +298,12 @@ Rectangle {
                         Image {
                             anchors.fill: parent
                             source: root.albumArt
+                            sourceSize.width: Math.max(1, Math.ceil(width))
+                            sourceSize.height: Math.max(1, Math.ceil(height))
                             visible: root.albumArt.length > 0
                             fillMode: Image.PreserveAspectCrop
-                            cache: true
+                            asynchronous: true
+                            cache: false
                         }
 
                         Rectangle {
@@ -259,6 +322,7 @@ Rectangle {
                     }
                 }
             }
+        }
         }
     }
 }

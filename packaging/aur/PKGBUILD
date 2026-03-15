@@ -1,5 +1,5 @@
 pkgname=waveflux-git
-pkgver=1.0.0.r1.g00000000
+pkgver=1.1.0.r1.g00000000
 pkgrel=1
 pkgdesc="Minimalist desktop audio player with dynamic waveform visualization"
 arch=('x86_64' 'aarch64')

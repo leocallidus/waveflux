@@ -1,11 +1,14 @@
+import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import "components"
 
 Dialog {
     id: root
+
+    property var sidebarSectionController: null
+    property string requestedInitialSectionId: ""
 
     title: root.tr("settings.title")
     modal: true
@@ -41,24 +44,162 @@ Dialog {
     readonly property int dialogHeaderHeight: lowHeightMode ? 46 : 52
     readonly property int sectionPadding: appSettings.skinMode === "compact" ? 10 : 12
     readonly property int sectionSpacing: appSettings.skinMode === "compact" ? 8 : 10
+    readonly property int sectionTabBarHeight: lowHeightMode ? 44 : 50
+    readonly property string sectionTabLayoutWideMode: "wide"
+    readonly property string sectionTabLayoutMediumMode: "medium"
+    readonly property string sectionTabLayoutCompactMode: "compact"
+    readonly property bool sectionTabComboFallback: width <= (appSettings.skinMode === "compact" ? 470 : 560)
+    readonly property string sectionTabLayoutMode: {
+        const compactThreshold = appSettings.skinMode === "compact" ? 620 : 720
+        const mediumThreshold = compactThreshold + 120
+        if (width <= compactThreshold) {
+            return sectionTabLayoutCompactMode
+        }
+        if (width <= mediumThreshold) {
+            return sectionTabLayoutMediumMode
+        }
+        return sectionTabLayoutWideMode
+    }
+    readonly property int resetDialogPreferredWidth: appSettings.skinMode === "compact" ? 700 : 760
+    readonly property int resetDialogMinimumWidth: appSettings.skinMode === "compact" ? 420 : 520
+    readonly property int resetDialogPreferredHeight: appSettings.skinMode === "compact" ? 430 : 480
+    readonly property int resetDialogMinimumHeight: appSettings.skinMode === "compact" ? 320 : 360
+    readonly property string normalSectionsMode: "normalSectionsMode"
+    readonly property string searchResultsMode: "searchResultsMode"
     property string activeSectionId: "appearance"
+    property string lastNormalSectionId: "appearance"
     property string settingsSearchQuery: ""
     readonly property string normalizedSettingsSearchQuery: String(settingsSearchQuery || "").trim().toLowerCase()
     readonly property bool hasSearchQuery: normalizedSettingsSearchQuery.length > 0
+    readonly property string contentMode: hasSearchQuery ? searchResultsMode : normalSectionsMode
     readonly property int minimumInteractiveHeight: 34
-    readonly property var filteredSections: {
+
+    Settings {
+        id: settingsDialogState
+        category: "SettingsDialog"
+        property string lastActiveSectionId: "appearance"
+    }
+    readonly property var sectionMetadataMap: ({
+        "appearance": {
+            id: "appearance",
+            titleKey: "settings.appearance",
+            descriptionKey: "settings.sectionAppearanceDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.language",
+                "settings.skin",
+                "settings.sidebarVisible",
+                "settings.collectionsSidebarVisible"
+            ]
+        },
+        "system": {
+            id: "system",
+            titleKey: "settings.system",
+            descriptionKey: "settings.sectionSystemDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.trayEnabled",
+                "settings.confirmTrashDeletion"
+            ]
+        },
+        "audio": {
+            id: "audio",
+            titleKey: "settings.audio",
+            descriptionKey: "settings.sectionAudioDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.pitch",
+                "settings.speed",
+                "settings.showSpeedPitch",
+                "settings.audioQualityProfile",
+                "settings.dynamicSpectrum"
+            ]
+        },
+        "waveform": {
+            id: "waveform",
+            titleKey: "settings.waveformSection",
+            descriptionKey: "settings.sectionWaveformDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.waveformHeight",
+                "settings.compactWaveformHeight",
+                "settings.waveformZoomHintsVisible",
+                "settings.waveformCueOverlayEnabled"
+            ]
+        },
+        "colors": {
+            id: "colors",
+            titleKey: "settings.colors",
+            descriptionKey: "settings.sectionColorsDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.waveformColor",
+                "settings.progressColor",
+                "settings.accentColor"
+            ]
+        },
+        "theme": {
+            id: "theme",
+            titleKey: "settings.themeSection",
+            descriptionKey: "settings.sectionThemeDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.themeSection",
+                "settings.reset",
+                "settings.quickResetAll"
+            ]
+        }
+    })
+    readonly property var sectionDefinitions: {
         const items = []
         for (let i = 0; i < sectionOrder.length; ++i) {
-            const sectionId = sectionOrder[i]
-            if (!hasSearchQuery || sectionMatches(sectionId)) {
-                items.push({
-                               id: sectionId,
-                               title: sectionTitle(sectionId)
-                           })
+            const metadata = sectionMetadata(sectionOrder[i])
+            if (metadata) {
+                items.push(metadata)
             }
         }
         return items
     }
+    readonly property var filteredSections: {
+        const items = []
+        for (let i = 0; i < sectionDefinitions.length; ++i) {
+            const section = sectionDefinitions[i]
+            if (!hasSearchQuery || sectionMatches(section.id)) {
+                items.push(section)
+            }
+        }
+        return items
+    }
+    readonly property var searchResultSections: {
+        const items = []
+        for (let i = 0; i < sectionDefinitions.length; ++i) {
+            const section = sectionDefinitions[i]
+            const resultCount = sectionSearchResultCount(section.id)
+            items.push({
+                           id: section.id,
+                           title: section.title,
+                           shortTitle: section.shortTitle,
+                           description: section.description,
+                           icon: section.icon,
+                           hasResults: resultCount > 0,
+                           resultCount: resultCount,
+                           tabTitle: resultCount > 0 ? section.title + " (" + resultCount + ")" : section.title
+                       })
+        }
+        return items
+    }
+    readonly property var matchingSections: {
+        const items = []
+        for (let i = 0; i < searchResultSections.length; ++i) {
+            if (searchResultSections[i].hasResults) {
+                items.push(searchResultSections[i])
+            }
+        }
+        return items
+    }
+    readonly property int matchingSectionCount: matchingSections.length
+    readonly property var visibleTabSections: contentMode === searchResultsMode ? searchResultSections : sectionDefinitions
+    readonly property var activeSectionMetadata: sectionMetadata(activeSectionId)
     property string pendingResetAction: ""
     property string pendingResetTitle: ""
     property var pendingResetChanges: []
@@ -66,6 +207,83 @@ Dialog {
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
+    }
+
+    function sidebarPlaylistsSectionTitle() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "Показывать блок плейлистов"
+                : "Show playlists block"
+    }
+
+    function sidebarPlaylistsSectionDescription() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "Отображать секцию плейлистов в левой панели"
+                : "Display the playlists section in the left sidebar"
+    }
+
+    function sidebarCollectionsSectionTitle() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "Показывать блок коллекций"
+                : "Show collections block"
+    }
+
+    function sidebarCollectionsSectionDescription() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "Отображать секцию коллекций в левой панели"
+                : "Display the collections section in the left sidebar"
+    }
+
+    function searchResultsTitle() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "Результаты поиска"
+                : "Search results"
+    }
+
+    function clearSearchLabel() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "Очистить поиск"
+                : "Clear search"
+    }
+
+    function searchResultsDescription(sectionCount) {
+        if (appSettings.effectiveLanguage === "ru") {
+            return sectionCount === 1
+                    ? "Показаны совпадения в 1 разделе настроек."
+                    : "Показаны совпадения в " + sectionCount + " разделах настроек."
+        }
+        return sectionCount === 1
+                ? "Showing matches from 1 settings section."
+                : "Showing matches from " + sectionCount + " settings sections."
+    }
+
+    function searchResultsEmptyText() {
+        return appSettings.effectiveLanguage === "ru"
+                ? "По вашему запросу совпадений не найдено."
+                : "No settings matched your query."
+    }
+
+    function sectionShortTitle(sectionId) {
+        if (appSettings.effectiveLanguage === "ru") {
+            switch (sectionId) {
+            case "appearance": return "Вид"
+            case "system": return "Система"
+            case "audio": return "Аудио"
+            case "waveform": return "Волна"
+            case "colors": return "Цвета"
+            case "theme": return "Тема"
+            default: return sectionTitle(sectionId)
+            }
+        }
+
+        switch (sectionId) {
+        case "appearance": return "View"
+        case "system": return "System"
+        case "audio": return "Audio"
+        case "waveform": return "Wave"
+        case "colors": return "Colors"
+        case "theme": return "Theme"
+        default: return sectionTitle(sectionId)
+        }
     }
 
     function clampShuffleSeed(value) {
@@ -88,7 +306,6 @@ Dialog {
             audioEngine.playbackRate = 1.0
         }
         appSettings.showSpeedPitchControls = false
-        appSettings.reversePlayback = false
         appSettings.audioQualityProfile = "standard"
         appSettings.dynamicSpectrum = false
         appSettings.deterministicShuffleEnabled = false
@@ -110,6 +327,10 @@ Dialog {
         appSettings.skinMode = "normal"
         appSettings.sidebarVisible = true
         appSettings.collectionsSidebarVisible = true
+        if (sidebarSectionController) {
+            sidebarSectionController.sidebarPlaylistsSectionVisible = true
+            sidebarSectionController.sidebarCollectionsSectionVisible = true
+        }
         appSettings.trayEnabled = false
         appSettings.confirmTrashDeletion = true
         resetAudioSettings()
@@ -206,9 +427,6 @@ Dialog {
         appendResetChange(changes, root.tr("settings.showSpeedPitch"),
                           appSettings.showSpeedPitchControls, false,
                           localizedBoolean(appSettings.showSpeedPitchControls), localizedBoolean(false))
-        appendResetChange(changes, root.tr("settings.reversePlayback"),
-                          appSettings.reversePlayback, false,
-                          localizedBoolean(appSettings.reversePlayback), localizedBoolean(false))
         appendResetChange(changes, root.tr("settings.audioQualityProfile"),
                           appSettings.audioQualityProfile, "standard",
                           localizedAudioQualityProfile(appSettings.audioQualityProfile),
@@ -285,6 +503,14 @@ Dialog {
             appendResetChange(changes, root.tr("settings.collectionsSidebarVisible"),
                               appSettings.collectionsSidebarVisible, true,
                               localizedBoolean(appSettings.collectionsSidebarVisible), localizedBoolean(true))
+            if (sidebarSectionController) {
+                appendResetChange(changes, root.sidebarPlaylistsSectionTitle(),
+                                  sidebarSectionController.sidebarPlaylistsSectionVisible, true,
+                                  localizedBoolean(sidebarSectionController.sidebarPlaylistsSectionVisible), localizedBoolean(true))
+                appendResetChange(changes, root.sidebarCollectionsSectionTitle(),
+                                  sidebarSectionController.sidebarCollectionsSectionVisible, true,
+                                  localizedBoolean(sidebarSectionController.sidebarCollectionsSectionVisible), localizedBoolean(true))
+            }
             appendResetChange(changes, root.tr("settings.trayEnabled"),
                               appSettings.trayEnabled, false,
                               localizedBoolean(appSettings.trayEnabled), localizedBoolean(false))
@@ -380,6 +606,46 @@ Dialog {
                 .replace(/>/g, "&gt;")
     }
 
+    function fallbackSectionMetadata() {
+        return {
+            id: "appearance",
+            titleKey: "settings.appearance",
+            descriptionKey: "settings.sectionAppearanceDescription",
+            title: root.tr("settings.appearance"),
+            description: root.tr("settings.sectionAppearanceDescription"),
+            icon: "",
+            searchTerms: [root.tr("settings.appearance")]
+        }
+    }
+
+    function sectionMetadata(sectionId) {
+        const raw = sectionMetadataMap[sectionId]
+        if (!raw) {
+            return fallbackSectionMetadata()
+        }
+
+        const searchTerms = []
+        const searchTermKeys = raw.searchTermKeys || []
+        for (let i = 0; i < searchTermKeys.length; ++i) {
+            searchTerms.push(root.tr(searchTermKeys[i]))
+        }
+
+        return {
+            id: raw.id,
+            titleKey: raw.titleKey,
+            descriptionKey: raw.descriptionKey,
+            title: root.tr(raw.titleKey),
+            shortTitle: root.sectionShortTitle(raw.id),
+            description: root.tr(raw.descriptionKey),
+            icon: raw.icon || "",
+            searchTerms: searchTerms
+        }
+    }
+
+    function isKnownSection(sectionId) {
+        return !!sectionMetadataMap[String(sectionId || "")]
+    }
+
     function highlightedSearchText(value) {
         const plain = String(value || "")
         if (!hasSearchQuery) {
@@ -398,6 +664,38 @@ Dialog {
                 + escapeHtml(plain.slice(end))
     }
 
+    function sectionSearchResultCount(sectionId) {
+        if (!hasSearchQuery) {
+            return 0
+        }
+
+        const metadata = sectionMetadata(sectionId)
+        let count = 0
+        if (matchesSearchText(metadata.title)) {
+            count += 1
+        }
+        if (matchesSearchText(metadata.description)) {
+            count += 1
+        }
+        const searchTerms = metadata.searchTerms || []
+        for (let i = 0; i < searchTerms.length; ++i) {
+            if (matchesSearchText(searchTerms[i])) {
+                count += 1
+            }
+        }
+        if (count === 0 && sectionMatches(sectionId)) {
+            count = 1
+        }
+        return count
+    }
+
+    function firstMatchingSectionId() {
+        for (let i = 0; i < matchingSections.length; ++i) {
+            return matchingSections[i].id
+        }
+        return ""
+    }
+
     function sectionMatches(sectionId) {
         if (!hasSearchQuery) {
             return true
@@ -408,6 +706,8 @@ Dialog {
                     || (skinRow && skinRow.visible)
                     || (sidebarVisibleRow && sidebarVisibleRow.visible)
                     || (collectionsSidebarVisibleRow && collectionsSidebarVisibleRow.visible)
+                    || (sidebarPlaylistsSectionVisibleRow && sidebarPlaylistsSectionVisibleRow.visible)
+                    || (sidebarCollectionsSectionVisibleRow && sidebarCollectionsSectionVisibleRow.visible)
         case "system":
             return (trayEnabledRow && trayEnabledRow.visible)
                     || (confirmTrashDeletionRow && confirmTrashDeletionRow.visible)
@@ -415,7 +715,6 @@ Dialog {
             return (pitchRow && pitchRow.visible)
                     || (speedRow && speedRow.visible)
                     || (showSpeedPitchRow && showSpeedPitchRow.visible)
-                    || (reversePlaybackRow && reversePlaybackRow.visible)
                     || (audioQualityProfileRow && audioQualityProfileRow.visible)
                     || (dynamicSpectrumRow && dynamicSpectrumRow.visible)
                     || (deterministicShuffleRow && deterministicShuffleRow.visible)
@@ -440,37 +739,38 @@ Dialog {
     }
 
     function firstRelevantSectionId() {
-        for (let i = 0; i < sectionOrder.length; ++i) {
-            const sectionId = sectionOrder[i]
-            if (sectionMatches(sectionId)) {
-                return sectionId
+        for (let i = 0; i < sectionDefinitions.length; ++i) {
+            const section = sectionDefinitions[i]
+            if (sectionMatches(section.id)) {
+                return section.id
             }
         }
-        return sectionOrder.length > 0 ? sectionOrder[0] : "appearance"
+        return sectionDefinitions.length > 0 ? sectionDefinitions[0].id : "appearance"
     }
 
     function sectionTitle(sectionId) {
-        switch (sectionId) {
-        case "appearance": return root.tr("settings.appearance")
-        case "system": return root.tr("settings.system")
-        case "audio": return root.tr("settings.audio")
-        case "waveform": return root.tr("settings.waveformSection")
-        case "colors": return root.tr("settings.colors")
-        case "theme": return root.tr("settings.themeSection")
-        default: return root.tr("settings.appearance")
-        }
+        return sectionMetadata(sectionId).title
     }
 
     function sectionDescription(sectionId) {
-        switch (sectionId) {
-        case "appearance": return root.tr("settings.sectionAppearanceDescription")
-        case "system": return root.tr("settings.sectionSystemDescription")
-        case "audio": return root.tr("settings.sectionAudioDescription")
-        case "waveform": return root.tr("settings.sectionWaveformDescription")
-        case "colors": return root.tr("settings.sectionColorsDescription")
-        case "theme": return root.tr("settings.sectionThemeDescription")
-        default: return ""
+        return sectionMetadata(sectionId).description
+    }
+
+    function restoreableSectionId() {
+        if (isKnownSection(lastNormalSectionId)) {
+            return lastNormalSectionId
         }
+        if (isKnownSection(settingsDialogState.lastActiveSectionId)) {
+            return settingsDialogState.lastActiveSectionId
+        }
+        return firstRelevantSectionId()
+    }
+
+    function resolvedInitialSectionId() {
+        if (isKnownSection(requestedInitialSectionId)) {
+            return requestedInitialSectionId
+        }
+        return restoreableSectionId()
     }
 
     function sectionItem(sectionId) {
@@ -485,8 +785,57 @@ Dialog {
         }
     }
 
+    function resetContentScroll() {
+        const flickable = scrollView && scrollView.contentItem ? scrollView.contentItem : null
+        if (flickable) {
+            flickable.contentY = 0
+        }
+    }
+
+    function setActiveSection(sectionId, rememberForNormalMode) {
+        if (!isKnownSection(sectionId)) {
+            sectionId = firstRelevantSectionId()
+        }
+        const shouldRemember = rememberForNormalMode === undefined ? contentMode === normalSectionsMode : !!rememberForNormalMode
+        activeSectionId = sectionId
+        if (shouldRemember) {
+            lastNormalSectionId = sectionId
+        }
+    }
+
+    function applyInitialNavigation() {
+        settingsSearchQuery = ""
+        setActiveSection(resolvedInitialSectionId(), true)
+        resetContentScroll()
+        requestedInitialSectionId = ""
+    }
+
+    function openAtSection(sectionId) {
+        requestedInitialSectionId = sectionId || ""
+        if (visible) {
+            applyInitialNavigation()
+            if (settingsSearchField) {
+                settingsSearchField.forceActiveFocus(Qt.TabFocusReason)
+            }
+            return
+        }
+        open()
+    }
+
+    function sectionVisibleInCurrentMode(sectionId) {
+        if (contentMode === searchResultsMode) {
+            return sectionMatches(sectionId)
+        }
+        return activeSectionId === sectionId
+    }
+
     function scrollToSection(sectionId) {
         if (!sectionMatches(sectionId)) {
+            return
+        }
+        if (contentMode === normalSectionsMode) {
+            setActiveSection(sectionId, true)
+            resetContentScroll()
             return
         }
         const targetSection = sectionItem(sectionId)
@@ -497,11 +846,14 @@ Dialog {
 
         const maxY = Math.max(0, flickable.contentHeight - flickable.height)
         const targetY = Math.max(0, Math.min(maxY, targetSection.y))
-        activeSectionId = sectionId
+        setActiveSection(sectionId, false)
         flickable.contentY = targetY
     }
 
     function syncActiveSectionFromScroll() {
+        if (contentMode !== searchResultsMode) {
+            return
+        }
         const flickable = scrollView && scrollView.contentItem ? scrollView.contentItem : null
         if (!flickable) {
             return
@@ -509,8 +861,8 @@ Dialog {
 
         const markerY = flickable.contentY + 24
         let resolved = firstRelevantSectionId()
-        for (let i = 0; i < sectionOrder.length; ++i) {
-            const sectionId = sectionOrder[i]
+        for (let i = 0; i < sectionDefinitions.length; ++i) {
+            const sectionId = sectionDefinitions[i].id
             const section = sectionItem(sectionId)
             if (!section || !section.visible) {
                 continue
@@ -523,21 +875,43 @@ Dialog {
         }
 
         if (activeSectionId !== resolved) {
-            activeSectionId = resolved
+            setActiveSection(resolved, false)
         }
     }
 
     onSettingsSearchQueryChanged: {
         Qt.callLater(function() {
-            if (!hasSearchQuery) {
-                syncActiveSectionFromScroll()
+            if (contentMode === normalSectionsMode) {
+                setActiveSection(lastNormalSectionId || firstRelevantSectionId(), true)
+                resetContentScroll()
                 return
             }
-            scrollToSection(firstRelevantSectionId())
+            const firstMatch = firstMatchingSectionId()
+            if (firstMatch) {
+                scrollToSection(firstMatch)
+            } else {
+                resetContentScroll()
+            }
         })
     }
 
+    onActiveSectionIdChanged: {
+        if (contentMode !== normalSectionsMode || !isKnownSection(activeSectionId)) {
+            return
+        }
+        if (settingsDialogState.lastActiveSectionId !== activeSectionId) {
+            settingsDialogState.lastActiveSectionId = activeSectionId
+        }
+    }
+
+    Component.onCompleted: {
+        const restoredSectionId = restoreableSectionId()
+        activeSectionId = restoredSectionId
+        lastNormalSectionId = restoredSectionId
+    }
+
     onOpened: Qt.callLater(function() {
+        applyInitialNavigation()
         if (settingsSearchField) {
             settingsSearchField.forceActiveFocus(Qt.TabFocusReason)
         }
@@ -551,20 +925,156 @@ Dialog {
     }
 
     header: Rectangle {
-        implicitHeight: root.dialogHeaderHeight
+        implicitHeight: headerLayout.implicitHeight
         color: Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.96)
         border.width: 1
         border.color: root.frameColor
 
-        Label {
-            anchors.left: parent.left
-            anchors.leftMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.title
-            color: themeManager.textColor
-            font.family: themeManager.fontFamily
-            font.pixelSize: 13
-            font.bold: true
+        ColumnLayout {
+            id: headerLayout
+            anchors.fill: parent
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: headerContentLayout.implicitHeight + (root.lowHeightMode ? 16 : 20)
+                color: "transparent"
+
+                ColumnLayout {
+                    id: headerContentLayout
+                    anchors.fill: parent
+                    anchors.margins: root.lowHeightMode ? 10 : 12
+                    spacing: root.lowHeightMode ? 8 : 10
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                text: root.title
+                                color: themeManager.textColor
+                                font.family: themeManager.fontFamily
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+
+                            Label {
+                                text: root.contentMode === root.searchResultsMode
+                                      ? (root.matchingSectionCount > 0
+                                         ? root.searchResultsDescription(root.matchingSectionCount)
+                                         : root.searchResultsEmptyText())
+                                      : root.activeSectionMetadata.description
+                                color: themeManager.textColor
+                                opacity: 0.78
+                                font.family: themeManager.fontFamily
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: root.lowHeightMode ? 2 : 3
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Button {
+                            id: quickActionsButton
+                            text: root.tr("settings.quickActions")
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            Accessible.name: text
+                            onClicked: quickActionsMenu.open()
+                        }
+
+                        AccentMenu {
+                            id: quickActionsMenu
+
+                            AccentMenuItem {
+                                text: root.tr("settings.quickResetAudio")
+                                onTriggered: root.requestReset("audio")
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("settings.quickResetWaveform")
+                                onTriggered: root.requestReset("waveform")
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("settings.quickResetAll")
+                                onTriggered: root.requestReset("all")
+                            }
+                        }
+                    }
+
+                    TextField {
+                        id: settingsSearchField
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: root.minimumInteractiveHeight
+                        placeholderText: root.tr("settings.searchPlaceholder")
+                        text: root.settingsSearchQuery
+                        selectByMouse: true
+                        activeFocusOnTab: true
+                        Accessible.name: root.tr("settings.searchPlaceholder")
+
+                        onTextChanged: {
+                            if (root.settingsSearchQuery !== text) {
+                                root.settingsSearchQuery = text
+                            }
+                        }
+
+                        Keys.onReturnPressed: {
+                            if (root.contentMode === root.searchResultsMode) {
+                                const firstMatch = root.firstMatchingSectionId()
+                                if (firstMatch) {
+                                    root.scrollToSection(firstMatch)
+                                }
+                            }
+                        }
+
+                        Keys.onEnterPressed: {
+                            if (root.contentMode === root.searchResultsMode) {
+                                const firstMatch = root.firstMatchingSectionId()
+                                if (firstMatch) {
+                                    root.scrollToSection(firstMatch)
+                                }
+                            }
+                        }
+
+                        Keys.onEscapePressed: {
+                            text = ""
+                            root.settingsSearchQuery = ""
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: root.visibleTabSections.length > 0 ? root.sectionTabBarHeight : 0
+                visible: root.visibleTabSections.length > 0
+                color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.24)
+                border.width: 1
+                border.color: Qt.rgba(root.frameColor.r, root.frameColor.g, root.frameColor.b, 0.7)
+
+                SettingsTabBar {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: root.lowHeightMode ? 10 : 12
+                    anchors.rightMargin: root.lowHeightMode ? 10 : 12
+                    sections: root.visibleTabSections
+                    activeSectionId: root.activeSectionId
+                    layoutMode: root.sectionTabLayoutMode
+                    comboFallback: root.sectionTabComboFallback
+                    searchActive: root.hasSearchQuery
+                    minimumInteractiveHeight: root.minimumInteractiveHeight
+                    onSectionTriggered: function(sectionId) {
+                        root.scrollToSection(sectionId)
+                    }
+                }
+            }
         }
     }
 
@@ -603,270 +1113,50 @@ Dialog {
             width: scrollView.availableWidth
             spacing: root.lowHeightMode ? 8 : 10
 
-            Rectangle {
-                id: contentHeaderCard
+            SettingsSearchResults {
+                id: searchResultsCard
                 width: parent.width
-                implicitHeight: contentHeaderLayout.implicitHeight + 24
-                radius: themeManager.borderRadiusLarge
-                color: Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.92)
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: contentHeaderLayout
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.lowHeightMode ? 10 : root.sectionPadding
-                    spacing: root.lowHeightMode ? 8 : root.sectionSpacing
-
-                    Label {
-                        text: root.sectionTitle(root.activeSectionId).toUpperCase()
-                        color: themeManager.textColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 11
-                        font.bold: true
-                        font.letterSpacing: 1.1
-                    }
-
-                    Label {
-                        text: root.sectionDescription(root.activeSectionId)
-                        color: themeManager.textColor
-                        opacity: 0.82
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 11
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: root.lowHeightMode ? 2 : 4
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-
-                    TextField {
-                        id: settingsSearchField
-                        Layout.fillWidth: true
-                        Layout.minimumHeight: root.minimumInteractiveHeight
-                        placeholderText: root.tr("settings.searchPlaceholder")
-                        text: root.settingsSearchQuery
-                        selectByMouse: true
-                        activeFocusOnTab: true
-                        Accessible.name: root.tr("settings.searchPlaceholder")
-
-                        onTextChanged: {
-                            if (root.settingsSearchQuery !== text) {
-                                root.settingsSearchQuery = text
-                            }
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: !root.lowHeightMode
-
-                        Label {
-                            text: root.tr("settings.quickActions")
-                            color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
-                            font.bold: true
-                            font.letterSpacing: 1.0
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        Button {
-                            text: root.tr("settings.quickResetAudio")
-                            Layout.minimumHeight: root.minimumInteractiveHeight
-                            activeFocusOnTab: true
-                            Accessible.name: text
-                            onClicked: root.requestReset("audio")
-                        }
-
-                        Button {
-                            text: root.tr("settings.quickResetWaveform")
-                            Layout.minimumHeight: root.minimumInteractiveHeight
-                            activeFocusOnTab: true
-                            Accessible.name: text
-                            onClicked: root.requestReset("waveform")
-                        }
-
-                        Button {
-                            text: root.tr("settings.quickResetAll")
-                            Layout.minimumHeight: root.minimumInteractiveHeight
-                            activeFocusOnTab: true
-                            Accessible.name: text
-                            onClicked: root.requestReset("all")
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: root.lowHeightMode
-
-                        Label {
-                            text: root.tr("settings.quickActions")
-                            color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
-                            font.bold: true
-                            font.letterSpacing: 1.0
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        Button {
-                            id: quickActionsMenuButton
-                            text: root.tr("settings.quickActions")
-                            Layout.minimumHeight: root.minimumInteractiveHeight
-                            activeFocusOnTab: true
-                            Accessible.name: text
-                            onClicked: quickActionsMenu.open()
-                        }
-
-                        Menu {
-                            id: quickActionsMenu
-
-                            MenuItem {
-                                text: root.tr("settings.quickResetAudio")
-                                onTriggered: root.requestReset("audio")
-                            }
-
-                            MenuItem {
-                                text: root.tr("settings.quickResetWaveform")
-                                onTriggered: root.requestReset("waveform")
-                            }
-
-                            MenuItem {
-                                text: root.tr("settings.quickResetAll")
-                                onTriggered: root.requestReset("all")
-                            }
-                        }
-                    }
-
-                    Flow {
-                        id: sectionNavFlow
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: !root.lowHeightMode
-
-                        Repeater {
-                            model: root.sectionOrder
-
-                            Button {
-                                id: sectionNavButton
-                                required property string modelData
-                                readonly property string sectionId: modelData
-                                text: root.sectionTitle(sectionId)
-                                checkable: true
-                                checked: root.activeSectionId === sectionId
-                                visible: !root.hasSearchQuery || root.sectionMatches(sectionId)
-                                activeFocusOnTab: true
-                                Accessible.name: text
-                                onClicked: root.scrollToSection(sectionId)
-
-                                background: Rectangle {
-                                    radius: themeManager.borderRadius
-                                    color: parent.checked
-                                           ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.18)
-                                           : Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.7)
-                                    border.width: 1
-                                    border.color: parent.checked ? themeManager.primaryColor : themeManager.borderColor
-                                }
-
-                                contentItem: Label {
-                                    text: sectionNavButton.text
-                                    color: sectionNavButton.checked ? themeManager.primaryColor : themeManager.textColor
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    font.family: themeManager.fontFamily
-                                    font.pixelSize: 11
-                                    font.bold: sectionNavButton.checked
-                                }
-
-                                implicitHeight: root.minimumInteractiveHeight
-                            }
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: root.lowHeightMode
-
-                        Label {
-                            text: root.sectionTitle(root.activeSectionId)
-                            color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
-                            font.bold: true
-                            font.letterSpacing: 1.0
-                        }
-
-                        ComboBox {
-                            id: compactSectionNavCombo
-                            Layout.fillWidth: true
-                            Layout.minimumHeight: root.minimumInteractiveHeight
-                            activeFocusOnTab: true
-                            Accessible.name: root.tr("settings.title")
-                            model: root.filteredSections
-                            textRole: "title"
-
-                            currentIndex: {
-                                for (let i = 0; i < model.length; ++i) {
-                                    if (model[i].id === root.activeSectionId) {
-                                        return i
-                                    }
-                                }
-                                return model.length > 0 ? 0 : -1
-                            }
-
-                            onActivated: function(index) {
-                                const selected = model[index]
-                                if (selected) {
-                                    root.scrollToSection(selected.id)
-                                }
-                            }
-                        }
-                    }
+                visible: root.contentMode === root.searchResultsMode
+                titleText: root.searchResultsTitle().toUpperCase()
+                descriptionText: root.matchingSectionCount > 0
+                                 ? root.searchResultsDescription(root.matchingSectionCount)
+                                 : root.searchResultsEmptyText()
+                clearLabel: root.clearSearchLabel()
+                matchingSections: root.matchingSections
+                activeSectionId: root.activeSectionId
+                panelColor: Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.92)
+                frameColor: root.cardBorderColor
+                textColor: themeManager.textColor
+                mutedTextColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                minimumInteractiveHeight: root.minimumInteractiveHeight
+                lowHeightMode: root.lowHeightMode
+                borderRadius: themeManager.borderRadiusLarge
+                onClearRequested: {
+                    settingsSearchField.text = ""
+                    root.settingsSearchQuery = ""
+                }
+                onSectionRequested: function(sectionId) {
+                    root.scrollToSection(sectionId)
                 }
             }
 
-            Rectangle {
+            SettingsSectionPage {
                 id: appearanceCard
                 width: parent.width
-                implicitHeight: appearanceSection.implicitHeight + 24
-                visible: root.sectionMatches("appearance")
-                radius: themeManager.borderRadiusLarge
-                color: root.cardColor
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: appearanceSection
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sectionPadding
-                    spacing: root.sectionSpacing
-
-                    Label {
-                        text: root.tr("settings.appearance").toUpperCase()
-                        color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                    }
-
-                    SettingHintText {
-                        text: root.tr("settings.sectionAppearanceDescription")
-                        searchQuery: root.settingsSearchQuery
-                    }
+                visible: root.sectionVisibleInCurrentMode("appearance")
+                title: root.tr("settings.appearance").toUpperCase()
+                description: root.tr("settings.sectionAppearanceDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
 
                     SettingComboRow {
                         id: languageRow
@@ -984,40 +1274,61 @@ Dialog {
                         forceVisible: collectionsSidebarVisibleRow.visible
                     }
 
-                }
-            }
+                    SettingToggleRow {
+                        id: sidebarPlaylistsSectionVisibleRow
+                        title: root.sidebarPlaylistsSectionTitle()
+                        checked: sidebarSectionController ? sidebarSectionController.sidebarPlaylistsSectionVisible : true
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.sidebarPlaylistsSectionDescription()
 
-            Rectangle {
-                id: systemCard
-                width: parent.width
-                implicitHeight: systemSection.implicitHeight + 24
-                visible: root.sectionMatches("system")
-                radius: themeManager.borderRadiusLarge
-                color: root.cardColor
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: systemSection
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sectionPadding
-                    spacing: root.sectionSpacing
-
-                    Label {
-                        text: root.tr("settings.system").toUpperCase()
-                        color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
+                        onToggled: function(checked) {
+                            if (sidebarSectionController) {
+                                sidebarSectionController.sidebarPlaylistsSectionVisible = checked
+                            }
+                        }
                     }
 
                     SettingHintText {
-                        text: root.tr("settings.sectionSystemDescription")
+                        text: root.sidebarPlaylistsSectionDescription()
                         searchQuery: root.settingsSearchQuery
+                        forceVisible: sidebarPlaylistsSectionVisibleRow.visible
                     }
+
+                    SettingToggleRow {
+                        id: sidebarCollectionsSectionVisibleRow
+                        title: root.sidebarCollectionsSectionTitle()
+                        checked: sidebarSectionController ? sidebarSectionController.sidebarCollectionsSectionVisible : true
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.sidebarCollectionsSectionDescription()
+
+                        onToggled: function(checked) {
+                            if (sidebarSectionController) {
+                                sidebarSectionController.sidebarCollectionsSectionVisible = checked
+                            }
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.sidebarCollectionsSectionDescription()
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: sidebarCollectionsSectionVisibleRow.visible
+                    }
+            }
+
+            SettingsSectionPage {
+                id: systemCard
+                width: parent.width
+                visible: root.sectionVisibleInCurrentMode("system")
+                title: root.tr("settings.system").toUpperCase()
+                description: root.tr("settings.sectionSystemDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
 
                     SettingToggleRow {
                         id: trayEnabledRow
@@ -1056,40 +1367,22 @@ Dialog {
                         searchQuery: root.settingsSearchQuery
                         forceVisible: confirmTrashDeletionRow.visible
                     }
-                }
             }
 
-            Rectangle {
+            SettingsSectionPage {
                 id: audioCard
                 width: parent.width
-                implicitHeight: audioSection.implicitHeight + 24
-                visible: root.sectionMatches("audio")
-                radius: themeManager.borderRadiusLarge
-                color: root.cardColor
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: audioSection
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sectionPadding
-                    spacing: root.sectionSpacing
-
-                    Label {
-                        text: root.tr("settings.audio").toUpperCase()
-                        color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                    }
-
-                    SettingHintText {
-                        text: root.tr("settings.sectionAudioDescription")
-                        searchQuery: root.settingsSearchQuery
-                    }
+                visible: root.sectionVisibleInCurrentMode("audio")
+                title: root.tr("settings.audio").toUpperCase()
+                description: root.tr("settings.sectionAudioDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
 
                     RowLayout {
                         id: pitchRow
@@ -1109,7 +1402,7 @@ Dialog {
                             elide: Text.ElideRight
                         }
 
-                        Slider {
+                        AccentSlider {
                             id: pitchSlider
                             Layout.fillWidth: true
                             Layout.minimumWidth: 80
@@ -1164,7 +1457,7 @@ Dialog {
                             elide: Text.ElideRight
                         }
 
-                        Slider {
+                        AccentSlider {
                             id: speedSlider
                             Layout.fillWidth: true
                             Layout.minimumWidth: 80
@@ -1217,24 +1510,6 @@ Dialog {
                         text: root.tr("settings.showSpeedPitchDescription")
                         searchQuery: root.settingsSearchQuery
                         forceVisible: showSpeedPitchRow.visible
-                    }
-
-                    SettingToggleRow {
-                        id: reversePlaybackRow
-                        title: root.tr("settings.reversePlayback")
-                        checked: appSettings.reversePlayback
-                        searchQuery: root.settingsSearchQuery
-                        extraSearchText: root.tr("settings.reversePlaybackDescription")
-
-                        onToggled: function(checked) {
-                            appSettings.reversePlayback = checked
-                        }
-                    }
-
-                    SettingHintText {
-                        text: root.tr("settings.reversePlaybackDescription")
-                        searchQuery: root.settingsSearchQuery
-                        forceVisible: reversePlaybackRow.visible
                     }
 
                     SettingComboRow {
@@ -1425,47 +1700,28 @@ Dialog {
                                                      root.tr("settings.repeatableShuffle"),
                                                      root.tr("settings.deterministicShuffle")])
                     }
-
-                }
             }
 
-            Rectangle {
+            SettingsSectionPage {
                 id: waveformCard
                 width: parent.width
-                implicitHeight: waveformSection.implicitHeight + 24
-                visible: root.sectionMatches("waveform")
-                radius: themeManager.borderRadiusLarge
-                color: root.cardColor
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: waveformSection
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sectionPadding
-                    spacing: root.sectionSpacing
-
-                    Label {
-                        text: root.tr("settings.waveformSection").toUpperCase()
-                        color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                    }
-
-                    SettingHintText {
-                        text: root.tr("settings.sectionWaveformDescription")
-                        searchQuery: root.settingsSearchQuery
-                    }
+                visible: root.sectionVisibleInCurrentMode("waveform")
+                title: root.tr("settings.waveformSection").toUpperCase()
+                description: root.tr("settings.sectionWaveformDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
 
                     SettingSliderRow {
                         id: waveformHeightRow
                         title: root.tr("settings.waveformHeight")
                         from: 40
-                        to: 200
+                        to: 1000
                         stepSize: 10
                         value: appSettings.waveformHeight
                         valueText: appSettings.waveformHeight + "px"
@@ -1480,7 +1736,7 @@ Dialog {
                         id: compactWaveformHeightRow
                         title: root.tr("settings.compactWaveformHeight")
                         from: 24
-                        to: 80
+                        to: 1000
                         stepSize: 4
                         value: appSettings.compactWaveformHeight
                         valueText: appSettings.compactWaveformHeight + "px"
@@ -1588,40 +1844,22 @@ Dialog {
                                                      root.tr("settings.waveformCueAutoHideOnZoom"),
                                                      root.tr("settings.waveformCueOverlayEnabled")])
                     }
-                }
             }
 
-            Rectangle {
+            SettingsSectionPage {
                 id: colorsCard
                 width: parent.width
-                implicitHeight: colorsSection.implicitHeight + 24
-                visible: root.sectionMatches("colors")
-                radius: themeManager.borderRadiusLarge
-                color: root.cardColor
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: colorsSection
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sectionPadding
-                    spacing: root.sectionSpacing
-
-                    Label {
-                        text: root.tr("settings.colors").toUpperCase()
-                        color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                    }
-
-                    SettingHintText {
-                        text: root.tr("settings.sectionColorsDescription")
-                        searchQuery: root.settingsSearchQuery
-                    }
+                visible: root.sectionVisibleInCurrentMode("colors")
+                title: root.tr("settings.colors").toUpperCase()
+                description: root.tr("settings.sectionColorsDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
 
                     RowLayout {
                         id: waveformColorRow
@@ -1754,40 +1992,22 @@ Dialog {
                             font.pixelSize: 11
                         }
                     }
-                }
             }
 
-            Rectangle {
+            SettingsSectionPage {
                 id: themeCard
                 width: parent.width
-                implicitHeight: presetsSection.implicitHeight + 24
-                visible: root.sectionMatches("theme")
-                radius: themeManager.borderRadiusLarge
-                color: root.cardColor
-                border.width: 1
-                border.color: root.cardBorderColor
-
-                ColumnLayout {
-                    id: presetsSection
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sectionPadding
-                    spacing: root.sectionSpacing
-
-                    Label {
-                        text: root.tr("settings.themeSection").toUpperCase()
-                        color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                    }
-
-                    SettingHintText {
-                        text: root.tr("settings.sectionThemeDescription")
-                        searchQuery: root.settingsSearchQuery
-                    }
+                visible: root.sectionVisibleInCurrentMode("theme")
+                title: root.tr("settings.themeSection").toUpperCase()
+                description: root.tr("settings.sectionThemeDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
 
                     RowLayout {
                         id: themeResetRow
@@ -1816,7 +2036,6 @@ Dialog {
                             }
                         }
                     }
-                }
             }
 
         }
@@ -1842,7 +2061,8 @@ Dialog {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         title: root.pendingResetTitle
 
-        width: root.boundedDialogSize(620, 380, root.width - 24)
+        width: root.boundedDialogSize(root.resetDialogPreferredWidth, root.resetDialogMinimumWidth, root.width - 24)
+        height: root.boundedDialogSize(root.resetDialogPreferredHeight, root.resetDialogMinimumHeight, root.height - 24)
         x: Math.round((parent ? parent.width - width : 0) * 0.5)
         y: Math.round((parent ? parent.height - height : 0) * 0.5)
 
@@ -1865,110 +2085,118 @@ Dialog {
             border.color: root.frameColor
         }
 
-        contentItem: ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: root.lowHeightMode ? 10 : 14
-            spacing: root.lowHeightMode ? 8 : 10
+        contentItem: ScrollView {
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-            Label {
-                Layout.fillWidth: true
-                text: root.pendingResetTitle
-                color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: 13
-                font.bold: true
-                wrapMode: Text.WordWrap
-            }
+            contentWidth: availableWidth
 
-            Label {
-                Layout.fillWidth: true
-                text: root.tr("settings.resetConfirmMessage")
-                color: themeManager.textColor
-                opacity: 0.82
-                font.family: themeManager.fontFamily
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-            }
+            ColumnLayout {
+                width: parent.width
+                spacing: root.lowHeightMode ? 8 : 10
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(root.lowHeightMode ? 170 : 260,
-                                                 resetChangesColumn.implicitHeight + 18)
-                radius: themeManager.borderRadius
-                color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.72)
-                border.width: 1
-                border.color: root.cardBorderColor
-                visible: root.pendingResetChanges.length > 0
+                Label {
+                    Layout.fillWidth: true
+                    text: root.pendingResetTitle
+                    color: themeManager.textColor
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: 13
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
 
-                ScrollView {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    clip: true
+                Label {
+                    Layout.fillWidth: true
+                    text: root.tr("settings.resetConfirmMessage")
+                    color: themeManager.textColor
+                    opacity: 0.82
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
 
-                    Column {
-                        id: resetChangesColumn
-                        width: parent.width
-                        spacing: 6
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(root.lowHeightMode ? 190 : 280,
+                                                     resetChangesColumn.implicitHeight + 18)
+                    Layout.minimumHeight: root.pendingResetChanges.length > 0 ? 120 : 0
+                    radius: themeManager.borderRadius
+                    color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.72)
+                    border.width: 1
+                    border.color: root.cardBorderColor
+                    visible: root.pendingResetChanges.length > 0
 
-                        Repeater {
-                            model: root.pendingResetChanges
+                    ScrollView {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        clip: true
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                            RowLayout {
-                                width: parent.width
-                                spacing: 8
-                                required property var modelData
+                        Column {
+                            id: resetChangesColumn
+                            width: parent.width
+                            spacing: 6
 
-                                Label {
-                                    text: modelData.label
-                                    color: themeManager.textColor
-                                    font.family: themeManager.fontFamily
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
-                                }
+                            Repeater {
+                                model: root.pendingResetChanges
 
-                                Label {
-                                    text: modelData.from
-                                    color: themeManager.textColor
-                                    opacity: 0.78
-                                    font.family: themeManager.monoFontFamily
-                                    Layout.preferredWidth: Math.max(90, Math.min(180, resetChangesColumn.width * 0.28))
-                                    Layout.alignment: Qt.AlignRight
-                                    horizontalAlignment: Text.AlignRight
-                                    elide: Text.ElideRight
-                                }
+                                RowLayout {
+                                    width: parent.width
+                                    spacing: 8
+                                    required property var modelData
 
-                                Label {
-                                    text: "->"
-                                    color: themeManager.textColor
-                                    opacity: 0.78
-                                    font.family: themeManager.monoFontFamily
-                                    Layout.alignment: Qt.AlignRight
-                                }
+                                    Label {
+                                        text: modelData.label
+                                        color: themeManager.textColor
+                                        font.family: themeManager.fontFamily
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
 
-                                Label {
-                                    text: modelData.to
-                                    color: themeManager.primaryColor
-                                    font.family: themeManager.monoFontFamily
-                                    Layout.preferredWidth: Math.max(90, Math.min(180, resetChangesColumn.width * 0.28))
-                                    Layout.alignment: Qt.AlignRight
-                                    horizontalAlignment: Text.AlignRight
-                                    elide: Text.ElideRight
+                                    Label {
+                                        text: modelData.from
+                                        color: themeManager.textColor
+                                        opacity: 0.78
+                                        font.family: themeManager.monoFontFamily
+                                        Layout.preferredWidth: Math.max(76, Math.min(150, resetChangesColumn.width * 0.22))
+                                        Layout.alignment: Qt.AlignRight
+                                        horizontalAlignment: Text.AlignRight
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Label {
+                                        text: "->"
+                                        color: themeManager.textColor
+                                        opacity: 0.78
+                                        font.family: themeManager.monoFontFamily
+                                        Layout.alignment: Qt.AlignRight
+                                    }
+
+                                    Label {
+                                        text: modelData.to
+                                        color: themeManager.primaryColor
+                                        font.family: themeManager.monoFontFamily
+                                        Layout.preferredWidth: Math.max(96, Math.min(180, resetChangesColumn.width * 0.28))
+                                        Layout.alignment: Qt.AlignRight
+                                        horizontalAlignment: Text.AlignRight
+                                        elide: Text.ElideRight
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            Label {
-                Layout.fillWidth: true
-                text: root.tr("settings.resetConfirmNoChanges")
-                visible: root.pendingResetChanges.length === 0
-                color: themeManager.textColor
-                opacity: 0.82
-                font.family: themeManager.fontFamily
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
+                Label {
+                    Layout.fillWidth: true
+                    text: root.tr("settings.resetConfirmNoChanges")
+                    visible: root.pendingResetChanges.length === 0
+                    color: themeManager.textColor
+                    opacity: 0.82
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
             }
         }
 
@@ -1993,6 +2221,7 @@ Dialog {
                     activeFocusOnTab: true
                     Accessible.name: text
                     implicitHeight: root.minimumInteractiveHeight
+                    implicitWidth: 112
                     onClicked: resetConfirmDialog.close()
                 }
 
@@ -2003,6 +2232,7 @@ Dialog {
                     activeFocusOnTab: true
                     Accessible.name: text
                     implicitHeight: root.minimumInteractiveHeight
+                    implicitWidth: 148
                     onClicked: {
                         root.applyPendingReset()
                         resetConfirmDialog.close()
@@ -2051,21 +2281,21 @@ Dialog {
         }
     }
 
-    ColorDialog {
+    AccentColorDialog {
         id: waveformColorDialog
         title: root.tr("dialogs.chooseWaveformColor")
         selectedColor: themeManager.waveformColor
         onAccepted: themeManager.waveformColor = selectedColor
     }
 
-    ColorDialog {
+    AccentColorDialog {
         id: progressColorDialog
         title: root.tr("dialogs.chooseProgressColor")
         selectedColor: themeManager.progressColor
         onAccepted: themeManager.progressColor = selectedColor
     }
 
-    ColorDialog {
+    AccentColorDialog {
         id: accentColorDialog
         title: root.tr("dialogs.chooseAccentColor")
         selectedColor: themeManager.accentColor

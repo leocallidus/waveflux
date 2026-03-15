@@ -125,6 +125,7 @@ private:
     void applyDeferredSeekIfNeeded();
     void updatePosition();
     void handleBusMessage(GstMessage *message);
+    void drainBusMessages();
     void handleSpectrumMessage(const GstStructure *structure);
     void syncEqualizerBandFrequenciesFromElement();
     void applyEqualizerBandSettings();
@@ -144,9 +145,16 @@ private:
     void resetSpectrumLevels();
     quint64 resolveTransitionId(quint64 requestedTransitionId);
     qint64 stabilizeDurationValue(qint64 rawDurationMs, qint64 nowMs) const;
+    void scheduleDeferredDurationRefresh(quint64 transitionId,
+                                         const QString &expectedFilePath,
+                                         int remainingAttempts);
     
     static gboolean busCallback(GstBus *bus, GstMessage *message, gpointer userData);
     static void onAboutToFinish(GstElement *playbin, gpointer userData);
+    static void onDeepElementAdded(GstBin *bin,
+                                   GstBin *subBin,
+                                   GstElement *element,
+                                   gpointer userData);
     
     GstElement *m_pipeline = nullptr;
     GstElement *m_pitchElement = nullptr;
@@ -187,6 +195,7 @@ private:
     QString m_album;
     
     QTimer *m_positionTimer = nullptr;
+    QTimer m_busPollTimer;
     QTimer m_gaplessEosDeferralTimer;
     QTimer m_seekCoalesceTimer;
     qint64 m_coalescedSeekPositionMs = -1;
@@ -205,6 +214,7 @@ private:
     int m_gaplessRecalibrationResyncAttempts = 0;
     bool m_gaplessBypassMode = false;
     QString m_gaplessBypassReason;
+    qint64 m_metadataFallbackDurationMs = 0;
     mutable qint64 m_lastStableDurationMs = 0;
     mutable qint64 m_lastStableDurationUpdateMs = 0;
     bool m_pendingRateApplication = false;
@@ -212,9 +222,9 @@ private:
     bool m_isLoading = false;
     std::atomic<quint64> m_callbackSerial {0};
     bool m_spectrumEnabled = false;
-    int m_spectrumBandCount = 15;
+    int m_spectrumDisplayBandCount = 15;
+    int m_spectrumAnalysisBandCount = 96;
     QVariantList m_spectrumLevels;
-
     int m_equalizerBandCount = 10;
     QVariantList m_equalizerBandFrequencies;
     QVariantList m_equalizerBandGains;
@@ -250,6 +260,7 @@ private:
     static constexpr qint64 kGaplessProgressWatchDelayMs = 1400;
     static constexpr qint64 kGaplessProgressWatchMinAdvanceMs = 220;
     static constexpr qint64 kReverseStartMarginMs = 120;
+    static constexpr qint64 kReverseEnableSeekNudgeMs = 45;
     static constexpr int kEqualizerApplyCoalesceMs = 20;
     static constexpr int kEqualizerRampDurationMs = 32;
     static constexpr int kEqualizerRampStepMs = 8;

@@ -193,7 +193,7 @@ void AppSettingsManagerTest::sanitizesInvalidStoredValues()
     QCOMPARE(fromBrokenSeed.skinMode(), QStringLiteral("normal"));
     QCOMPARE(fromBrokenSeed.audioQualityProfile(), QStringLiteral("standard"));
     QCOMPARE(fromBrokenSeed.waveformHeight(), 40);
-    QCOMPARE(fromBrokenSeed.compactWaveformHeight(), 80);
+    QCOMPARE(fromBrokenSeed.compactWaveformHeight(), 999);
     QCOMPARE(fromBrokenSeed.shuffleSeed(), kDefaultShuffleSeed);
 
     clearSettings();
@@ -228,11 +228,12 @@ void AppSettingsManagerTest::signalsOnlyOnEffectiveChangesAndPersistsBurstUpdate
     QCOMPARE(waveformSpy.count(), 1);
 
     settings.setWaveformHeight(999);
-    QCOMPARE(settings.waveformHeight(), 200);
+    QCOMPARE(settings.waveformHeight(), 999);
     QCOMPARE(waveformSpy.count(), 2);
 
-    settings.setWaveformHeight(250);
-    QCOMPARE(waveformSpy.count(), 2);
+    settings.setWaveformHeight(1001);
+    QCOMPARE(settings.waveformHeight(), 1000);
+    QCOMPARE(waveformSpy.count(), 3);
 
     settings.setShuffleSeed(settings.shuffleSeed());
     QCOMPARE(seedSpy.count(), 0);

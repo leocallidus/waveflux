@@ -32,6 +32,10 @@ Item {
     property var durationSortBaselinePaths: []
     property int bitrateSortState: 0 // 0:none, 1:asc(▼), 2:desc(▲)
     property var bitrateSortBaselinePaths: []
+    property var sharedSortBaselinePaths: []
+    property var sharedSortBaselineKeys: []
+    property bool suppressSortReapplyOnModelReset: false
+    property bool suppressSortStatePersistence: false
     // full: title+artist+album+duration+bitrate
     // reduced: title+artist+duration
     // minimal: title+duration
@@ -76,6 +80,10 @@ Item {
     Component.onCompleted: {
         debouncedSearchQuery = searchQuery
         appliedSearchRevision = searchRevision
+        loadPersistedSortState()
+        if (hasActiveColumnSort() && trackModel && trackModel.count > 1) {
+            sortReapplyTimer.restart()
+        }
     }
 
     function searchDebounceIntervalMs() {
@@ -98,6 +106,13 @@ Item {
         interval: 33
         repeat: false
         onTriggered: root.appliedSearchRevision = root.searchRevision
+    }
+
+    Timer {
+        id: sortReapplyTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.reapplyActiveSort()
     }
 
     readonly property bool showArtistColumn: effectiveColumnPreset === "auto"
@@ -223,413 +238,344 @@ Item {
         return cueTrackPrefix(index) + base
     }
 
-    function findIndexByFilePath(filePath) {
-        const target = String(filePath || "")
-        if (target.length === 0) {
-            return -1
+    function restoreSortBaseline(filePaths) {
+        if (!trackModel || !filePaths || filePaths.length === 0) {
+            return
         }
-        for (let i = 0; i < trackModel.count; ++i) {
-            if (trackModel.getFilePath(i) === target) {
-                return i
-            }
-        }
-        return -1
+        trackModel.restoreOrder(filePaths)
     }
 
-    function captureIndexSortBaseline() {
-        const snapshot = []
-        for (let i = 0; i < trackModel.count; ++i) {
-            snapshot.push(trackModel.getFilePath(i))
+    function sortPersistenceKey(track) {
+        if (!track) {
+            return ""
         }
-        indexSortBaselinePaths = snapshot
+        const filePath = String(track.filePath || "")
+        const cueSheetPath = String(track.cueSheetPath || "")
+        const cueSegment = track.cueSegment === true ? "1" : "0"
+        const cueTrackNumber = Number(track.cueTrackNumber || 0)
+        const cueStartMs = Number(track.cueStartMs || 0)
+        const cueEndMs = Number(track.cueEndMs || 0)
+        const addedAtMs = Number(track.addedAtMs || 0)
+        return filePath
+                + "|" + cueSheetPath
+                + "|" + cueSegment
+                + "|" + cueTrackNumber
+                + "|" + cueStartMs
+                + "|" + cueEndMs
+                + "|" + addedAtMs
     }
 
-    function restoreIndexSortBaseline() {
-        if (!trackModel || indexSortBaselinePaths.length === 0) {
+    function hasActiveColumnSort() {
+        return titleSortState !== 0
+                || artistSortState !== 0
+                || albumSortState !== 0
+                || indexSortState !== 0
+                || durationSortState !== 0
+                || bitrateSortState !== 0
+    }
+
+    function activeSortColumnKey() {
+        if (indexSortState !== 0) return "index"
+        if (titleSortState !== 0) return "title"
+        if (artistSortState !== 0) return "artist"
+        if (albumSortState !== 0) return "album"
+        if (durationSortState !== 0) return "duration"
+        if (bitrateSortState !== 0) return "bitrate"
+        return "none"
+    }
+
+    function activeSortOrderState() {
+        if (indexSortState !== 0) return indexSortState
+        if (titleSortState !== 0) return titleSortState
+        if (artistSortState !== 0) return artistSortState
+        if (albumSortState !== 0) return albumSortState
+        if (durationSortState !== 0) return durationSortState
+        if (bitrateSortState !== 0) return bitrateSortState
+        return 0
+    }
+
+    function clearPerColumnSortBaselines() {
+        titleSortBaselinePaths = []
+        artistSortBaselinePaths = []
+        albumSortBaselinePaths = []
+        indexSortBaselinePaths = []
+        durationSortBaselinePaths = []
+        bitrateSortBaselinePaths = []
+    }
+
+    function clearSortStates() {
+        titleSortState = 0
+        artistSortState = 0
+        albumSortState = 0
+        indexSortState = 0
+        durationSortState = 0
+        bitrateSortState = 0
+    }
+
+    function captureSharedSortBaseline() {
+        if (!trackModel || trackModel.count <= 0) {
+            sharedSortBaselinePaths = []
+            sharedSortBaselineKeys = []
+            clearPerColumnSortBaselines()
             return
         }
 
-        for (let targetIndex = 0; targetIndex < indexSortBaselinePaths.length; ++targetIndex) {
-            const filePath = indexSortBaselinePaths[targetIndex]
-            const currentIndex = findIndexByFilePath(filePath)
-            if (currentIndex < 0 || currentIndex === targetIndex) {
-                continue
-            }
-            trackModel.move(currentIndex, targetIndex)
+        const paths = []
+        const keys = []
+        const snapshot = trackModel.exportTracksSnapshot()
+        for (let i = 0; i < snapshot.length; ++i) {
+            const track = snapshot[i]
+            keys.push(sortPersistenceKey(track))
+            paths.push(String(track.filePath || ""))
         }
+
+        sharedSortBaselinePaths = paths
+        sharedSortBaselineKeys = keys
+        titleSortBaselinePaths = paths
+        artistSortBaselinePaths = paths
+        albumSortBaselinePaths = paths
+        indexSortBaselinePaths = paths
+        durationSortBaselinePaths = paths
+        bitrateSortBaselinePaths = paths
+    }
+
+    function savePersistedSortState() {
+        if (!appSettings || suppressSortStatePersistence) {
+            return
+        }
+        appSettings.saveNormalPlaylistSortState({
+            "column": activeSortColumnKey(),
+            "order": activeSortOrderState()
+        })
+    }
+
+    function loadPersistedSortState() {
+        if (!appSettings || !appSettings.loadNormalPlaylistSortState) {
+            return
+        }
+
+        suppressSortStatePersistence = true
+        clearSortStates()
+
+        const state = appSettings.loadNormalPlaylistSortState()
+        const column = String(state.column || "none").trim()
+        const order = Math.max(0, Math.min(2, Number(state.order || 0)))
+
+        if (order === 0 || column === "none" || column.length === 0) {
+            sharedSortBaselinePaths = []
+            sharedSortBaselineKeys = []
+            clearPerColumnSortBaselines()
+            suppressSortStatePersistence = false
+            return
+        }
+
+        switch (column) {
+        case "index":
+            indexSortState = order
+            break
+        case "title":
+            titleSortState = order
+            break
+        case "artist":
+            artistSortState = order
+            break
+        case "album":
+            albumSortState = order
+            break
+        case "duration":
+            durationSortState = order
+            break
+        case "bitrate":
+            bitrateSortState = order
+            break
+        default:
+            clearSortStates()
+            break
+        }
+
+        suppressSortStatePersistence = false
+    }
+
+    function applySortByColumn(columnKey, orderState, captureBaseline, persistState) {
+        if (!trackModel) {
+            return
+        }
+
+        const normalizedOrder = Math.max(0, Math.min(2, Number(orderState || 0)))
+        if (normalizedOrder === 0 || !columnKey || columnKey === "none") {
+            clearActiveSort(true)
+            if (persistState !== false) {
+                savePersistedSortState()
+            }
+            return
+        }
+
+        if (captureBaseline !== false && sharedSortBaselinePaths.length === 0) {
+            captureSharedSortBaseline()
+        }
+
+        suppressSortReapplyOnModelReset = true
+        if (columnKey === "index") {
+            if (normalizedOrder === 1) trackModel.sortByIndexAsc()
+            else trackModel.sortByIndexDesc()
+        } else if (columnKey === "title") {
+            if (normalizedOrder === 1) trackModel.sortByNameAsc()
+            else trackModel.sortByNameDesc()
+        } else if (columnKey === "artist") {
+            if (normalizedOrder === 1) trackModel.sortByArtistAsc()
+            else trackModel.sortByArtistDesc()
+        } else if (columnKey === "album") {
+            if (normalizedOrder === 1) trackModel.sortByAlbumAsc()
+            else trackModel.sortByAlbumDesc()
+        } else if (columnKey === "duration") {
+            if (normalizedOrder === 1) trackModel.sortByDurationAsc()
+            else trackModel.sortByDurationDesc()
+        } else if (columnKey === "bitrate") {
+            if (normalizedOrder === 1) trackModel.sortByBitrateAsc()
+            else trackModel.sortByBitrateDesc()
+        }
+        suppressSortReapplyOnModelReset = false
+
+        clearSortStates()
+        if (columnKey === "index") indexSortState = normalizedOrder
+        else if (columnKey === "title") titleSortState = normalizedOrder
+        else if (columnKey === "artist") artistSortState = normalizedOrder
+        else if (columnKey === "album") albumSortState = normalizedOrder
+        else if (columnKey === "duration") durationSortState = normalizedOrder
+        else if (columnKey === "bitrate") bitrateSortState = normalizedOrder
+
+        if (persistState !== false) {
+            savePersistedSortState()
+        }
+    }
+
+    function clearActiveSort(restoreBaseline) {
+        clearSortStates()
+        if (restoreBaseline !== false && sharedSortBaselinePaths.length > 0 && trackModel) {
+            suppressSortReapplyOnModelReset = true
+            restoreSortBaseline(sharedSortBaselinePaths)
+            suppressSortReapplyOnModelReset = false
+        }
+        sharedSortBaselinePaths = []
+        sharedSortBaselineKeys = []
+        clearPerColumnSortBaselines()
+    }
+
+    function reapplyActiveSort() {
+        const column = activeSortColumnKey()
+        const order = activeSortOrderState()
+        if (!trackModel || trackModel.count <= 1 || column === "none" || order === 0) {
+            return
+        }
+        if (sharedSortBaselinePaths.length === 0) {
+            captureSharedSortBaseline()
+        }
+        applySortByColumn(column, order, false, false)
+    }
+
+    function exportSnapshotForPersistence(snapshot, currentIndex) {
+        if (!snapshot || snapshot.length === 0 || sharedSortBaselineKeys.length === 0 || !hasActiveColumnSort()) {
+            return { "tracks": snapshot, "currentIndex": currentIndex }
+        }
+
+        const tracksByKey = ({})
+        const trackKeysInOrder = []
+        for (let i = 0; i < snapshot.length; ++i) {
+            const track = snapshot[i]
+            const key = sortPersistenceKey(track)
+            if (!tracksByKey[key]) {
+                tracksByKey[key] = []
+                trackKeysInOrder.push(key)
+            }
+            tracksByKey[key].push(track)
+        }
+
+        const restored = []
+        for (let i = 0; i < sharedSortBaselineKeys.length; ++i) {
+            const key = sharedSortBaselineKeys[i]
+            const bucket = tracksByKey[key]
+            if (bucket && bucket.length > 0) {
+                restored.push(bucket.shift())
+            }
+        }
+
+        for (let i = 0; i < trackKeysInOrder.length; ++i) {
+            const bucket = tracksByKey[trackKeysInOrder[i]]
+            while (bucket && bucket.length > 0) {
+                restored.push(bucket.shift())
+            }
+        }
+
+        let restoredCurrentIndex = currentIndex
+        if (currentIndex >= 0 && currentIndex < snapshot.length) {
+            const currentKey = sortPersistenceKey(snapshot[currentIndex])
+            restoredCurrentIndex = -1
+            for (let i = 0; i < restored.length; ++i) {
+                if (sortPersistenceKey(restored[i]) === currentKey) {
+                    restoredCurrentIndex = i
+                    break
+                }
+            }
+            if (restoredCurrentIndex < 0) {
+                restoredCurrentIndex = currentIndex
+            }
+        }
+
+        return { "tracks": restored, "currentIndex": restoredCurrentIndex }
     }
 
     function cycleIndexSort() {
-        if (!trackModel) {
-            return
-        }
-
-        if (titleSortState !== 0) {
-            titleSortState = 0
-            titleSortBaselinePaths = []
-        }
-        if (artistSortState !== 0) {
-            artistSortState = 0
-            artistSortBaselinePaths = []
-        }
-        if (albumSortState !== 0) {
-            albumSortState = 0
-            albumSortBaselinePaths = []
-        }
-        if (durationSortState !== 0) {
-            durationSortState = 0
-            durationSortBaselinePaths = []
-        }
-        if (bitrateSortState !== 0) {
-            bitrateSortState = 0
-            bitrateSortBaselinePaths = []
-        }
-
         const nextState = (indexSortState + 1) % 3
-        if (indexSortState === 0 && nextState !== 0) {
-            captureIndexSortBaseline()
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
         }
-
-        if (nextState === 1) {
-            trackModel.sortByIndexAsc()
-        } else if (nextState === 2) {
-            trackModel.sortByIndexDesc()
-        } else {
-            restoreIndexSortBaseline()
-            indexSortBaselinePaths = []
-        }
-
-        indexSortState = nextState
-    }
-
-    function captureTitleSortBaseline() {
-        const snapshot = []
-        for (let i = 0; i < trackModel.count; ++i) {
-            snapshot.push(trackModel.getFilePath(i))
-        }
-        titleSortBaselinePaths = snapshot
-    }
-
-    function restoreTitleSortBaseline() {
-        if (!trackModel || titleSortBaselinePaths.length === 0) {
-            return
-        }
-
-        for (let targetIndex = 0; targetIndex < titleSortBaselinePaths.length; ++targetIndex) {
-            const filePath = titleSortBaselinePaths[targetIndex]
-            const currentIndex = findIndexByFilePath(filePath)
-            if (currentIndex < 0 || currentIndex === targetIndex) {
-                continue
-            }
-            trackModel.move(currentIndex, targetIndex)
-        }
+        else applySortByColumn("index", nextState, true, true)
     }
 
     function cycleTitleSort() {
-        if (!trackModel) {
-            return
-        }
-
-        if (indexSortState !== 0) {
-            indexSortState = 0
-            indexSortBaselinePaths = []
-        }
-        if (artistSortState !== 0) {
-            artistSortState = 0
-            artistSortBaselinePaths = []
-        }
-        if (albumSortState !== 0) {
-            albumSortState = 0
-            albumSortBaselinePaths = []
-        }
-        if (durationSortState !== 0) {
-            durationSortState = 0
-            durationSortBaselinePaths = []
-        }
-        if (bitrateSortState !== 0) {
-            bitrateSortState = 0
-            bitrateSortBaselinePaths = []
-        }
-
         const nextState = (titleSortState + 1) % 3
-        if (titleSortState === 0 && nextState !== 0) {
-            captureTitleSortBaseline()
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
         }
-
-        if (nextState === 1) {
-            trackModel.sortByNameAsc()
-        } else if (nextState === 2) {
-            trackModel.sortByNameDesc()
-        } else {
-            restoreTitleSortBaseline()
-            titleSortBaselinePaths = []
-        }
-
-        titleSortState = nextState
-    }
-
-    function captureArtistSortBaseline() {
-        const snapshot = []
-        for (let i = 0; i < trackModel.count; ++i) {
-            snapshot.push(trackModel.getFilePath(i))
-        }
-        artistSortBaselinePaths = snapshot
-    }
-
-    function restoreArtistSortBaseline() {
-        if (!trackModel || artistSortBaselinePaths.length === 0) {
-            return
-        }
-
-        for (let targetIndex = 0; targetIndex < artistSortBaselinePaths.length; ++targetIndex) {
-            const filePath = artistSortBaselinePaths[targetIndex]
-            const currentIndex = findIndexByFilePath(filePath)
-            if (currentIndex < 0 || currentIndex === targetIndex) {
-                continue
-            }
-            trackModel.move(currentIndex, targetIndex)
-        }
+        else applySortByColumn("title", nextState, true, true)
     }
 
     function cycleArtistSort() {
-        if (!trackModel) {
-            return
-        }
-
-        if (titleSortState !== 0) {
-            titleSortState = 0
-            titleSortBaselinePaths = []
-        }
-        if (albumSortState !== 0) {
-            albumSortState = 0
-            albumSortBaselinePaths = []
-        }
-        if (indexSortState !== 0) {
-            indexSortState = 0
-            indexSortBaselinePaths = []
-        }
-        if (durationSortState !== 0) {
-            durationSortState = 0
-            durationSortBaselinePaths = []
-        }
-        if (bitrateSortState !== 0) {
-            bitrateSortState = 0
-            bitrateSortBaselinePaths = []
-        }
-
         const nextState = (artistSortState + 1) % 3
-        if (artistSortState === 0 && nextState !== 0) {
-            captureArtistSortBaseline()
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
         }
-
-        if (nextState === 1) {
-            trackModel.sortByArtistAsc()
-        } else if (nextState === 2) {
-            trackModel.sortByArtistDesc()
-        } else {
-            restoreArtistSortBaseline()
-            artistSortBaselinePaths = []
-        }
-
-        artistSortState = nextState
-    }
-
-    function captureAlbumSortBaseline() {
-        const snapshot = []
-        for (let i = 0; i < trackModel.count; ++i) {
-            snapshot.push(trackModel.getFilePath(i))
-        }
-        albumSortBaselinePaths = snapshot
-    }
-
-    function restoreAlbumSortBaseline() {
-        if (!trackModel || albumSortBaselinePaths.length === 0) {
-            return
-        }
-
-        for (let targetIndex = 0; targetIndex < albumSortBaselinePaths.length; ++targetIndex) {
-            const filePath = albumSortBaselinePaths[targetIndex]
-            const currentIndex = findIndexByFilePath(filePath)
-            if (currentIndex < 0 || currentIndex === targetIndex) {
-                continue
-            }
-            trackModel.move(currentIndex, targetIndex)
-        }
+        else applySortByColumn("artist", nextState, true, true)
     }
 
     function cycleAlbumSort() {
-        if (!trackModel) {
-            return
-        }
-
-        if (titleSortState !== 0) {
-            titleSortState = 0
-            titleSortBaselinePaths = []
-        }
-        if (artistSortState !== 0) {
-            artistSortState = 0
-            artistSortBaselinePaths = []
-        }
-        if (indexSortState !== 0) {
-            indexSortState = 0
-            indexSortBaselinePaths = []
-        }
-        if (durationSortState !== 0) {
-            durationSortState = 0
-            durationSortBaselinePaths = []
-        }
-        if (bitrateSortState !== 0) {
-            bitrateSortState = 0
-            bitrateSortBaselinePaths = []
-        }
-
         const nextState = (albumSortState + 1) % 3
-        if (albumSortState === 0 && nextState !== 0) {
-            captureAlbumSortBaseline()
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
         }
-
-        if (nextState === 1) {
-            trackModel.sortByAlbumAsc()
-        } else if (nextState === 2) {
-            trackModel.sortByAlbumDesc()
-        } else {
-            restoreAlbumSortBaseline()
-            albumSortBaselinePaths = []
-        }
-
-        albumSortState = nextState
-    }
-
-    function captureDurationSortBaseline() {
-        const snapshot = []
-        for (let i = 0; i < trackModel.count; ++i) {
-            snapshot.push(trackModel.getFilePath(i))
-        }
-        durationSortBaselinePaths = snapshot
-    }
-
-    function restoreDurationSortBaseline() {
-        if (!trackModel || durationSortBaselinePaths.length === 0) {
-            return
-        }
-
-        for (let targetIndex = 0; targetIndex < durationSortBaselinePaths.length; ++targetIndex) {
-            const filePath = durationSortBaselinePaths[targetIndex]
-            const currentIndex = findIndexByFilePath(filePath)
-            if (currentIndex < 0 || currentIndex === targetIndex) {
-                continue
-            }
-            trackModel.move(currentIndex, targetIndex)
-        }
+        else applySortByColumn("album", nextState, true, true)
     }
 
     function cycleDurationSort() {
-        if (!trackModel) {
-            return
-        }
-
-        if (titleSortState !== 0) {
-            titleSortState = 0
-            titleSortBaselinePaths = []
-        }
-        if (artistSortState !== 0) {
-            artistSortState = 0
-            artistSortBaselinePaths = []
-        }
-        if (albumSortState !== 0) {
-            albumSortState = 0
-            albumSortBaselinePaths = []
-        }
-        if (indexSortState !== 0) {
-            indexSortState = 0
-            indexSortBaselinePaths = []
-        }
-        if (bitrateSortState !== 0) {
-            bitrateSortState = 0
-            bitrateSortBaselinePaths = []
-        }
-
         const nextState = (durationSortState + 1) % 3
-        if (durationSortState === 0 && nextState !== 0) {
-            captureDurationSortBaseline()
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
         }
-
-        if (nextState === 1) {
-            trackModel.sortByDurationAsc()
-        } else if (nextState === 2) {
-            trackModel.sortByDurationDesc()
-        } else {
-            restoreDurationSortBaseline()
-            durationSortBaselinePaths = []
-        }
-
-        durationSortState = nextState
-    }
-
-    function captureBitrateSortBaseline() {
-        const snapshot = []
-        for (let i = 0; i < trackModel.count; ++i) {
-            snapshot.push(trackModel.getFilePath(i))
-        }
-        bitrateSortBaselinePaths = snapshot
-    }
-
-    function restoreBitrateSortBaseline() {
-        if (!trackModel || bitrateSortBaselinePaths.length === 0) {
-            return
-        }
-
-        for (let targetIndex = 0; targetIndex < bitrateSortBaselinePaths.length; ++targetIndex) {
-            const filePath = bitrateSortBaselinePaths[targetIndex]
-            const currentIndex = findIndexByFilePath(filePath)
-            if (currentIndex < 0 || currentIndex === targetIndex) {
-                continue
-            }
-            trackModel.move(currentIndex, targetIndex)
-        }
+        else applySortByColumn("duration", nextState, true, true)
     }
 
     function cycleBitrateSort() {
-        if (!trackModel) {
-            return
-        }
-
-        if (titleSortState !== 0) {
-            titleSortState = 0
-            titleSortBaselinePaths = []
-        }
-        if (artistSortState !== 0) {
-            artistSortState = 0
-            artistSortBaselinePaths = []
-        }
-        if (albumSortState !== 0) {
-            albumSortState = 0
-            albumSortBaselinePaths = []
-        }
-        if (indexSortState !== 0) {
-            indexSortState = 0
-            indexSortBaselinePaths = []
-        }
-        if (durationSortState !== 0) {
-            durationSortState = 0
-            durationSortBaselinePaths = []
-        }
-
         const nextState = (bitrateSortState + 1) % 3
-        if (bitrateSortState === 0 && nextState !== 0) {
-            captureBitrateSortBaseline()
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
         }
-
-        if (nextState === 1) {
-            trackModel.sortByBitrateAsc()
-        } else if (nextState === 2) {
-            trackModel.sortByBitrateDesc()
-        } else {
-            restoreBitrateSortBaseline()
-            bitrateSortBaselinePaths = []
-        }
-
-        bitrateSortState = nextState
+        else applySortByColumn("bitrate", nextState, true, true)
     }
 
     function matchCount() {
@@ -1039,9 +985,28 @@ Item {
         function onModelReset() {
             root.normalizeSelectedFilePaths()
             root.autoLocateCurrentTrackAfterModelUpdate()
+            if (!root.suppressSortReapplyOnModelReset && root.hasActiveColumnSort() && trackModel.count > 1) {
+                root.sharedSortBaselinePaths = []
+                root.sharedSortBaselineKeys = []
+                root.clearPerColumnSortBaselines()
+                sortReapplyTimer.restart()
+            }
         }
 
         function onRowsMoved() {
+            root.normalizeSelectedFilePaths()
+            root.autoLocateCurrentTrackAfterModelUpdate()
+        }
+
+        function onRowsInserted() {
+            root.normalizeSelectedFilePaths()
+            root.autoLocateCurrentTrackAfterModelUpdate()
+            if (!root.suppressSortReapplyOnModelReset && root.hasActiveColumnSort() && trackModel.count > 1) {
+                sortReapplyTimer.restart()
+            }
+        }
+
+        function onRowsRemoved() {
             root.normalizeSelectedFilePaths()
             root.autoLocateCurrentTrackAfterModelUpdate()
         }
@@ -1378,6 +1343,29 @@ Item {
 
                 readonly property bool searchVisible: root.matchesActiveFilterAt(index)
 
+                function truncatedCellTooltipAt(mouseX) {
+                    function tooltipForLabel(label) {
+                        if (!label || !label.visible || !label.text || label.text.length === 0 || !(label.implicitWidth > label.width)) {
+                            return ""
+                        }
+                        const topLeft = label.mapToItem(trackDelegate, 0, 0)
+                        if (mouseX < topLeft.x || mouseX > topLeft.x + label.width) {
+                            return ""
+                        }
+                        return label.text
+                    }
+
+                    const titleText = tooltipForLabel(titleLabel)
+                    if (titleText.length > 0) {
+                        return titleText
+                    }
+                    const artistText = tooltipForLabel(artistLabel)
+                    if (artistText.length > 0) {
+                        return artistText
+                    }
+                    return tooltipForLabel(albumLabel)
+                }
+
                 width: playlistView.width
                 height: searchVisible ? root.rowHeight : 0
                 visible: searchVisible
@@ -1467,6 +1455,7 @@ Item {
                     }
 
                     Label {
+                        id: titleLabel
                         Layout.preferredWidth: root.titleColumnWidth
                         text: root.formatTrackTitle(trackDelegate.index,
                                                     trackDelegate.title,
@@ -1479,6 +1468,7 @@ Item {
                     }
 
                     Label {
+                        id: artistLabel
                         visible: root.showArtistColumn
                         Layout.preferredWidth: root.artistColumnWidth
                         text: trackDelegate.artist
@@ -1489,6 +1479,7 @@ Item {
                     }
 
                     Label {
+                        id: albumLabel
                         visible: root.showAlbumColumn
                         Layout.preferredWidth: root.albumColumnWidth
                         text: trackDelegate.album
@@ -1524,6 +1515,9 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    readonly property string hoveredCellTooltipText: trackDelegate.truncatedCellTooltipAt(mouseX)
+                    ToolTip.text: hoveredCellTooltipText
+                    ToolTip.visible: containsMouse && hoveredCellTooltipText.length > 0
                     onPressed: function(mouse) {
                         if (mouse.button !== Qt.LeftButton) {
                             return
@@ -1612,13 +1606,13 @@ Item {
         }
     }
 
-    Menu {
+    AccentMenu {
         id: contextMenu
         property int trackIndex: -1
         property string trackFilePath: ""
         readonly property bool trackIsLocalFile: root.isLocalTrackSource(trackFilePath)
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.play")
             icon.source: IconResolver.themed("media-playback-start", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1627,7 +1621,7 @@ Item {
             }
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.playNext")
             icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1635,7 +1629,7 @@ Item {
             onTriggered: playbackController.playNextInQueue(contextMenu.trackIndex)
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.addToQueue")
             icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1643,7 +1637,7 @@ Item {
             onTriggered: playbackController.addToQueue(contextMenu.trackIndex)
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.openInFileManager")
             icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1655,7 +1649,7 @@ Item {
             }
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.editTags")
             icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1667,9 +1661,9 @@ Item {
             }
         }
 
-        MenuSeparator {}
+        AccentMenuSeparator {}
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.editTagsSelected")
             icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1677,7 +1671,7 @@ Item {
             onTriggered: root.editTagsSelectionRequested(root.selectedFilePathsSnapshot())
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.exportSelected")
             icon.source: IconResolver.themed("document-save", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1685,7 +1679,7 @@ Item {
             onTriggered: root.exportSelectionRequested(root.selectedFilePathsSnapshot())
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.removeSelected")
             icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1693,9 +1687,9 @@ Item {
             onTriggered: root.removeSelectedTracks()
         }
 
-        MenuSeparator {}
+        AccentMenuSeparator {}
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.moveToTrash")
             icon.source: IconResolver.themed("user-trash", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1707,16 +1701,16 @@ Item {
             }
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.remove")
             icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             onTriggered: trackModel.removeAt(contextMenu.trackIndex)
         }
 
-        MenuSeparator {}
+        AccentMenuSeparator {}
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.clearQueue")
             icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"

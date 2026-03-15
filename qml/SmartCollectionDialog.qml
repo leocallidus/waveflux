@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "components"
 import "IconResolver.js" as IconResolver
 
 Dialog {
@@ -430,7 +431,7 @@ Dialog {
                         font.bold: true
                     }
 
-                    ComboBox {
+                    AccentComboBox {
                         id: templateCombo
                         Layout.fillWidth: true
                         model: dialogRoot.templates
@@ -461,7 +462,7 @@ Dialog {
                             font.pixelSize: 11
                         }
 
-                        ComboBox {
+                        AccentComboBox {
                             id: logicCombo
                             Layout.preferredWidth: dialogRoot.compactLayout ? 170 : 220
                             model: [dialogRoot.tr("collections.logicAll"), dialogRoot.tr("collections.logicAny")]
@@ -474,13 +475,13 @@ Dialog {
                         Layout.fillWidth: true
                         spacing: 12
 
-                        CheckBox {
+                        AccentCheckBox {
                             id: enabledCheck
                             text: dialogRoot.tr("collections.enabled")
                             checked: true
                         }
 
-                        CheckBox {
+                        AccentCheckBox {
                             id: pinnedCheck
                             text: dialogRoot.tr("collections.pinned")
                         }
@@ -563,7 +564,7 @@ Dialog {
                                 spacing: 6
                                 visible: !dialogRoot.compactLayout
 
-                                ComboBox {
+                                AccentComboBox {
                                     Layout.preferredWidth: 185
                                     model: dialogRoot.fieldOptions
                                     textRole: "label"
@@ -573,7 +574,7 @@ Dialog {
                                     }
                                 }
 
-                                ComboBox {
+                                AccentComboBox {
                                     Layout.preferredWidth: 126
                                     model: operators
                                     textRole: "label"
@@ -593,7 +594,7 @@ Dialog {
                                     }
                                 }
 
-                                ComboBox {
+                                AccentComboBox {
                                     Layout.fillWidth: true
                                     visible: kind === "bool"
                                     model: [dialogRoot.tr("collections.boolTrue"), dialogRoot.tr("collections.boolFalse")]
@@ -623,7 +624,7 @@ Dialog {
                                     Layout.fillWidth: true
                                     spacing: 6
 
-                                    ComboBox {
+                                    AccentComboBox {
                                         Layout.fillWidth: true
                                         model: dialogRoot.fieldOptions
                                         textRole: "label"
@@ -633,7 +634,7 @@ Dialog {
                                         }
                                     }
 
-                                    ComboBox {
+                                    AccentComboBox {
                                         Layout.preferredWidth: 100
                                         model: operators
                                         textRole: "label"
@@ -663,7 +664,7 @@ Dialog {
                                     }
                                 }
 
-                                ComboBox {
+                                AccentComboBox {
                                     Layout.fillWidth: true
                                     visible: kind === "bool"
                                     model: [dialogRoot.tr("collections.boolTrue"), dialogRoot.tr("collections.boolFalse")]
@@ -703,14 +704,14 @@ Dialog {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        ComboBox {
+                        AccentComboBox {
                             id: sortFieldCombo
                             Layout.fillWidth: true
                             model: dialogRoot.sortFieldOptions
                             textRole: "label"
                         }
 
-                        ComboBox {
+                        AccentComboBox {
                             id: sortDirCombo
                             Layout.preferredWidth: dialogRoot.compactLayout ? 112 : 130
                             model: [dialogRoot.tr("collections.sortAsc"), dialogRoot.tr("collections.sortDesc")]
@@ -775,15 +776,75 @@ Dialog {
                 Item { Layout.fillWidth: true }
 
                 Button {
+                    id: cancelButton
                     text: dialogRoot.tr("collections.cancel")
                     onClicked: dialogRoot.close()
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadius
+                        color: cancelButton.down
+                               ? Qt.rgba(themeManager.borderColor.r,
+                                         themeManager.borderColor.g,
+                                         themeManager.borderColor.b,
+                                         0.34)
+                               : themeManager.surfaceColor
+                        border.width: 1
+                        border.color: themeManager.borderColor
+                    }
+
+                    contentItem: Label {
+                        text: cancelButton.text
+                        color: cancelButton.enabled ? themeManager.textColor : themeManager.textMutedColor
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: themeManager.fontFamily
+                    }
                 }
 
                 Button {
+                    id: createButton
                     text: dialogRoot.tr("collections.create")
-                    highlighted: true
                     enabled: nameField.text.trim().length > 0
                     onClicked: dialogRoot.submit()
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadius
+                        color: !createButton.enabled
+                               ? Qt.rgba(themeManager.primaryColor.r,
+                                         themeManager.primaryColor.g,
+                                         themeManager.primaryColor.b,
+                                         0.32)
+                               : (createButton.down
+                                  ? Qt.darker(themeManager.primaryColor, 1.16)
+                                  : themeManager.primaryColor)
+                        border.width: 1
+                        border.color: !createButton.enabled
+                                      ? Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                0.36)
+                                      : Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                0.92)
+                    }
+
+                    contentItem: Label {
+                        text: createButton.text
+                        color: createButton.enabled
+                               ? Qt.rgba(themeManager.backgroundColor.r,
+                                         themeManager.backgroundColor.g,
+                                         themeManager.backgroundColor.b,
+                                         0.98)
+                               : Qt.rgba(themeManager.backgroundColor.r,
+                                         themeManager.backgroundColor.g,
+                                         themeManager.backgroundColor.b,
+                                         0.62)
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: themeManager.fontFamily
+                        font.bold: true
+                    }
                 }
             }
         }

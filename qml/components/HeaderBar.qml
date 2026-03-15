@@ -58,6 +58,40 @@ Rectangle {
         searchField.selectAll()
     }
 
+    function searchFieldHasActiveFocus() {
+        return searchField.activeFocus
+    }
+
+    function clearSearchFieldFocus() {
+        searchField.focus = false
+    }
+
+    function searchFieldContainsPoint(point, relativeToItem) {
+        if (!searchField.visible || !relativeToItem || !point) {
+            return false
+        }
+        const topLeft = searchField.mapToItem(relativeToItem, 0, 0)
+        return point.x >= topLeft.x
+                && point.x <= topLeft.x + searchField.width
+                && point.y >= topLeft.y
+                && point.y <= topLeft.y + searchField.height
+    }
+
+    function shouldYieldSearchShortcut(event) {
+        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+        const alt = (event.modifiers & Qt.AltModifier) !== 0
+        const meta = (event.modifiers & Qt.MetaModifier) !== 0
+        const key = event.key
+
+        if (ctrl || alt || meta) {
+            return true
+        }
+        if (key >= Qt.Key_F1 && key <= Qt.Key_F35) {
+            return true
+        }
+        return key === Qt.Key_Escape && root.fullscreenMode
+    }
+
     function openMenu(menuKey) {
         switch (menuKey) {
         case "file":
@@ -99,8 +133,163 @@ Rectangle {
         return prefix + safeName + pinSuffix
     }
 
+    readonly property color headerTint: Qt.rgba(themeManager.primaryColor.r,
+                                                themeManager.primaryColor.g,
+                                                themeManager.primaryColor.b,
+                                                themeManager.darkMode ? 0.08 : 0.04)
+    readonly property color chromeFill: Qt.rgba(themeManager.surfaceColor.r,
+                                                themeManager.surfaceColor.g,
+                                                themeManager.surfaceColor.b,
+                                                themeManager.darkMode ? 0.84 : 0.96)
+    readonly property color chromeStroke: Qt.rgba(themeManager.primaryColor.r,
+                                                  themeManager.primaryColor.g,
+                                                  themeManager.primaryColor.b,
+                                                  themeManager.darkMode ? 0.20 : 0.12)
+    readonly property color chromeHover: Qt.rgba(themeManager.primaryColor.r,
+                                                 themeManager.primaryColor.g,
+                                                 themeManager.primaryColor.b,
+                                                 themeManager.darkMode ? 0.15 : 0.10)
+    readonly property color chromePressed: Qt.rgba(themeManager.primaryColor.r,
+                                                   themeManager.primaryColor.g,
+                                                   themeManager.primaryColor.b,
+                                                   themeManager.darkMode ? 0.22 : 0.15)
+    readonly property color menuHighlightFill: Qt.rgba(themeManager.primaryColor.r,
+                                                       themeManager.primaryColor.g,
+                                                       themeManager.primaryColor.b,
+                                                       themeManager.darkMode ? 0.16 : 0.10)
+    readonly property color menuHighlightText: themeManager.textColor
+
+    component HeaderMenuButton: ToolButton {
+        id: control
+        display: AbstractButton.TextOnly
+        hoverEnabled: true
+        padding: 10
+        leftPadding: 12
+        rightPadding: 12
+        implicitHeight: 28
+
+        contentItem: Text {
+            text: control.text
+            color: themeManager.textColor
+            opacity: control.hovered || control.down ? 1.0 : 0.86
+            font.family: themeManager.fontFamily
+            font.pixelSize: 11
+            font.bold: control.hovered || control.down
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        background: Rectangle {
+            radius: themeManager.borderRadiusLarge
+            color: control.down ? root.chromePressed : (control.hovered ? root.chromeHover : "transparent")
+            border.width: control.hovered || control.down ? 1 : 0
+            border.color: root.chromeStroke
+
+            Behavior on color {
+                ColorAnimation { duration: 120 }
+            }
+        }
+    }
+
+    component HeaderIconButton: ToolButton {
+        id: control
+        display: AbstractButton.IconOnly
+        hoverEnabled: true
+        implicitWidth: 28
+        implicitHeight: 28
+
+        background: Rectangle {
+            radius: themeManager.borderRadius
+            color: control.down ? root.chromePressed : (control.hovered ? root.chromeHover : "transparent")
+            border.width: control.hovered || control.down ? 1 : 0
+            border.color: root.chromeStroke
+
+            Behavior on color {
+                ColorAnimation { duration: 120 }
+            }
+        }
+    }
+
+    component FluxMenuItem: MenuItem {
+        id: menuItem
+        readonly property bool hasIndicator: menuItem.checkable
+        readonly property int indicatorSlotWidth: hasIndicator ? 20 : 0
+        implicitWidth: Math.max(200, contentItem.implicitWidth + leftPadding + rightPadding + indicatorSlotWidth + (submenuArrow.visible ? 20 : 0))
+        implicitHeight: 30
+        leftPadding: 12 + indicatorSlotWidth
+        rightPadding: submenuArrow.visible ? 28 : 12
+        topPadding: 6
+        bottomPadding: 6
+
+        background: Rectangle {
+            radius: themeManager.borderRadius
+            color: menuItem.highlighted ? root.menuHighlightFill : "transparent"
+            border.width: menuItem.highlighted ? 1 : 0
+            border.color: root.chromeStroke
+        }
+
+        contentItem: Text {
+            text: menuItem.text
+            color: menuItem.enabled ? root.menuHighlightText : themeManager.textMutedColor
+            font.family: themeManager.fontFamily
+            font.pixelSize: 11
+            font.bold: menuItem.highlighted
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        indicator: Text {
+            visible: menuItem.hasIndicator
+            x: 12
+            y: Math.round((menuItem.height - height) * 0.5)
+            width: menuItem.indicatorSlotWidth
+            horizontalAlignment: Text.AlignHCenter
+            text: menuItem.checked ? "\u2713" : ""
+            color: menuItem.enabled ? themeManager.primaryColor : themeManager.textMutedColor
+            font.pixelSize: 13
+            font.bold: true
+        }
+
+        arrow: Text {
+            id: submenuArrow
+            text: "\u203a"
+            visible: menuItem.subMenu
+            color: menuItem.enabled ? themeManager.textSecondaryColor : themeManager.textMutedColor
+            font.pixelSize: 13
+        }
+    }
+
+    component FluxMenu: Menu {
+        id: control
+        topPadding: 6
+        bottomPadding: 6
+        leftPadding: 6
+        rightPadding: 6
+        overlap: 1
+        implicitWidth: Math.max(220, contentItem ? contentItem.implicitWidth + leftPadding + rightPadding : 220)
+        delegate: FluxMenuItem {}
+
+        background: Rectangle {
+            radius: themeManager.borderRadiusLarge
+            color: Qt.rgba(themeManager.surfaceColor.r,
+                           themeManager.surfaceColor.g,
+                           themeManager.surfaceColor.b,
+                           themeManager.darkMode ? 0.98 : 0.995)
+            border.width: 1
+            border.color: Qt.rgba(themeManager.primaryColor.r,
+                                  themeManager.primaryColor.g,
+                                  themeManager.primaryColor.b,
+                                  themeManager.darkMode ? 0.22 : 0.14)
+        }
+    }
+
     implicitHeight: themeManager.headerHeight
     color: themeManager.backgroundColor
+
+    Rectangle {
+        anchors.fill: parent
+        color: root.headerTint
+    }
 
     Rectangle {
         anchors.left: parent.left
@@ -144,11 +333,10 @@ Rectangle {
                 }
             }
 
-            ToolButton {
+            HeaderIconButton {
                 visible: root.compactMenu
                 icon.source: IconResolver.themed("application-menu", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                display: AbstractButton.IconOnly
                 onClicked: compactMenuPopup.popup()
                 ToolTip.text: root.tr("header.menu")
                 ToolTip.visible: hovered
@@ -167,13 +355,9 @@ Rectangle {
                         { key: "menu.library", action: "library" },
                         { key: "menu.help", action: "help" }
                     ]
-                    delegate: ToolButton {
+                    delegate: HeaderMenuButton {
                         required property var modelData
                         text: root.tr(modelData.key)
-                        display: AbstractButton.TextOnly
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 11
-                        opacity: 0.85
                         onClicked: root.openMenu(modelData.action)
                     }
                 }
@@ -189,11 +373,11 @@ Rectangle {
             Rectangle {
                 visible: !root.mobileLayout
                 implicitWidth: 192
-                implicitHeight: 28
-                radius: themeManager.borderRadius
-                color: themeManager.surfaceColor
+                implicitHeight: 30
+                radius: themeManager.borderRadiusLarge
+                color: root.chromeFill
                 border.width: 1
-                border.color: themeManager.borderColor
+                border.color: root.searchFiltersActive ? themeManager.primaryColor : root.chromeStroke
 
                 TextField {
                     id: searchField
@@ -207,25 +391,29 @@ Rectangle {
                     font.family: themeManager.fontFamily
                     font.pixelSize: 11
                     background: Item {}
+                    Keys.priority: Keys.BeforeItem
+                    Keys.onShortcutOverride: function(event) {
+                        if (root.shouldYieldSearchShortcut(event)) {
+                            event.accepted = false
+                        }
+                    }
                 }
 
-                ToolButton {
+                HeaderIconButton {
                     anchors.left: parent.left
                     anchors.leftMargin: 4
                     anchors.verticalCenter: parent.verticalCenter
                     icon.source: IconResolver.themed("edit-find", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     enabled: false
-                    display: AbstractButton.IconOnly
                 }
 
-                ToolButton {
+                HeaderIconButton {
                     anchors.right: parent.right
                     anchors.rightMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
                     icon.source: IconResolver.themed("view-filter", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    display: AbstractButton.IconOnly
                     opacity: root.searchFiltersActive ? 1.0 : 0.72
                     onClicked: searchFilterMenu.popup()
                     ToolTip.text: root.tr("header.quickFilters")
@@ -233,27 +421,24 @@ Rectangle {
                 }
             }
 
-            ToolButton {
+            HeaderIconButton {
                 visible: root.mobileLayout
                 icon.source: IconResolver.themed("edit-find", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                display: AbstractButton.IconOnly
             }
 
-            ToolButton {
+            HeaderIconButton {
                 visible: root.showCollectionsButton
                 icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                display: AbstractButton.IconOnly
                 onClicked: root.collectionsPanelRequested()
                 ToolTip.text: root.tr("collections.openPanel")
                 ToolTip.visible: hovered
             }
 
-            ToolButton {
+            HeaderIconButton {
                 icon.source: IconResolver.themed("configure", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                display: AbstractButton.IconOnly
                 onClicked: root.settingsRequested()
             }
         }
@@ -326,40 +511,40 @@ Rectangle {
         }
     }
 
-    Menu {
+    FluxMenu {
         id: searchFilterMenu
 
-        MenuItem {
+        FluxMenuItem {
             text: (root.searchFieldMask === 0 ? "\u2713 " : "") + root.tr("header.filterAllFields")
             onTriggered: root.searchFieldMask = 0
         }
-        MenuItem {
+        FluxMenuItem {
             text: ((root.searchFieldMask & root.searchFieldTitleBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterTitle")
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldTitleBit)
         }
-        MenuItem {
+        FluxMenuItem {
             text: ((root.searchFieldMask & root.searchFieldArtistBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterArtist")
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldArtistBit)
         }
-        MenuItem {
+        FluxMenuItem {
             text: ((root.searchFieldMask & root.searchFieldAlbumBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterAlbum")
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldAlbumBit)
         }
-        MenuItem {
+        FluxMenuItem {
             text: ((root.searchFieldMask & root.searchFieldPathBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterPath")
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldPathBit)
         }
         MenuSeparator {}
-        MenuItem {
+        FluxMenuItem {
             text: ((root.searchQuickFilterMask & root.searchQuickLosslessBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterLossless")
             onTriggered: root.searchQuickFilterMask = root.toggleMaskBit(root.searchQuickFilterMask, root.searchQuickLosslessBit)
         }
-        MenuItem {
+        FluxMenuItem {
             text: ((root.searchQuickFilterMask & root.searchQuickHiResBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterHiRes")
             onTriggered: root.searchQuickFilterMask = root.toggleMaskBit(root.searchQuickFilterMask, root.searchQuickHiResBit)
         }
         MenuSeparator {}
-        MenuItem {
+        FluxMenuItem {
             text: root.tr("header.filterReset")
             onTriggered: {
                 root.searchFieldMask = 0
@@ -368,110 +553,110 @@ Rectangle {
         }
     }
 
-    Menu {
+    FluxMenu {
         id: fileMenu
 
-        MenuItem {
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileOpenFiles : null
         }
-        MenuItem {
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileAddFolder : null
         }
         MenuSeparator {}
-        MenuItem {
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileExportPlaylist : null
         }
-        MenuItem {
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileClearPlaylist : null
         }
         MenuSeparator {}
-        MenuItem {
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileSettings : null
         }
-        MenuItem {
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileQuit : null
         }
     }
 
-    Menu {
+    FluxMenu {
         id: editMenu
 
-        MenuItem { action: root.menuActions ? root.menuActions.editFind : null }
-        MenuItem { action: root.menuActions ? root.menuActions.editSelectAllVisible : null }
-        MenuItem { action: root.menuActions ? root.menuActions.editClearSelection : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editFind : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editSelectAllVisible : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editClearSelection : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.editRemoveSelected : null }
-        MenuItem { action: root.menuActions ? root.menuActions.editEditTagsSelected : null }
-        MenuItem { action: root.menuActions ? root.menuActions.editExportSelected : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editRemoveSelected : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editEditTagsSelected : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editExportSelected : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.editLocateCurrent : null }
-        MenuItem { action: root.menuActions ? root.menuActions.editShowCurrentInFileManager : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editLocateCurrent : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.editShowCurrentInFileManager : null }
     }
 
-    Menu {
+    FluxMenu {
         id: viewMenu
 
-        MenuItem { action: root.menuActions ? root.menuActions.viewToggleCollectionsSidebar : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewToggleInfoSidebar : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewToggleSpeedPitch : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleCollectionsSidebar : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleInfoSidebar : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleSpeedPitch : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.viewToggleFullscreen : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewToggleQueuePanel : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewOpenCollectionsPanel : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleFullscreen : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleQueuePanel : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewOpenCollectionsPanel : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.viewProfilerOverlay : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewProfilerEnable : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewProfilerReset : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportJson : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportCsv : null }
-        MenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportBundle : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerOverlay : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerEnable : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerReset : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportJson : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportCsv : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportBundle : null }
     }
 
-    Menu {
+    FluxMenu {
         id: playbackMenu
 
-        MenuItem { action: root.menuActions ? root.menuActions.playbackPlayPause : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackStop : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackPlayPause : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackStop : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.playbackPrevious : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackNext : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackPrevious : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackNext : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.playbackSeekBack5s : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackSeekForward5s : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackSeekBack5s : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackSeekForward5s : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.playbackToggleShuffle : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatCycle : null }
-        Menu {
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackToggleShuffle : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatCycle : null }
+        FluxMenu {
             title: root.tr("menu.repeatMode")
-            MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOff : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatAll : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOne : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOff : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatAll : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOne : null }
         }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.playbackClearQueue : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackLocateCurrent : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackOpenEqualizer : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackClearQueue : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackLocateCurrent : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackOpenEqualizer : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.playbackResetSpeed : null }
-        MenuItem { action: root.menuActions ? root.menuActions.playbackResetPitch : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackResetSpeed : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackResetPitch : null }
     }
 
-    Menu {
+    FluxMenu {
         id: libraryMenu
 
-        MenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
-        MenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
-        MenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
         MenuSeparator {}
-        MenuItem { action: root.menuActions ? root.menuActions.libraryOpenCollectionsPanel : null }
-        MenuItem { action: root.menuActions ? root.menuActions.libraryCreateSmartCollection : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.libraryOpenCollectionsPanel : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCreateSmartCollection : null }
         MenuSeparator {}
 
-        Menu {
+        FluxMenu {
             id: libraryPlaylistsMenu
             title: root.tr("playlists.sectionTitle")
 
-            MenuItem {
+            FluxMenuItem {
                 visible: !root.playlistMenuEntries || root.playlistMenuEntries.length === 0
                 enabled: false
                 text: root.tr("playlists.empty")
@@ -479,7 +664,7 @@ Rectangle {
 
             Instantiator {
                 model: root.playlistMenuEntries ? root.playlistMenuEntries : []
-                delegate: MenuItem {
+                delegate: FluxMenuItem {
                     required property var modelData
                     readonly property int playlistId: Number(modelData.id ?? -1)
                     readonly property string playlistName: (modelData.name || "").trim()
@@ -498,17 +683,17 @@ Rectangle {
             }
         }
 
-        Menu {
+        FluxMenu {
             id: libraryCollectionsMenu
             title: root.tr("collections.sectionTitle")
 
-            MenuItem {
+            FluxMenuItem {
                 visible: !root.collectionsEnabled
                 enabled: false
                 text: root.tr("collections.disabled")
             }
 
-            MenuItem {
+            FluxMenuItem {
                 visible: root.collectionsEnabled
                          && (!root.collectionMenuEntries || root.collectionMenuEntries.length === 0)
                 enabled: false
@@ -517,7 +702,7 @@ Rectangle {
 
             Instantiator {
                 model: root.collectionMenuEntries ? root.collectionMenuEntries : []
-                delegate: MenuItem {
+                delegate: FluxMenuItem {
                     required property var modelData
                     readonly property int collectionId: Number(modelData.id ?? -1)
                     readonly property string collectionName: (modelData.name || "").trim()
@@ -538,99 +723,99 @@ Rectangle {
         }
     }
 
-    Menu {
+    FluxMenu {
         id: helpMenu
 
-        MenuItem { action: root.menuActions ? root.menuActions.helpAbout : null }
-        MenuItem { action: root.menuActions ? root.menuActions.helpShortcuts : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.helpAbout : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.helpShortcuts : null }
     }
 
-    Menu {
+    FluxMenu {
         id: compactMenuPopup
 
-        Menu {
+        FluxMenu {
             title: root.tr("menu.file")
-            MenuItem { action: root.menuActions ? root.menuActions.fileOpenFiles : null }
-            MenuItem { action: root.menuActions ? root.menuActions.fileAddFolder : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileOpenFiles : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileAddFolder : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.fileExportPlaylist : null }
-            MenuItem { action: root.menuActions ? root.menuActions.fileClearPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileExportPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileClearPlaylist : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.fileSettings : null }
-            MenuItem { action: root.menuActions ? root.menuActions.fileQuit : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileSettings : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileQuit : null }
         }
-        Menu {
+        FluxMenu {
             title: root.tr("menu.edit")
-            MenuItem { action: root.menuActions ? root.menuActions.editFind : null }
-            MenuItem { action: root.menuActions ? root.menuActions.editSelectAllVisible : null }
-            MenuItem { action: root.menuActions ? root.menuActions.editClearSelection : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editFind : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editSelectAllVisible : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editClearSelection : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.editRemoveSelected : null }
-            MenuItem { action: root.menuActions ? root.menuActions.editEditTagsSelected : null }
-            MenuItem { action: root.menuActions ? root.menuActions.editExportSelected : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editRemoveSelected : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editEditTagsSelected : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editExportSelected : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.editLocateCurrent : null }
-            MenuItem { action: root.menuActions ? root.menuActions.editShowCurrentInFileManager : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editLocateCurrent : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.editShowCurrentInFileManager : null }
         }
-        Menu {
+        FluxMenu {
             title: root.tr("menu.view")
-            MenuItem { action: root.menuActions ? root.menuActions.viewToggleCollectionsSidebar : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewToggleInfoSidebar : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewToggleSpeedPitch : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleCollectionsSidebar : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleInfoSidebar : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleSpeedPitch : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.viewToggleFullscreen : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewToggleQueuePanel : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewOpenCollectionsPanel : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleFullscreen : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleQueuePanel : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewOpenCollectionsPanel : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.viewProfilerOverlay : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewProfilerEnable : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewProfilerReset : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportJson : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportCsv : null }
-            MenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportBundle : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerOverlay : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerEnable : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerReset : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportJson : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportCsv : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewProfilerExportBundle : null }
         }
-        Menu {
+        FluxMenu {
             title: root.tr("menu.playback")
-            MenuItem { action: root.menuActions ? root.menuActions.playbackPlayPause : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackStop : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackPlayPause : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackStop : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.playbackPrevious : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackNext : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackPrevious : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackNext : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.playbackSeekBack5s : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackSeekForward5s : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackSeekBack5s : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackSeekForward5s : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.playbackToggleShuffle : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatCycle : null }
-            Menu {
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackToggleShuffle : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatCycle : null }
+            FluxMenu {
                 title: root.tr("menu.repeatMode")
-                MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOff : null }
-                MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatAll : null }
-                MenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOne : null }
+                FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOff : null }
+                FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatAll : null }
+                FluxMenuItem { action: root.menuActions ? root.menuActions.playbackRepeatOne : null }
             }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.playbackClearQueue : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackLocateCurrent : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackOpenEqualizer : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackClearQueue : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackLocateCurrent : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackOpenEqualizer : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.playbackResetSpeed : null }
-            MenuItem { action: root.menuActions ? root.menuActions.playbackResetPitch : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackResetSpeed : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.playbackResetPitch : null }
         }
-        Menu {
+        FluxMenu {
             title: root.tr("menu.library")
-            MenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
-            MenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
-            MenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
             MenuSeparator {}
-            MenuItem { action: root.menuActions ? root.menuActions.libraryOpenCollectionsPanel : null }
-            MenuItem { action: root.menuActions ? root.menuActions.libraryCreateSmartCollection : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.libraryOpenCollectionsPanel : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCreateSmartCollection : null }
             MenuSeparator {}
 
-            Menu {
+            FluxMenu {
                 id: compactLibraryPlaylistsMenu
                 title: root.tr("playlists.sectionTitle")
 
-                MenuItem {
+                FluxMenuItem {
                     visible: !root.playlistMenuEntries || root.playlistMenuEntries.length === 0
                     enabled: false
                     text: root.tr("playlists.empty")
@@ -638,7 +823,7 @@ Rectangle {
 
                 Instantiator {
                     model: root.playlistMenuEntries ? root.playlistMenuEntries : []
-                    delegate: MenuItem {
+                    delegate: FluxMenuItem {
                         required property var modelData
                         readonly property int playlistId: Number(modelData.id ?? -1)
                         readonly property string playlistName: (modelData.name || "").trim()
@@ -657,17 +842,17 @@ Rectangle {
                 }
             }
 
-            Menu {
+            FluxMenu {
                 id: compactLibraryCollectionsMenu
                 title: root.tr("collections.sectionTitle")
 
-                MenuItem {
+                FluxMenuItem {
                     visible: !root.collectionsEnabled
                     enabled: false
                     text: root.tr("collections.disabled")
                 }
 
-                MenuItem {
+                FluxMenuItem {
                     visible: root.collectionsEnabled
                              && (!root.collectionMenuEntries || root.collectionMenuEntries.length === 0)
                     enabled: false
@@ -676,7 +861,7 @@ Rectangle {
 
                 Instantiator {
                     model: root.collectionMenuEntries ? root.collectionMenuEntries : []
-                    delegate: MenuItem {
+                    delegate: FluxMenuItem {
                         required property var modelData
                         readonly property int collectionId: Number(modelData.id ?? -1)
                         readonly property string collectionName: (modelData.name || "").trim()
@@ -696,10 +881,10 @@ Rectangle {
                 }
             }
         }
-        Menu {
+        FluxMenu {
             title: root.tr("menu.help")
-            MenuItem { action: root.menuActions ? root.menuActions.helpAbout : null }
-            MenuItem { action: root.menuActions ? root.menuActions.helpShortcuts : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.helpAbout : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.helpShortcuts : null }
         }
     }
 }

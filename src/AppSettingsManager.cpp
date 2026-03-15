@@ -96,7 +96,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Light")},
         {QStringLiteral("settings.reset"), QStringLiteral("Reset")},
         {QStringLiteral("settings.close"), QStringLiteral("Close")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.0.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.1.0")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("A minimalist audio player with waveform visualization")},
         {QStringLiteral("player.previous"), QStringLiteral("Previous")},
@@ -386,7 +386,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("About WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Version:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.0")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.1")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux is a focused desktop audio player for local libraries and internet streams, with waveform visualization, queue control, and precise playback tools.")},
         {QStringLiteral("help.aboutAuthorLabel"), QStringLiteral("Author:")},
@@ -596,7 +596,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Светлая")},
         {QStringLiteral("settings.reset"), QStringLiteral("Сбросить")},
         {QStringLiteral("settings.close"), QStringLiteral("Закрыть")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.0.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.1.0")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("Минималистичный аудиоплеер с визуализацией волны")},
         {QStringLiteral("player.previous"), QStringLiteral("Предыдущий")},
@@ -887,7 +887,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("О WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Версия:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.0")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.1")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux — сфокусированный настольный аудиоплеер для локальной медиатеки и интернет-стримов с waveform-визуализацией, очередью и точным управлением воспроизведением.")},
         {QStringLiteral("help.aboutAuthorLabel"), QStringLiteral("Автор:")},
@@ -1173,6 +1173,28 @@ void AppSettingsManager::savePlaybackContextProgress(const QVariantMap &progress
     m_settings.sync();
 }
 
+QVariantMap AppSettingsManager::loadNormalPlaylistSortState() const
+{
+    QVariantMap state;
+    state.insert(QStringLiteral("column"),
+                 m_settings.value(QStringLiteral("ui/normalPlaylistSortColumn"),
+                                  QStringLiteral("none")).toString());
+    state.insert(QStringLiteral("order"),
+                 m_settings.value(QStringLiteral("ui/normalPlaylistSortOrder"), 0).toInt());
+    return state;
+}
+
+void AppSettingsManager::saveNormalPlaylistSortState(const QVariantMap &state)
+{
+    const QString column = state.value(QStringLiteral("column"),
+                                       QStringLiteral("none")).toString().trimmed();
+    const int order = qBound(0, state.value(QStringLiteral("order"), 0).toInt(), 2);
+    m_settings.setValue(QStringLiteral("ui/normalPlaylistSortColumn"),
+                        column.isEmpty() ? QStringLiteral("none") : column);
+    m_settings.setValue(QStringLiteral("ui/normalPlaylistSortOrder"), order);
+    m_settings.sync();
+}
+
 void AppSettingsManager::setLanguage(const QString &language)
 {
     const QString normalized = normalizeLanguage(language);
@@ -1233,7 +1255,7 @@ void AppSettingsManager::setSkinMode(const QString &mode)
 
 void AppSettingsManager::setWaveformHeight(int height)
 {
-    const int clamped = qBound(40, height, 200);
+    const int clamped = qBound(40, height, 1000);
     if (m_waveformHeight == clamped) {
         return;
     }
@@ -1245,7 +1267,7 @@ void AppSettingsManager::setWaveformHeight(int height)
 
 void AppSettingsManager::setCompactWaveformHeight(int height)
 {
-    const int clamped = qBound(24, height, 80);
+    const int clamped = qBound(24, height, 1000);
     if (m_compactWaveformHeight == clamped) {
         return;
     }
@@ -1472,8 +1494,8 @@ void AppSettingsManager::loadSettings()
     m_collectionsSidebarVisible = m_settings.value("collectionsSidebarVisible", true).toBool();
     const QString skinValue = m_settings.value("skinMode", QStringLiteral("normal")).toString();
     m_skinMode = (skinValue == QStringLiteral("compact")) ? skinValue : QStringLiteral("normal");
-    m_waveformHeight = qBound(40, m_settings.value("waveformHeight", 100).toInt(), 200);
-    m_compactWaveformHeight = qBound(24, m_settings.value("compactWaveformHeight", 32).toInt(), 80);
+    m_waveformHeight = qBound(40, m_settings.value("waveformHeight", 100).toInt(), 1000);
+    m_compactWaveformHeight = qBound(24, m_settings.value("compactWaveformHeight", 32).toInt(), 1000);
     m_waveformZoomHintsVisible = m_settings.value("waveform.zoomHintsVisible", true).toBool();
     m_cueWaveformOverlayEnabled = m_settings.value("waveform.cueOverlayEnabled", true).toBool();
     m_cueWaveformOverlayLabelsEnabled = m_settings.value("waveform.cueOverlayLabelsEnabled", true).toBool();

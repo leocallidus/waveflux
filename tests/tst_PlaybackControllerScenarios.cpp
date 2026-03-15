@@ -82,6 +82,7 @@ class tst_PlaybackControllerScenarios : public QObject
 private slots:
     void initTestCase()
     {
+        qputenv("WAVEFLUX_SKIP_SOURCE_VALIDATION", "1");
         gst_init(nullptr, nullptr);
     }
 
@@ -201,6 +202,35 @@ private slots:
         QCOMPARE(trackModel.currentIndex(), 0);
         QCOMPARE(controller.m_gaplessQueuedIndex, 1);
         QCOMPARE(controller.m_gaplessQueuedTransitionId, 301ULL);
+    }
+
+    void repeatOneReloadsTrackWithFreshTransitionEachCycle()
+    {
+        FakeAudioEngine audioEngine;
+        FakeTrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+
+        trackModel.seed({
+                            makeTrack(QStringLiteral("/tmp/waveflux-repeat-one.flac"),
+                                      QStringLiteral("Repeat One"))
+                        },
+                        0);
+
+        controller.setRepeatMode(PlaybackController::RepeatOne);
+
+        const QString trackPath = trackModel.getFilePath(0);
+        audioEngine.setCurrentFileForTest(trackPath, 1000);
+        controller.onCurrentFileChanged(trackPath);
+
+        controller.handleTrackEndedInternal(1000, true);
+        const quint64 firstRepeatTransitionId = audioEngine.currentTransitionId();
+        QVERIFY(firstRepeatTransitionId > 1000);
+        QCOMPARE(audioEngine.currentFile(), trackPath);
+
+        controller.handleTrackEndedInternal(firstRepeatTransitionId, true);
+        const quint64 secondRepeatTransitionId = audioEngine.currentTransitionId();
+        QVERIFY(secondRepeatTransitionId > firstRepeatTransitionId);
+        QCOMPARE(audioEngine.currentFile(), trackPath);
     }
 
     void nextDuringPendingTransitionUsesPlayingAnchor()

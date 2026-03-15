@@ -60,7 +60,7 @@ RowLayout {
         opacity: root.rowEnabled ? 1.0 : 0.55
     }
 
-    Switch {
+    AccentSwitch {
         id: toggleSwitch
         enabled: root.rowEnabled
         checked: root.checked

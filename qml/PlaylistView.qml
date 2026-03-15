@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "IconResolver.js" as IconResolver
+import "components"
 
 Item {
     id: root
@@ -579,11 +580,11 @@ Item {
         }
     }
 
-    Menu {
+    AccentMenu {
         id: contextMenu
         property int trackIndex: -1
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.play")
             icon.source: IconResolver.themed("media-playback-start", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -592,7 +593,7 @@ Item {
             }
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.playNext")
             icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -600,7 +601,7 @@ Item {
             onTriggered: playbackController.playNextInQueue(contextMenu.trackIndex)
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.addToQueue")
             icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -608,14 +609,14 @@ Item {
             onTriggered: playbackController.addToQueue(contextMenu.trackIndex)
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.openInFileManager")
             icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             onTriggered: xdgPortalFilePicker.openInFileManager(trackModel.getFilePath(contextMenu.trackIndex))
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.editTags")
             icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -625,25 +626,25 @@ Item {
             }
         }
 
-        MenuSeparator {}
+        AccentMenuSeparator {}
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.moveToTrash")
             icon.source: IconResolver.themed("user-trash", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             onTriggered: root.requestMoveTrackToTrash(contextMenu.trackIndex)
         }
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.remove")
             icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             onTriggered: trackModel.removeAt(contextMenu.trackIndex)
         }
 
-        MenuSeparator {}
+        AccentMenuSeparator {}
 
-        MenuItem {
+        AccentMenuItem {
             text: root.tr("playlist.clearQueue")
             icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"

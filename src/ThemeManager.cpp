@@ -194,7 +194,20 @@ QStringList ThemeManager::availableThemes() const
 
 void ThemeManager::resetToDefault()
 {
+    m_settings.remove(QStringLiteral("Theme"));
     applySystemPalette();
+
+    emit waveformColorChanged();
+    emit progressColorChanged();
+    emit primaryColorChanged();
+    emit backgroundColorChanged();
+    emit surfaceColorChanged();
+    emit borderColorChanged();
+    emit accentColorChanged();
+    emit textColorChanged();
+    emit textSecondaryColorChanged();
+    emit textMutedColorChanged();
+    emit darkModeChanged();
     emit themeChanged();
 }
 

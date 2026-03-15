@@ -28,6 +28,7 @@ class WaveformItem : public QQuickPaintedItem
     Q_OBJECT
     QML_ELEMENT
     
+    Q_PROPERTY(QObject* provider READ provider WRITE setProvider NOTIFY providerChanged)
     Q_PROPERTY(QVector<float> peaks READ peaks WRITE setPeaks NOTIFY peaksChanged)
     Q_PROPERTY(double progress READ progress WRITE setProgress NOTIFY progressChanged)
     Q_PROPERTY(QColor waveformColor READ waveformColor WRITE setWaveformColor NOTIFY waveformColorChanged)
@@ -43,9 +44,13 @@ class WaveformItem : public QQuickPaintedItem
     
 public:
     explicit WaveformItem(QQuickItem *parent = nullptr);
+    ~WaveformItem() override = default;
     
     void paint(QPainter *painter) override;
     
+    QObject *provider() const { return reinterpret_cast<QObject *>(m_provider); }
+    void setProvider(QObject *provider);
+
     QVector<float> peaks() const { return m_peaks; }
     void setPeaks(const QVector<float> &peaks);
     
@@ -87,6 +92,7 @@ public:
     Q_INVOKABLE double trackToView(double trackPosition) const;
     
 signals:
+    void providerChanged();
     void peaksChanged();
     void progressChanged();
     void waveformColorChanged();
@@ -130,6 +136,9 @@ private:
     void stopPanInertia();
     void startPanInertiaIfNeeded();
 
+    const QVector<float> &sourcePeaks() const;
+    bool usesProviderSource() const;
+    void refreshSourceData(bool allowLodRebuild);
     void rebuildLodLevels();
     void updateCachedPeaks();
     int effectiveTargetSamples(int widthPx) const;
@@ -137,10 +146,15 @@ private:
                                              int startIndex,
                                              int endIndexExclusive,
                                              int targetSamples);
-    void rebuildWavePath(int fullWidth, int h, int drawWidth);
+    void rebuildWavePath(int fullWidth, int h);
     void rebuildWaveLayers(int w, int h);
     void invalidateWaveLayers();
+    void forceFullRedraw();
+    void releaseTransientCaches(bool releaseLodLevels);
+    bool canCacheWaveLayers(int w, int h) const;
+    qsizetype layerCacheBudgetBytes() const;
     
+    WaveformProvider *m_provider = nullptr;
     QVector<float> m_peaks;
     QVector<LodLevel> m_lodLevels;
     QVector<float> m_cachedPeaks; // Resampled for current width
@@ -151,7 +165,6 @@ private:
     int m_lastPeakCacheWidthBucket = -1;
     int m_lastWidth = 0;
     int m_lastHeight = 0;
-    int m_lastGeneratedPixel = -1;
     int m_lastProgressPixel = -1;
     
     double m_progress = 0.0;
@@ -201,6 +214,8 @@ private:
     static constexpr double kPanZoomBoostMax = 1.35;
     static constexpr double kPanSpeedBoostMax = 1.55;
     static constexpr int kPeakCacheResizeBucketPx = 8;
+    static constexpr qsizetype kDefaultLayerCacheBudgetBytes = 8 * 1024 * 1024;
+    static constexpr qsizetype kFullscreenLayerCacheBudgetBytes = 16 * 1024 * 1024;
 };
 
 #endif // WAVEFORMITEM_H

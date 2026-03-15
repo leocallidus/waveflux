@@ -250,10 +250,11 @@ void SessionManager::restoreSession()
         QString restoredPath = sourcePath;
         if (isLocalSourcePath(sourcePath)) {
             const QString localPath = localPathFromSource(sourcePath);
-            if (localPath.isEmpty() || !QFileInfo::exists(localPath)) {
-                continue;
+            if (!localPath.isEmpty()) {
+                // Preserve playlist rows even when the backing volume is temporarily
+                // unavailable. Playback will surface an explicit error on access.
+                restoredPath = localPath;
             }
-            restoredPath = localPath;
         }
 
         Track track;

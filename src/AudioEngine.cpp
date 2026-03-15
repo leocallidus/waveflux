@@ -1,6 +1,8 @@
 #include "AudioEngine.h"
+#include "TagLibPath.h"
 #include <QByteArray>
 #include <QDateTime>
+#include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -9,14 +11,18 @@
 #include <QVariantMap>
 #include <QDebug>
 #include <QFileInfo>
+#include <QStringList>
 #include <QtGlobal>
 #include "DiagnosticsFlags.h"
+#include <taglib/fileref.h>
 #include <cmath>
 #include <vector>
 #include <gst/gstchildproxy.h>
 #include <gst/audio/streamvolume.h>
 
 namespace {
+constexpr guint kGstPlayFlagForceFilters = 0x00000800u;
+
 bool seekDiagEnabled()
 {
     return DiagnosticsFlags::detailedDiagnosticsEnabled();
@@ -27,6 +33,151 @@ bool isLikelyWindowsAbsolutePath(const QString &path)
     return path.size() >= 3
         && path.at(1) == QLatin1Char(':')
         && (path.at(2) == QLatin1Char('\\') || path.at(2) == QLatin1Char('/'));
+}
+
+QString localPathFromAudioSource(const QString &source)
+{
+    const QString normalized = source.trimmed();
+    if (normalized.isEmpty()) {
+        return {};
+    }
+
+    if (QDir::isAbsolutePath(normalized) || isLikelyWindowsAbsolutePath(normalized)) {
+        return QDir::cleanPath(normalized);
+    }
+
+    const QUrl parsed(normalized);
+    if (parsed.isValid() && parsed.isLocalFile()) {
+        return QDir::cleanPath(parsed.toLocalFile());
+    }
+
+    return {};
+}
+
+QString unavailablePlaybackSourceMessage(const QString &source)
+{
+    const QString localPath = localPathFromAudioSource(source);
+    const QString displayPath = localPath.isEmpty() ? source.trimmed() : localPath;
+    return QStringLiteral("File is unavailable: %1").arg(displayPath);
+}
+
+QString extensionFromAudioSource(const QString &source)
+{
+    const QString localPath = localPathFromAudioSource(source);
+    const QFileInfo info(localPath.isEmpty() ? source.trimmed() : localPath);
+    return info.suffix().trimmed().toLower();
+}
+
+bool isTrackerModuleExtension(const QString &extension)
+{
+    static const QStringList kTrackerModuleExtensions = {
+        QStringLiteral("669"),
+        QStringLiteral("amf"),
+        QStringLiteral("dbm"),
+        QStringLiteral("dmf"),
+        QStringLiteral("far"),
+        QStringLiteral("gdm"),
+        QStringLiteral("imf"),
+        QStringLiteral("it"),
+        QStringLiteral("med"),
+        QStringLiteral("mdl"),
+        QStringLiteral("mod"),
+        QStringLiteral("mt2"),
+        QStringLiteral("mtm"),
+        QStringLiteral("okt"),
+        QStringLiteral("psm"),
+        QStringLiteral("ptm"),
+        QStringLiteral("s3m"),
+        QStringLiteral("stm"),
+        QStringLiteral("ult"),
+        QStringLiteral("umx"),
+        QStringLiteral("xm")
+    };
+    return kTrackerModuleExtensions.contains(extension);
+}
+
+bool isTrackerModuleSource(const QString &source)
+{
+    return isTrackerModuleExtension(extensionFromAudioSource(source));
+}
+
+bool queryPipelineSeekability(GstElement *pipeline, bool *seekableOut)
+{
+    if (seekableOut) {
+        *seekableOut = false;
+    }
+    if (!pipeline) {
+        return false;
+    }
+
+    GstQuery *query = gst_query_new_seeking(GST_FORMAT_TIME);
+    if (!query) {
+        return false;
+    }
+
+    const gboolean queryOk = gst_element_query(pipeline, query);
+    if (queryOk) {
+        GstFormat format = GST_FORMAT_UNDEFINED;
+        gboolean seekable = FALSE;
+        gint64 start = 0;
+        gint64 end = GST_CLOCK_TIME_NONE;
+        gst_query_parse_seeking(query, &format, &seekable, &start, &end);
+        if (seekableOut) {
+            *seekableOut = (seekable == TRUE);
+        }
+    }
+
+    gst_query_unref(query);
+    return queryOk == TRUE;
+}
+
+QString unsupportedSeekMessageForSource(const QString &source)
+{
+    if (isTrackerModuleSource(source)) {
+        return QStringLiteral("Seeking is unavailable for tracker module files.");
+    }
+    return QStringLiteral("Seeking is unavailable for the current track.");
+}
+
+bool validatePlaybackSourceAvailability(const QString &source, QString *errorMessage)
+{
+    if (qEnvironmentVariableIsSet("WAVEFLUX_SKIP_SOURCE_VALIDATION")) {
+        return true;
+    }
+
+    const QString localPath = localPathFromAudioSource(source);
+    if (localPath.isEmpty()) {
+        return true;
+    }
+
+    const QFileInfo info(localPath);
+    if (!info.exists() || !info.isFile() || !info.isReadable()) {
+        if (errorMessage) {
+            *errorMessage = unavailablePlaybackSourceMessage(source);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+qint64 probeMetadataDurationMs(const QString &source)
+{
+    const QString localPath = localPathFromAudioSource(source);
+    if (localPath.isEmpty()) {
+        return 0;
+    }
+
+    const auto file = WaveFlux::TagLibPath::makeFileRef(
+        localPath,
+        true,
+        TagLib::AudioProperties::Fast);
+    if (file.isNull() || !file.audioProperties()) {
+        return 0;
+    }
+
+    const int durationMs = file.audioProperties()->lengthInMilliseconds();
+    return qMax<qint64>(0, durationMs);
 }
 
 QString buildPlaybackUri(const QString &source)
@@ -111,8 +262,8 @@ AudioEngine::AudioEngine(QObject *parent)
                         });
     }
 
-    m_spectrumLevels.reserve(m_spectrumBandCount);
-    for (int i = 0; i < m_spectrumBandCount; ++i) {
+    m_spectrumLevels.reserve(m_spectrumDisplayBandCount);
+    for (int i = 0; i < m_spectrumDisplayBandCount; ++i) {
         m_spectrumLevels.push_back(0.0);
     }
 
@@ -134,6 +285,9 @@ AudioEngine::AudioEngine(QObject *parent)
     m_positionTimer = new QTimer(this);
     m_positionTimer->setInterval(160); // Lower UI churn for smoother rendering on weaker GPUs/CPUs
     connect(m_positionTimer, &QTimer::timeout, this, &AudioEngine::updatePosition);
+
+    m_busPollTimer.setInterval(15);
+    connect(&m_busPollTimer, &QTimer::timeout, this, &AudioEngine::drainBusMessages);
 
     m_gaplessEosDeferralTimer.setSingleShot(true);
     connect(&m_gaplessEosDeferralTimer, &QTimer::timeout, this, [this]() {
@@ -221,6 +375,23 @@ void AudioEngine::setupPipeline()
         emit error("Failed to initialize audio engine");
         return;
     }
+
+    g_signal_connect(m_pipeline,
+                     "deep-element-added",
+                     G_CALLBACK(onDeepElementAdded),
+                     this);
+
+    if (hasElementProperty(m_pipeline, "message-forward")) {
+        g_object_set(m_pipeline, "message-forward", TRUE, nullptr);
+    }
+    if (hasElementProperty(m_pipeline, "flags")) {
+        guint flags = 0;
+        g_object_get(m_pipeline, "flags", &flags, nullptr);
+        const guint updatedFlags = flags | kGstPlayFlagForceFilters;
+        if (updatedFlags != flags) {
+            g_object_set(m_pipeline, "flags", updatedFlags, nullptr);
+        }
+    }
     
     // Create custom audio sink with a high-quality DSP chain.
     // Pipeline:
@@ -240,9 +411,14 @@ void AudioEngine::setupPipeline()
 
     m_pitchElement = nullptr;
     m_equalizerElement = nullptr;
+    m_spectrumElement = nullptr;
     bool equalizerAvailableNow = false;
 
     if (audioSinkBin && audioConvert1 && pitchElement && audioConvert2 && audioSink) {
+        if (hasElementProperty(audioSinkBin, "message-forward")) {
+            g_object_set(audioSinkBin, "message-forward", TRUE, nullptr);
+        }
+
         if (!audioResample) {
             qInfo() << "audioresample not available, using default resampling path";
         }
@@ -387,13 +563,18 @@ void AudioEngine::setupPipeline()
         m_equalizerAppliedBandGains = m_equalizerBandGains;
     }
 
-    m_spectrumElement = gst_element_factory_make("spectrum", "waveflux-spectrum");
+    if (!m_spectrumElement) {
+        m_spectrumElement = gst_element_factory_make("spectrum", "waveflux-spectrum");
+    }
+
     if (m_spectrumElement) {
         g_object_set(m_spectrumElement,
-                     "bands", m_spectrumBandCount,
-                     "threshold", -80,
+                     "bands", m_spectrumAnalysisBandCount,
+                     "threshold", -90,
                      "post-messages", m_spectrumEnabled,
-                     "interval", static_cast<guint64>(80 * GST_MSECOND),
+                     "message-magnitude", TRUE,
+                     "message-phase", FALSE,
+                     "interval", static_cast<guint64>(45 * GST_MSECOND),
                      nullptr);
         g_object_set(m_pipeline, "audio-filter", m_spectrumElement, nullptr);
     } else {
@@ -417,7 +598,11 @@ void AudioEngine::setupPipeline()
     
     // Setup bus for message handling
     m_bus = gst_element_get_bus(m_pipeline);
+#ifdef Q_OS_WIN
+    m_busPollTimer.start();
+#else
     m_busWatchId = gst_bus_add_watch(m_bus, busCallback, this);
+#endif
 }
 
 void AudioEngine::teardownPipeline()
@@ -430,10 +615,15 @@ void AudioEngine::teardownPipeline()
 
     if (m_pipeline) {
         g_signal_handlers_disconnect_by_func(m_pipeline,
+                                             reinterpret_cast<gpointer>(onDeepElementAdded),
+                                             this);
+        g_signal_handlers_disconnect_by_func(m_pipeline,
                                              reinterpret_cast<gpointer>(onAboutToFinish),
                                              this);
         gst_element_set_state(m_pipeline, GST_STATE_NULL);
-        
+
+        m_busPollTimer.stop();
+
         if (m_busWatchId > 0) {
             g_source_remove(m_busWatchId);
             m_busWatchId = 0;
@@ -534,6 +724,7 @@ void AudioEngine::stop()
     m_gaplessProgressRecoveryApplied = false;
     m_gaplessProgressReloadIssued = false;
     m_gaplessRecalibrationResyncAttempts = 0;
+    m_metadataFallbackDurationMs = 0;
     m_lastStableDurationMs = 0;
     m_lastStableDurationUpdateMs = 0;
     m_gaplessEosDeferralTimer.stop();
@@ -597,10 +788,44 @@ void AudioEngine::seekWithSource(qint64 position, const QString &source)
     GstState currentState = GST_STATE_NULL;
     GstState pendingState = GST_STATE_VOID_PENDING;
     gst_element_get_state(m_pipeline, &currentState, &pendingState, 0);
+    if (isTrackerModuleSource(m_currentFile)) {
+        const QString errorMessage = unsupportedSeekMessageForSource(m_currentFile);
+        if (seekDiagEnabled()) {
+            qWarning().noquote()
+                << "[SeekDiag][Audio] seek blocked for tracker module"
+                << "source=" << seekSource
+                << "file=" << m_currentFile
+                << "requestedMs=" << requestedMs
+                << "targetMs=" << targetMs
+                << "durationMs=" << durationMs;
+        }
+        emit error(errorMessage);
+        m_pendingSeekSource.clear();
+        return;
+    }
     // A pending PLAYING transition from READY is still not seek-ready.
     // We only seek once the pipeline is actually PAUSED/PLAYING.
     const bool seekReady =
         (currentState == GST_STATE_PAUSED || currentState == GST_STATE_PLAYING);
+    if (seekReady) {
+        bool seekable = false;
+        const bool seekabilityKnown = queryPipelineSeekability(m_pipeline, &seekable);
+        if (seekabilityKnown && !seekable) {
+            const QString errorMessage = unsupportedSeekMessageForSource(m_currentFile);
+            if (seekDiagEnabled()) {
+                qWarning().noquote()
+                    << "[SeekDiag][Audio] seek blocked (pipeline reports non-seekable)"
+                    << "source=" << seekSource
+                    << "file=" << m_currentFile
+                    << "requestedMs=" << requestedMs
+                    << "targetMs=" << targetMs
+                    << "durationMs=" << durationMs;
+            }
+            emit error(errorMessage);
+            m_pendingSeekSource.clear();
+            return;
+        }
+    }
     if (!seekReady) {
         m_deferredSeekPositionMs = targetMs;
         m_seekCoalesceTimer.stop();
@@ -723,6 +948,39 @@ void AudioEngine::performSeek(qint64 positionMs)
         }
         return;
     }
+
+    if (isTrackerModuleSource(m_currentFile)) {
+        const QString errorMessage = unsupportedSeekMessageForSource(m_currentFile);
+        if (seekDiagEnabled()) {
+            qWarning().noquote()
+                << "[SeekDiag][Audio] performSeek blocked for tracker module"
+                << "source=" << seekSource
+                << "file=" << m_currentFile
+                << "targetMs=" << positionMs;
+        }
+        emit error(errorMessage);
+        m_lastSeekSource = seekSource;
+        m_pendingSeekSource.clear();
+        return;
+    }
+
+    bool seekable = false;
+    const bool seekabilityKnown = queryPipelineSeekability(m_pipeline, &seekable);
+    if (seekabilityKnown && !seekable) {
+        const QString errorMessage = unsupportedSeekMessageForSource(m_currentFile);
+        if (seekDiagEnabled()) {
+            qWarning().noquote()
+                << "[SeekDiag][Audio] performSeek blocked (pipeline reports non-seekable)"
+                << "source=" << seekSource
+                << "file=" << m_currentFile
+                << "targetMs=" << positionMs;
+        }
+        emit error(errorMessage);
+        m_lastSeekSource = seekSource;
+        m_pendingSeekSource.clear();
+        return;
+    }
+
     const bool pipelinePlaying = (currentState == GST_STATE_PLAYING || pendingState == GST_STATE_PLAYING);
     const bool playbackIntentActive = (m_positionTimer && m_positionTimer->isActive());
     const bool shouldResumePlayback = (playbackIntentActive
@@ -785,13 +1043,30 @@ void AudioEngine::performSeek(qint64 positionMs)
     const bool allowReversePauseFallback = reverseSeek && pipelinePlaying;
     bool usedPauseFallback = false;
     bool usedFastFallback = false;
+    bool usedReverseRepositionFallback = false;
 
     auto doSeekAttempt = [&](GstSeekFlags flags, bool pauseBeforeSeek) -> gboolean {
         if (pauseBeforeSeek) {
             // Keep pause-before-seek only as fallback: on long tracks doing this on every
             // reverse seek introduces visible PAUSED latency while scrubbing.
-            gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+            const GstStateChangeReturn pauseRet = gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
             usedPauseFallback = true;
+            if (pauseRet == GST_STATE_CHANGE_FAILURE) {
+                return FALSE;
+            }
+
+            // Reverse seeks are backend-sensitive during async PLAYING->PAUSED
+            // transition. Wait briefly until the pipeline actually prerolls.
+            GstState pausedState = GST_STATE_NULL;
+            GstState pausedPendingState = GST_STATE_VOID_PENDING;
+            const GstStateChangeReturn waitRet = gst_element_get_state(
+                m_pipeline,
+                &pausedState,
+                &pausedPendingState,
+                250 * GST_MSECOND);
+            if (waitRet == GST_STATE_CHANGE_FAILURE) {
+                return FALSE;
+            }
         }
         return gst_element_seek(m_pipeline,
                                 seekRate,
@@ -819,6 +1094,41 @@ void AudioEngine::performSeek(qint64 positionMs)
             seekOk = doSeekAttempt(fastFlags, true);
         }
     }
+    if (!seekOk && reverseSeek) {
+        const GstStateChangeReturn pauseRet = gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+        if (pauseRet != GST_STATE_CHANGE_FAILURE) {
+            GstState pausedState = GST_STATE_NULL;
+            GstState pausedPendingState = GST_STATE_VOID_PENDING;
+            const GstStateChangeReturn waitRet = gst_element_get_state(
+                m_pipeline,
+                &pausedState,
+                &pausedPendingState,
+                300 * GST_MSECOND);
+            if (waitRet != GST_STATE_CHANGE_FAILURE) {
+                GstSeekType repositionStopType = GST_SEEK_TYPE_NONE;
+                gint64 repositionStopPos = GST_CLOCK_TIME_NONE;
+                if (durationMs > 0) {
+                    repositionStopType = GST_SEEK_TYPE_SET;
+                    repositionStopPos = (timelineOffsetMs + durationMs) * GST_MSECOND;
+                }
+
+                usedReverseRepositionFallback = gst_element_seek(
+                    m_pipeline,
+                    1.0,
+                    GST_FORMAT_TIME,
+                    static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                    GST_SEEK_TYPE_SET,
+                    (timelineOffsetMs + boundedTargetMs) * GST_MSECOND,
+                    repositionStopType,
+                    repositionStopPos);
+
+                if (usedReverseRepositionFallback) {
+                    seekOk = TRUE;
+                    m_pendingRateApplication = true;
+                }
+            }
+        }
+    }
     if (!seekOk) {
         qWarning().noquote()
             << "[SeekDiag][Audio] Seek failed"
@@ -836,6 +1146,7 @@ void AudioEngine::performSeek(qint64 positionMs)
             << "primarySeekOk=" << primarySeekOk
             << "usedFastFallback=" << usedFastFallback
             << "usedPauseFallback=" << usedPauseFallback
+            << "usedReverseRepositionFallback=" << usedReverseRepositionFallback
             << "resumeAfterSeek=" << shouldResumePlayback;
         // Preserve playback continuity after seek bursts: even on seek failure
         // keep pipeline in PLAYING if user intent is playback.
@@ -864,7 +1175,8 @@ void AudioEngine::performSeek(qint64 positionMs)
             << "targetMs=" << m_lastSeekTargetMs
             << "primarySeekOk=" << primarySeekOk
             << "usedFastFallback=" << usedFastFallback
-            << "usedPauseFallback=" << usedPauseFallback;
+            << "usedPauseFallback=" << usedPauseFallback
+            << "usedReverseRepositionFallback=" << usedReverseRepositionFallback;
     }
 
     if (m_lastEmittedPositionMs != m_lastSeekTargetMs) {
@@ -973,6 +1285,13 @@ void AudioEngine::setReversePlayback(bool enabled)
             m_pendingRateApplication = true;
             return;
         }
+    }
+
+    // Some backends reject reverse seek if the target equals the current playback
+    // position. Start the reverse segment a little earlier to make the direction
+    // switch deterministic without a user-visible jump.
+    if (targetPositionMs > 1) {
+        targetPositionMs = qMax<qint64>(1, targetPositionMs - kReverseEnableSeekNudgeMs);
     }
 
     m_pendingRateApplication = false;
@@ -1281,6 +1600,9 @@ void AudioEngine::applyPlaybackRateToPipeline()
         if (durationMs > 0) {
             reverseStopMs = qMin(reverseStopMs, safeReverseStopMs);
         }
+        if (reverseStopMs > 1) {
+            reverseStopMs = qMax<qint64>(1, reverseStopMs - kReverseEnableSeekNudgeMs);
+        }
         reverseStopMs = qMax<qint64>(1, reverseStopMs);
         startType = GST_SEEK_TYPE_SET;
         startPos = timelineOffsetMs * GST_MSECOND;
@@ -1288,16 +1610,47 @@ void AudioEngine::applyPlaybackRateToPipeline()
         stopPos = (timelineOffsetMs + reverseStopMs) * GST_MSECOND;
     }
 
-    const gboolean ok = gst_element_seek(
-        m_pipeline,
-        effectiveRate,
-        GST_FORMAT_TIME,
-        flags,
-        startType,
-        startPos,
-        stopType,
-        stopPos
-    );
+    auto doRateSeekAttempt = [&](GstSeekFlags attemptFlags, bool pauseBeforeSeek) -> gboolean {
+        if (pauseBeforeSeek) {
+            const GstStateChangeReturn pauseRet = gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+            if (pauseRet == GST_STATE_CHANGE_FAILURE) {
+                return FALSE;
+            }
+
+            GstState pausedState = GST_STATE_NULL;
+            GstState pausedPendingState = GST_STATE_VOID_PENDING;
+            const GstStateChangeReturn waitRet = gst_element_get_state(
+                m_pipeline,
+                &pausedState,
+                &pausedPendingState,
+                300 * GST_MSECOND);
+            if (waitRet == GST_STATE_CHANGE_FAILURE) {
+                return FALSE;
+            }
+        }
+
+        return gst_element_seek(
+            m_pipeline,
+            effectiveRate,
+            GST_FORMAT_TIME,
+            attemptFlags,
+            startType,
+            startPos,
+            stopType,
+            stopPos);
+    };
+
+    gboolean ok = doRateSeekAttempt(flags, false);
+    if (!ok && reverseRate) {
+        ok = doRateSeekAttempt(flags, true);
+    }
+    if (!ok && reverseRate) {
+        const GstSeekFlags fastFlags = static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH);
+        ok = doRateSeekAttempt(fastFlags, false);
+        if (!ok) {
+            ok = doRateSeekAttempt(fastFlags, true);
+        }
+    }
 
     if (!ok) {
         const QString message = QStringLiteral("Failed to set playback rate to %1x (effective %2x)")
@@ -1369,6 +1722,26 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     m_pendingSeekSource.clear();
     m_lastTrackSwitchWallClockMs = QDateTime::currentMSecsSinceEpoch();
 
+    QString availabilityError;
+    if (!validatePlaybackSourceAvailability(filePath, &availabilityError)) {
+        qWarning() << availabilityError;
+        emit error(availabilityError);
+        return;
+    }
+
+    if (qEnvironmentVariableIsSet("WAVEFLUX_SKIP_PIPELINE_LOAD")) {
+        m_isLoading = true;
+        m_currentTransitionId = resolvedTransitionId;
+        m_currentFile = filePath;
+        m_title.clear();
+        m_artist.clear();
+        m_album.clear();
+        m_metadataFallbackDurationMs = probeMetadataDurationMs(m_currentFile);
+        m_lastEmittedPositionMs = -1;
+        resetSpectrumLevels();
+        return;
+    }
+
     const QString uri = buildPlaybackUri(filePath);
     if (uri.isEmpty()) {
         const QString message = QStringLiteral("Failed to resolve playback URI for: %1").arg(filePath);
@@ -1391,6 +1764,10 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     m_isLoading = true;
     m_currentTransitionId = resolvedTransitionId;
     m_currentFile = filePath;
+    m_title.clear();
+    m_artist.clear();
+    m_album.clear();
+    m_metadataFallbackDurationMs = probeMetadataDurationMs(m_currentFile);
     m_lastEmittedPositionMs = -1;
     resetSpectrumLevels();
 
@@ -1402,6 +1779,12 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     }
 
     emit currentFileChanged(m_currentFile);
+    emit metadataChanged();
+    if (m_metadataFallbackDurationMs > 0) {
+        emit durationChanged(m_metadataFallbackDurationMs);
+    } else {
+        scheduleDeferredDurationRefresh(m_currentTransitionId, m_currentFile, 6);
+    }
     traceTransition("audio_current_file_changed_emitted", m_currentTransitionId, {
         {QStringLiteral("filePath"), m_currentFile}
     });
@@ -1562,7 +1945,32 @@ qint64 AudioEngine::duration() const
     if (gst_element_query_duration(m_pipeline, GST_FORMAT_TIME, &dur) && dur >= 0) {
         return stabilizeDurationValue(dur / GST_MSECOND, nowMs);
     }
-    return stabilizeDurationValue(0, nowMs);
+    return stabilizeDurationValue(m_metadataFallbackDurationMs, nowMs);
+}
+
+void AudioEngine::scheduleDeferredDurationRefresh(quint64 transitionId,
+                                                  const QString &expectedFilePath,
+                                                  int remainingAttempts)
+{
+    if (remainingAttempts <= 0) {
+        return;
+    }
+
+    QTimer::singleShot(250, this, [this, transitionId, expectedFilePath, remainingAttempts]() {
+        if (!m_pipeline
+            || m_currentTransitionId != transitionId
+            || m_currentFile != expectedFilePath) {
+            return;
+        }
+
+        const qint64 resolvedDurationMs = duration();
+        emit durationChanged(resolvedDurationMs);
+
+        if (resolvedDurationMs <= 0
+            && (m_state == ReadyState || m_state == PausedState || m_state == PlayingState)) {
+            scheduleDeferredDurationRefresh(transitionId, expectedFilePath, remainingAttempts - 1);
+        }
+    });
 }
 
 void AudioEngine::updatePosition()
@@ -1771,6 +2179,23 @@ gboolean AudioEngine::busCallback(GstBus *bus, GstMessage *message, gpointer use
     return TRUE;
 }
 
+void AudioEngine::drainBusMessages()
+{
+    if (!m_bus) {
+        return;
+    }
+
+    constexpr int kMaxMessagesPerTick = 64;
+    for (int i = 0; i < kMaxMessagesPerTick; ++i) {
+        GstMessage *message = gst_bus_pop(m_bus);
+        if (!message) {
+            break;
+        }
+        handleBusMessage(message);
+        gst_message_unref(message);
+    }
+}
+
 void AudioEngine::handleBusMessage(GstMessage *message)
 {
     switch (GST_MESSAGE_TYPE(message)) {
@@ -1967,6 +2392,7 @@ void AudioEngine::handleBusMessage(GstMessage *message)
             m_gaplessPendingTransitionId = 0;
             m_gaplessPendingSinceWallClockMs = 0;
             m_lastEmittedPositionMs = 0;
+            m_metadataFallbackDurationMs = probeMetadataDurationMs(m_currentFile);
             m_lastStableDurationMs = 0;
             m_lastStableDurationUpdateMs = 0;
             m_gaplessProgressWatchStartedMs = QDateTime::currentMSecsSinceEpoch();
@@ -2054,15 +2480,18 @@ void AudioEngine::handleBusMessage(GstMessage *message)
                 {QStringLiteral("currentFile"), m_currentFile}
             });
 
+            if (newState == GST_STATE_READY
+                || newState == GST_STATE_PAUSED
+                || newState == GST_STATE_PLAYING) {
+                emit durationChanged(duration());
+            }
+
             if (newState == GST_STATE_PAUSED || newState == GST_STATE_PLAYING) {
                 m_isLoading = false;
                 applyDeferredSeekIfNeeded();
             }
 
             if (newState == GST_STATE_PLAYING && oldState != GST_STATE_PLAYING) {
-                // Emit duration when we start playing
-                emit durationChanged(duration());
-
                 if (m_pendingReverseStart) {
                     applyPendingReverseStartIfNeeded();
                 }
@@ -2112,14 +2541,54 @@ void AudioEngine::handleBusMessage(GstMessage *message)
 
     case GST_MESSAGE_ELEMENT: {
         const GstStructure *structure = gst_message_get_structure(message);
-        if (structure && gst_structure_has_name(structure, "spectrum")) {
+        if (!structure) {
+            break;
+        }
+
+        if (gst_structure_has_name(structure, "spectrum")) {
             handleSpectrumMessage(structure);
+            break;
+        }
+
+        if (gst_structure_has_name(structure, "GstBinForwarded")) {
+            GstMessage *forwardedMessage = nullptr;
+            if (gst_structure_get(structure,
+                                  "message", GST_TYPE_MESSAGE, &forwardedMessage,
+                                  nullptr)
+                && forwardedMessage) {
+                if (GST_MESSAGE_TYPE(forwardedMessage) == GST_MESSAGE_ELEMENT) {
+                    const GstStructure *forwardedStructure =
+                        gst_message_get_structure(forwardedMessage);
+                    if (forwardedStructure && gst_structure_has_name(forwardedStructure, "spectrum")) {
+                        handleSpectrumMessage(forwardedStructure);
+                    }
+                }
+                gst_message_unref(forwardedMessage);
+            }
         }
         break;
     }
         
     default:
         break;
+    }
+}
+
+void AudioEngine::onDeepElementAdded(GstBin *bin,
+                                     GstBin *subBin,
+                                     GstElement *element,
+                                     gpointer userData)
+{
+    Q_UNUSED(bin)
+    Q_UNUSED(subBin)
+    Q_UNUSED(userData)
+
+    if (!element) {
+        return;
+    }
+
+    if (GST_IS_BIN(element) && hasElementProperty(element, "message-forward")) {
+        g_object_set(element, "message-forward", TRUE, nullptr);
     }
 }
 
@@ -2130,11 +2599,19 @@ void AudioEngine::handleSpectrumMessage(const GstStructure *structure)
     }
 
     const GValue *magnitudeValues = gst_structure_get_value(structure, "magnitude");
-    if (!magnitudeValues || !GST_VALUE_HOLDS_LIST(magnitudeValues)) {
+    if (!magnitudeValues) {
         return;
     }
 
-    const int count = static_cast<int>(gst_value_list_get_size(magnitudeValues));
+    const bool holdsList = GST_VALUE_HOLDS_LIST(magnitudeValues);
+    const bool holdsArray = GST_VALUE_HOLDS_ARRAY(magnitudeValues);
+    if (!holdsList && !holdsArray) {
+        return;
+    }
+
+    const int count = holdsList
+        ? static_cast<int>(gst_value_list_get_size(magnitudeValues))
+        : static_cast<int>(gst_value_array_get_size(magnitudeValues));
     if (count <= 0) {
         return;
     }
@@ -2158,20 +2635,53 @@ void AudioEngine::handleSpectrumMessage(const GstStructure *structure)
         return -80.0;
     };
 
+    const int displayCount = qMax(1, m_spectrumDisplayBandCount);
     QVariantList levels;
-    levels.reserve(m_spectrumBandCount);
+    levels.reserve(displayCount);
     bool hasMeaningfulChange = false;
-    constexpr double updateEpsilon = 0.003;
+    constexpr double updateEpsilon = 0.0025;
+    constexpr double minDb = -90.0;
+    constexpr double displayCurveExponent = 2.15;
 
-    for (int i = 0; i < m_spectrumBandCount; ++i) {
-        double db = -80.0;
-        if (i < count) {
-            db = valueToDb(gst_value_list_get_value(magnitudeValues, i));
+    auto edgeForBand = [count, displayCount, displayCurveExponent](int bandIndex) {
+        const double t = qBound(0.0, static_cast<double>(bandIndex) / displayCount, 1.0);
+        return qBound(
+            0,
+            static_cast<int>(std::floor(std::pow(t, displayCurveExponent) * qMax(0, count - 1))),
+            qMax(0, count - 1));
+    };
+
+    for (int i = 0; i < displayCount; ++i) {
+        const int start = edgeForBand(i);
+        const int end = qMax(start, edgeForBand(i + 1));
+
+        double maxDb = minDb;
+        double energySum = 0.0;
+        int samples = 0;
+        for (int bin = start; bin <= end && bin < count; ++bin) {
+            const GValue *binValue = holdsList
+                ? gst_value_list_get_value(magnitudeValues, bin)
+                : gst_value_array_get_value(magnitudeValues, bin);
+            const double db = qMax(minDb, valueToDb(binValue));
+            maxDb = qMax(maxDb, db);
+            energySum += std::pow(10.0, db / 20.0);
+            ++samples;
         }
 
-        const double normalized = qBound(0.0, (db + 80.0) / 80.0, 1.0);
+        double representativeDb = minDb;
+        if (samples > 0) {
+            const double averageEnergy = energySum / samples;
+            representativeDb = 20.0 * std::log10(qMax(averageEnergy, 1e-6));
+            representativeDb = qMax(representativeDb, maxDb - 8.0);
+        }
+
+        const double highBandCompensationDb = static_cast<double>(i) * 1.65;
+        const double shapedDb = qMin(0.0, representativeDb + highBandCompensationDb);
+        double normalized = qBound(0.0, (shapedDb - minDb) / std::abs(minDb), 1.0);
+        normalized = std::pow(normalized, 0.82);
+
         const double previous = (i < m_spectrumLevels.size()) ? m_spectrumLevels.at(i).toDouble() : 0.0;
-        const double alpha = (normalized > previous) ? 0.62 : 0.25;
+        const double alpha = (normalized > previous) ? 0.72 : 0.16;
         const double smoothed = previous + alpha * (normalized - previous);
         hasMeaningfulChange = hasMeaningfulChange || (std::abs(smoothed - previous) > updateEpsilon);
         levels.push_back(smoothed);
@@ -2456,6 +2966,16 @@ void AudioEngine::handleAboutToFinishOnMainThread(quint64 callbackSerial)
     m_gaplessEosDeferralTimer.stop();
 
     const QString uri = buildPlaybackUri(nextFile);
+    QString availabilityError;
+    if (!validatePlaybackSourceAvailability(nextFile, &availabilityError)) {
+        qWarning() << availabilityError;
+        emit error(availabilityError);
+        m_gaplessPendingFile.clear();
+        m_gaplessPendingTransitionId = 0;
+        m_gaplessPendingSinceWallClockMs = 0;
+        m_gaplessEosDeferralTimer.stop();
+        return;
+    }
     if (uri.isEmpty()) {
         qWarning() << "Failed to resolve gapless playback URI for:" << nextFile;
         m_gaplessPendingFile.clear();
@@ -2550,8 +3070,8 @@ void AudioEngine::extractMetadata()
 void AudioEngine::resetSpectrumLevels()
 {
     QVariantList resetLevels;
-    resetLevels.reserve(m_spectrumBandCount);
-    for (int i = 0; i < m_spectrumBandCount; ++i) {
+    resetLevels.reserve(m_spectrumDisplayBandCount);
+    for (int i = 0; i < m_spectrumDisplayBandCount; ++i) {
         resetLevels.push_back(0.0);
     }
 

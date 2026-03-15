@@ -48,6 +48,8 @@ class tst_PlaybackControllerTransitions : public QObject
 private slots:
     void initTestCase()
     {
+        qputenv("WAVEFLUX_SKIP_SOURCE_VALIDATION", "1");
+        qputenv("WAVEFLUX_SKIP_PIPELINE_LOAD", "1");
         gst_init(nullptr, nullptr);
     }
 
@@ -212,6 +214,31 @@ private slots:
 
         QVERIFY(controller.canGoNext());
         QCOMPARE(controller.calculateNextIndex(false), 1);
+    }
+
+    void nextTrackLoadsTargetWhenSelectionAlreadyPointsAtNextRow()
+    {
+        AudioEngine audioEngine;
+        TrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+        seedPlaylist(&trackModel, 1);
+
+        const QString playingPath = trackModel.getFilePath(0);
+        const QString nextPath = trackModel.getFilePath(1);
+        audioEngine.m_currentFile = playingPath;
+        controller.onCurrentFileChanged(playingPath);
+
+        QCOMPARE(trackModel.currentIndex(), 1);
+        QCOMPARE(controller.activeTrackIndex(), 0);
+
+        controller.nextTrack();
+
+        QCOMPARE(trackModel.currentIndex(), 1);
+        QCOMPARE(controller.pendingTrackIndex(), 1);
+        QCOMPARE(controller.transitionState(),
+                 PlaybackController::TransitionPendingCommit);
+        QCOMPARE(audioEngine.currentFile(), nextPath);
+        QVERIFY(audioEngine.currentTransitionId() > 0);
     }
 
     void activeTrackFollowsMoveByCurrentFile()

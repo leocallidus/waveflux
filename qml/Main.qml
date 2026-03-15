@@ -1,9 +1,10 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtCore
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
-import WaveFlux 1.0
+import WaveFlux 1.1
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -77,13 +78,13 @@ Kirigami.ApplicationWindow {
                                                 ? 0.82
                                                 : (windowMode === "ultraNarrow" ? 0.72 : 1.0)
     readonly property int waveformPreferredHeightNormalized: Math.round(
-        Math.max(44, Math.min(220, appSettings.waveformHeight * waveformHeightScale))
+        Math.max(44, Math.min(1000, appSettings.waveformHeight * waveformHeightScale))
     )
     readonly property int waveformMinHeightNormalized: windowMode === "ultraNarrow" ? 36 : 40
-    readonly property int waveformMaxHeightNormalized: windowMode === "wide"
-                                                       ? 220
-                                                       : (windowMode === "medium" ? 200
-                                                                                  : (windowMode === "narrow" ? 170 : 145))
+    readonly property int waveformMaxHeightNormalized: Math.max(
+                                                           waveformMinHeightNormalized,
+                                                           Math.min(1000, waveformPreferredHeightNormalized)
+                                                       )
     readonly property string playlistColumnPreset: root.windowMode === "wide"
                                                   ? "full"
                                                   : (root.windowMode === "medium" ? "reduced" : "minimal")
@@ -120,8 +121,45 @@ Kirigami.ApplicationWindow {
     property var libraryMenuPlaylists: []
     property var libraryMenuCollections: []
 
+    Settings {
+        id: sidebarSectionSettings
+        category: "App"
+        property bool sidebarPlaylistsSectionVisible: true
+        property bool sidebarCollectionsSectionVisible: true
+    }
+    property bool sidebarPlaylistsSectionVisible: true
+    property bool sidebarCollectionsSectionVisible: true
+
+    onSidebarPlaylistsSectionVisibleChanged: {
+        if (sidebarSectionSettings.sidebarPlaylistsSectionVisible !== root.sidebarPlaylistsSectionVisible) {
+            sidebarSectionSettings.sidebarPlaylistsSectionVisible = root.sidebarPlaylistsSectionVisible
+        }
+    }
+
+    onSidebarCollectionsSectionVisibleChanged: {
+        if (sidebarSectionSettings.sidebarCollectionsSectionVisible !== root.sidebarCollectionsSectionVisible) {
+            sidebarSectionSettings.sidebarCollectionsSectionVisible = root.sidebarCollectionsSectionVisible
+        }
+    }
+
     // Keep control/icon foreground colors aligned with the active app theme.
     // Qt Quick Controls icons follow control text/palette roles by default.
+    palette.window: themeManager.backgroundColor
+    palette.base: themeManager.surfaceColor
+    palette.alternateBase: Qt.rgba(themeManager.surfaceColor.r,
+                                   themeManager.surfaceColor.g,
+                                   themeManager.surfaceColor.b,
+                                   themeManager.darkMode ? 0.86 : 0.94)
+    palette.button: Qt.rgba(themeManager.surfaceColor.r,
+                            themeManager.surfaceColor.g,
+                            themeManager.surfaceColor.b,
+                            themeManager.darkMode ? 0.92 : 0.98)
+    palette.mid: themeManager.borderColor
+    palette.light: Qt.lighter(themeManager.surfaceColor, themeManager.darkMode ? 108 : 104)
+    palette.dark: Qt.darker(themeManager.backgroundColor, themeManager.darkMode ? 128 : 108)
+    palette.highlight: themeManager.primaryColor
+    palette.highlightedText: themeManager.textColor
+    palette.placeholderText: themeManager.textMutedColor
     palette.windowText: themeManager.textColor
     palette.text: themeManager.textColor
     palette.buttonText: themeManager.textColor
@@ -357,6 +395,28 @@ Kirigami.ApplicationWindow {
 
     function seekRelative(deltaMs) {
         playbackController.seekRelative(deltaMs)
+    }
+
+    function clearSearchFieldFocusAt(point) {
+        if (!point || !mainPage) {
+            return
+        }
+        if (!root.isCompactSkin && headerBar && headerBar.searchFieldHasActiveFocus && headerBar.searchFieldHasActiveFocus()) {
+            if (!headerBar.searchFieldContainsPoint(point, mainPage)) {
+                headerBar.clearSearchFieldFocus()
+                mainPage.forceActiveFocus(Qt.MouseFocusReason)
+            }
+            return
+        }
+        if (root.isCompactSkin
+                && compactSkinLoader.item
+                && compactSkinLoader.item.searchFieldHasActiveFocus
+                && compactSkinLoader.item.searchFieldHasActiveFocus()) {
+            if (!compactSkinLoader.item.searchFieldContainsPoint(point, mainPage)) {
+                compactSkinLoader.item.clearSearchFieldFocus()
+                mainPage.forceActiveFocus(Qt.MouseFocusReason)
+            }
+        }
     }
 
     function toggleCollectionsFallbackPanel() {
@@ -738,6 +798,9 @@ Kirigami.ApplicationWindow {
         const playlistId = Number(selectedPlaylistProfileId)
         const snapshot = trackModel.exportTracksSnapshot()
         const currentIndex = trackModel.currentIndex
+        const persistedSnapshot = playlistTable && playlistTable.exportSnapshotForPersistence
+                ? playlistTable.exportSnapshotForPersistence(snapshot, currentIndex)
+                : { "tracks": snapshot, "currentIndex": currentIndex }
 
         const payload = playlistProfilesManager.loadPlaylist(playlistId)
         const loadError = playlistProfilesManager.lastError && playlistProfilesManager.lastError.length > 0
@@ -758,8 +821,8 @@ Kirigami.ApplicationWindow {
         const updated = playlistProfilesManager.updatePlaylist(
                     playlistId,
                     playlistName,
-                    snapshot,
-                    currentIndex)
+                    persistedSnapshot.tracks,
+                    persistedSnapshot.currentIndex)
         if (!updated && playlistProfilesManager.lastError && playlistProfilesManager.lastError.length > 0) {
             if (showErrorDialog === true) {
                 exportStatusDialog.title = root.tr("playlists.errorTitle")
@@ -1021,12 +1084,26 @@ Kirigami.ApplicationWindow {
 
     function enterFullscreenMode() {
         fullscreenOverlayVisible = true
-        root.visibility = Window.FullScreen
+        root.showFullScreen()
+        Qt.callLater(function() {
+            root.raise()
+            root.requestActivate()
+        })
     }
 
     function exitFullscreenMode() {
-        root.visibility = Window.Windowed
         fullscreenOverlayVisible = true
+        root.showNormal()
+        Qt.callLater(function() {
+            if (root.fullscreenMode) {
+                return
+            }
+            root.raise()
+            root.requestActivate()
+            if (mainPage) {
+                mainPage.forceActiveFocus()
+            }
+        })
     }
 
     function cycleFullscreenMode() {
@@ -1786,6 +1863,16 @@ Kirigami.ApplicationWindow {
     onVisibilityChanged: {
         if (!fullscreenMode) {
             fullscreenOverlayVisible = true
+            Qt.callLater(function() {
+                if (root.fullscreenMode) {
+                    return
+                }
+                root.raise()
+                root.requestActivate()
+                if (mainPage) {
+                    mainPage.forceActiveFocus()
+                }
+            })
         }
     }
 
@@ -1797,6 +1884,8 @@ Kirigami.ApplicationWindow {
     }
 
     Component.onCompleted: {
+        root.sidebarPlaylistsSectionVisible = sidebarSectionSettings.sidebarPlaylistsSectionVisible
+        root.sidebarCollectionsSectionVisible = sidebarSectionSettings.sidebarCollectionsSectionVisible
         loadPersistedContextProgress()
         pruneContextProgressCaches()
         refreshLibraryDynamicMenuData()
@@ -2650,7 +2739,16 @@ Kirigami.ApplicationWindow {
         id: mainPage
         title: ""
         padding: 0
-        visible: !root.fullscreenMode
+        enabled: !root.fullscreenMode
+
+        TapHandler {
+            acceptedButtons: Qt.AllButtons
+            gesturePolicy: TapHandler.DragThreshold
+            grabPermissions: PointerHandler.TakeOverForbidden
+            onTapped: function(eventPoint, button) {
+                root.clearSearchFieldFocusAt(eventPoint.position)
+            }
+        }
         
         // Remove default page header
         globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
@@ -2800,25 +2898,47 @@ Kirigami.ApplicationWindow {
                 Layout.fillHeight: true
                 spacing: 0
 
-                CollectionsSidebar {
-                    id: collectionsSidebar
+                Loader {
+                    id: collectionsSidebarLoader
                     Layout.fillHeight: true
                     Layout.preferredWidth: root.collectionsSidebarPreferredWidth
                     Layout.minimumWidth: 188
                     Layout.maximumWidth: 280
-                    visible: root.showCollectionsSidebar
-                    selectedCollectionId: root.selectedCollectionId
-                    collectionModeActive: root.collectionModeActive
-                    selectedPlaylistProfileId: root.selectedPlaylistProfileId
-                    onPlaylistRequested: root.activateCurrentPlaylistView()
-                    onNewPlaylistRequested: root.cmdLibraryAddPlaylist()
-                    onPlaylistProfileRequested: function(playlistId, playlistName) {
-                        root.applyPlaylistProfile(playlistId, playlistName)
+                    active: root.showCollectionsSidebar
+                    visible: active
+                    source: "components/CollectionsSidebar.qml"
+                    onLoaded: {
+                        if (!item) {
+                            return
+                        }
+                        item.playlistsSectionVisible = Qt.binding(function() {
+                            return root.sidebarPlaylistsSectionVisible
+                        })
+                        item.collectionsSectionVisible = Qt.binding(function() {
+                            return root.sidebarCollectionsSectionVisible
+                        })
+                        item.selectedCollectionId = Qt.binding(function() {
+                            return root.selectedCollectionId
+                        })
+                        item.collectionModeActive = Qt.binding(function() {
+                            return root.collectionModeActive
+                        })
+                        item.selectedPlaylistProfileId = Qt.binding(function() {
+                            return root.selectedPlaylistProfileId
+                        })
                     }
-                    onCollectionRequested: function(collectionId, collectionName) {
-                        root.applySmartCollection(collectionId, collectionName)
+                    Connections {
+                        target: collectionsSidebarLoader.item
+                        function onPlaylistRequested() { root.activateCurrentPlaylistView() }
+                        function onNewPlaylistRequested() { root.cmdLibraryAddPlaylist() }
+                        function onPlaylistProfileRequested(playlistId, playlistName) {
+                            root.applyPlaylistProfile(playlistId, playlistName)
+                        }
+                        function onCollectionRequested(collectionId, collectionName) {
+                            root.applySmartCollection(collectionId, collectionName)
+                        }
+                        function onCreateRequested() { smartCollectionDialog.openForCreate() }
                     }
-                    onCreateRequested: smartCollectionDialog.openForCreate()
                 }
 
                 PlaylistTable {
@@ -2852,18 +2972,37 @@ Kirigami.ApplicationWindow {
                     }
                 }
 
-                InfoSidebar {
+                Loader {
                     Layout.fillHeight: true
                     Layout.preferredWidth: root.infoSidebarPreferredWidth
                     Layout.minimumWidth: 160
                     Layout.maximumWidth: 300
-                    visible: root.showInfoSidebar
-                    format: trackModel.currentFormat
-                    bitrate: trackModel.currentBitrate
-                    sampleRate: trackModel.currentSampleRate
-                    bitDepth: trackModel.currentBitDepth
-                    bpm: trackModel.currentBpm
-                    albumArt: trackModel.currentAlbumArt
+                    active: root.showInfoSidebar
+                    visible: active
+                    source: "components/InfoSidebar.qml"
+                    onLoaded: {
+                        if (!item) {
+                            return
+                        }
+                        item.format = Qt.binding(function() {
+                            return trackModel.currentFormat
+                        })
+                        item.bitrate = Qt.binding(function() {
+                            return trackModel.currentBitrate
+                        })
+                        item.sampleRate = Qt.binding(function() {
+                            return trackModel.currentSampleRate
+                        })
+                        item.bitDepth = Qt.binding(function() {
+                            return trackModel.currentBitDepth
+                        })
+                        item.bpm = Qt.binding(function() {
+                            return trackModel.currentBpm
+                        })
+                        item.albumArt = Qt.binding(function() {
+                            return trackModel.currentAlbumArt
+                        })
+                    }
                 }
             }
 
@@ -2952,6 +3091,8 @@ Kirigami.ApplicationWindow {
 
         CollectionsSidebar {
             anchors.fill: parent
+            playlistsSectionVisible: root.sidebarPlaylistsSectionVisible
+            collectionsSectionVisible: root.sidebarCollectionsSectionVisible
             selectedCollectionId: root.selectedCollectionId
             collectionModeActive: root.collectionModeActive
             selectedPlaylistProfileId: root.selectedPlaylistProfileId
@@ -3017,20 +3158,34 @@ Kirigami.ApplicationWindow {
             color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.96)
         }
 
-        WaveformView {
-            id: fullscreenWaveformView
-            anchors.fill: parent
+        Loader {
+            id: fullscreenWaveformLoader
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
             anchors.leftMargin: Kirigami.Units.smallSpacing
             anchors.rightMargin: Kirigami.Units.smallSpacing
             anchors.topMargin: root.fullscreenOverlayVisible ? Kirigami.Units.gridUnit * 3 : Kirigami.Units.smallSpacing
             anchors.bottomMargin: root.fullscreenOverlayVisible ? Kirigami.Units.gridUnit * 6 : Kirigami.Units.smallSpacing
-            showOverlays: root.fullscreenOverlayVisible
+            active: root.fullscreenMode
+            visible: active
+            source: "WaveformView.qml"
+            onLoaded: {
+                if (!item) {
+                    return
+                }
+                item.showOverlays = Qt.binding(function() {
+                    return root.fullscreenOverlayVisible
+                })
+            }
         }
 
         Rectangle {
-            anchors.horizontalCenter: fullscreenWaveformView.horizontalCenter
-            anchors.top: fullscreenWaveformView.top
-            anchors.topMargin: Kirigami.Units.smallSpacing
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: (root.fullscreenOverlayVisible ? Kirigami.Units.gridUnit * 3 : Kirigami.Units.smallSpacing)
+                               + Kirigami.Units.smallSpacing
             visible: root.waveformKeyboardBadgeVisible
                      && root.waveformKeyboardBadgeText.length > 0
             z: 6
@@ -3099,6 +3254,15 @@ Kirigami.ApplicationWindow {
                       + " | fts: " + performanceProfiler.searchFtsQueriesPerSec.toFixed(1)
                       + " | like: " + performanceProfiler.searchLikeQueriesPerSec.toFixed(1)
                       + " | fail: " + performanceProfiler.searchFailuresPerSec.toFixed(1)
+                      + "\nMemory WS: " + (performanceProfiler.workingSetBytes / (1024 * 1024)).toFixed(1)
+                      + " MiB | private: " + (performanceProfiler.privateBytes / (1024 * 1024)).toFixed(1)
+                      + " MiB"
+                      + "\nMemory commit: " + (performanceProfiler.commitBytes / (1024 * 1024)).toFixed(1)
+                      + " MiB | peak WS: " + (performanceProfiler.peakWorkingSetBytes / (1024 * 1024)).toFixed(1) + " MiB"
+                      + "\nLast checkpoint: "
+                      + (performanceProfiler.lastMemoryCheckpointLabel.length > 0
+                         ? performanceProfiler.lastMemoryCheckpointLabel
+                         : "n/a")
                       + "\nLast export: " + (performanceProfiler.lastExportPath.length > 0
                                              ? performanceProfiler.lastExportPath
                                              : "n/a")
@@ -3234,7 +3398,7 @@ Kirigami.ApplicationWindow {
                 anchors.margins: Kirigami.Units.mediumSpacing
                 spacing: Kirigami.Units.mediumSpacing
 
-                Slider {
+                AccentSlider {
                     id: fullscreenSeekSlider
                     Layout.fillWidth: true
                     from: 0
@@ -3296,9 +3460,15 @@ Kirigami.ApplicationWindow {
         }
     }
     
-    // Tag editor dialog
     TagEditorDialog {
         id: tagEditorDialog
+    }
+
+    Connections {
+        target: tagEditorDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.tag_editor.closed")
+        }
     }
 
     BulkTagEditorDialog {
@@ -3314,18 +3484,46 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    Connections {
+        target: bulkTagEditorDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.bulk_tag_editor.closed")
+        }
+    }
+
     AboutDialog {
         id: aboutDialog
+    }
+
+    Connections {
+        target: aboutDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.about.closed")
+        }
     }
 
     KeyboardShortcutsDialog {
         id: shortcutsDialog
         shortcutsModel: root.shortcutReferenceModel
     }
-    
-    // Settings dialog
+
+    Connections {
+        target: shortcutsDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.shortcuts.closed")
+        }
+    }
+
     SettingsDialog {
         id: settingsDialog
+        sidebarSectionController: root
+    }
+
+    Connections {
+        target: settingsDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.settings.closed")
+        }
     }
 
     EqualizerDialog {
@@ -3344,8 +3542,22 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    Connections {
+        target: equalizerDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.equalizer.closed")
+        }
+    }
+
     SmartCollectionDialog {
         id: smartCollectionDialog
+    }
+
+    Connections {
+        target: smartCollectionDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.smart_collection.closed")
+        }
     }
 
     MessageDialog {

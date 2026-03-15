@@ -5,8 +5,13 @@
 #include <QIcon>
 #include <QWindow>
 #include <QQuickWindow>
+#include <QCommandLineOption>
+#include <QCommandLineParser>
+#include <QFontDatabase>
 #include <QDebug>
+#include <QTimer>
 #include <QtGlobal>
+#include <string>
 #include <gst/gst.h>
 
 #include "AudioEngine.h"
@@ -28,6 +33,11 @@
 #include "library/DatabaseManager.h"
 #include "library/MigrationManager.h"
 #include "library/SmartCollectionsEngine.h"
+
+#ifdef Q_OS_WIN
+#include <shobjidl.h>
+#include "WindowsMediaControlsService.h"
+#endif
 
 namespace {
 bool isKdeSession()
@@ -60,6 +70,24 @@ void applyNonKdeIconPaletteFix(QApplication &app)
     palette.setColor(QPalette::Text, windowTextColor);
     app.setPalette(palette);
 }
+
+#ifdef Q_OS_WIN
+QString windowsAppUserModelId()
+{
+    // Keep this stable so SMTC/taskbar/session identity remains consistent
+    // across runs and future installer shortcut metadata.
+    return QStringLiteral("WaveFlux.Desktop");
+}
+
+void applyWindowsAppIdentity()
+{
+    const std::wstring wideAppId = windowsAppUserModelId().toStdWString();
+    const HRESULT hr = SetCurrentProcessExplicitAppUserModelID(wideAppId.c_str());
+    if (FAILED(hr)) {
+        qWarning() << "Failed to set explicit AppUserModelID:" << Qt::hex << hr;
+    }
+}
+#endif
 } // namespace
 
 int main(int argc, char *argv[])
@@ -72,18 +100,40 @@ int main(int argc, char *argv[])
         QApplication app(argc, argv);
         app.setQuitOnLastWindowClosed(true);
         app.setApplicationName("WaveFlux");
-        app.setApplicationVersion("1.0.0");
+        app.setApplicationDisplayName("WaveFlux");
+        app.setApplicationVersion("1.1.0");
         app.setOrganizationName("WaveFlux");
         app.setOrganizationDomain("waveflux.app");
-        app.setWindowIcon(QIcon(":/WaveFlux/resources/icons/waveflux.svg"));
+        app.setWindowIcon(QIcon(QStringLiteral(":/WaveFlux/resources/icons/waveflux.ico")));
 
-        // Force KDE style only on KDE sessions. Non-KDE sessions use Fusion
-        // to avoid mismatched desktop/icon theme assumptions.
+        QCommandLineParser parser;
+        parser.setApplicationDescription(QStringLiteral("WaveFlux audio player"));
+        parser.addHelpOption();
+        parser.addVersionOption();
+        const QCommandLineOption reversePlaybackOption(
+            {QStringLiteral("enable-reverse-playback"), QStringLiteral("reverse-playback")},
+            QStringLiteral("Enable experimental reverse playback for this session."));
+        parser.addOption(reversePlaybackOption);
+        parser.process(app);
+        const bool reversePlaybackEnabledByCli = parser.isSet(reversePlaybackOption);
+
+#ifdef Q_OS_LINUX
+        // Keep the Linux/KDE-specific style behavior local to Linux. On
+        // Windows we want Qt/Kirigami to use the platform defaults.
         QQuickStyle::setStyle(isKdeSession() ? "org.kde.desktop" : "Fusion");
         applyNonKdeIconPaletteFix(app);
+#endif
+#ifdef Q_OS_WIN
+        // The UI customizes Qt Quick Controls extensively, so avoid the native
+        // Windows style backend and keep the system font for a more predictable
+        // appearance.
+        applyWindowsAppIdentity();
+        QQuickStyle::setStyle("Basic");
+        app.setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
+#endif
 
         // Register QML types
-        qmlRegisterType<WaveformItem>("WaveFlux", 1, 0, "WaveformItem");
+        qmlRegisterType<WaveformItem>("WaveFlux", 1, 1, "WaveformItem");
 
         // Create backend instances
         AudioEngine audioEngine;
@@ -104,6 +154,9 @@ int main(int argc, char *argv[])
         TrayManager trayManager;
         XdgPortalFilePicker xdgPortalFilePicker;
         PerformanceProfiler performanceProfiler;
+#ifdef Q_OS_WIN
+        WindowsMediaControlsService windowsMediaControlsService(&audioEngine, &trackModel, &playbackController);
+#endif
         PerformanceProfiler::setInstance(&performanceProfiler);
         performanceProfiler.setPlaylistTrackCount(trackModel.rowCount());
         sessionManager.initialize(&trackModel, &audioEngine, &playbackController);
@@ -123,8 +176,11 @@ int main(int argc, char *argv[])
             playbackController.setRepeatableShuffle(repeatable);
         };
         applyShuffleSettings();
+        if (!reversePlaybackEnabledByCli && appSettingsManager.reversePlayback()) {
+            appSettingsManager.setReversePlayback(false);
+        }
         audioEngine.setSpectrumEnabled(appSettingsManager.dynamicSpectrum());
-        audioEngine.setReversePlayback(appSettingsManager.reversePlayback());
+        audioEngine.setReversePlayback(reversePlaybackEnabledByCli);
         audioEngine.setAudioQualityProfile(appSettingsManager.audioQualityProfile());
 
         if (!equalizerPresetManager.replaceUserPresets(appSettingsManager.equalizerUserPresets())) {
@@ -233,12 +289,6 @@ int main(int argc, char *argv[])
                              audioEngine.setSpectrumEnabled(appSettingsManager.dynamicSpectrum());
                          });
         QObject::connect(&appSettingsManager,
-                         &AppSettingsManager::reversePlaybackChanged,
-                         &audioEngine,
-                         [&appSettingsManager, &audioEngine]() {
-                             audioEngine.setReversePlayback(appSettingsManager.reversePlayback());
-                         });
-        QObject::connect(&appSettingsManager,
                          &AppSettingsManager::audioQualityProfileChanged,
                          &audioEngine,
                          [&appSettingsManager, &audioEngine]() {
@@ -317,12 +367,60 @@ int main(int argc, char *argv[])
         QWindow *mainWindow = nullptr;
         if (!engine.rootObjects().isEmpty()) {
             mainWindow = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+            if (mainWindow) {
+                mainWindow->setIcon(app.windowIcon());
+            }
         }
         xdgPortalFilePicker.setMainWindow(mainWindow);
         performanceProfiler.attachWindow(qobject_cast<QQuickWindow *>(mainWindow));
         trayManager.initialize(mainWindow, &audioEngine, &playbackController, &appSettingsManager);
+#ifdef Q_OS_WIN
+        windowsMediaControlsService.setMainWindow(mainWindow);
+#endif
+
+        QTimer playlistMemoryCheckpointTimer;
+        playlistMemoryCheckpointTimer.setSingleShot(true);
+        playlistMemoryCheckpointTimer.setInterval(450);
+        QObject::connect(&playlistMemoryCheckpointTimer, &QTimer::timeout,
+                         &performanceProfiler, [&performanceProfiler]() {
+                             performanceProfiler.captureMemoryCheckpoint(
+                                 QStringLiteral("playlist.count_stable"));
+                         });
+        QObject::connect(&trackModel, &TrackModel::countChanged,
+                         &playlistMemoryCheckpointTimer, qOverload<>(&QTimer::start));
+
+        QTimer selectionMemoryCheckpointTimer;
+        selectionMemoryCheckpointTimer.setSingleShot(true);
+        selectionMemoryCheckpointTimer.setInterval(250);
+        QObject::connect(&selectionMemoryCheckpointTimer, &QTimer::timeout,
+                         &performanceProfiler, [&performanceProfiler]() {
+                             performanceProfiler.captureMemoryCheckpoint(
+                                 QStringLiteral("playlist.selection_changed"));
+                         });
+        QObject::connect(&trackModel, &TrackModel::currentIndexChanged,
+                         &selectionMemoryCheckpointTimer, qOverload<>(&QTimer::start));
+
+        QObject::connect(&audioEngine, &AudioEngine::currentFileChanged,
+                         &performanceProfiler, [&performanceProfiler](const QString &filePath) {
+                             performanceProfiler.captureMemoryCheckpoint(
+                                 filePath.isEmpty()
+                                     ? QStringLiteral("audio.current_file_cleared")
+                                     : QStringLiteral("audio.current_file_changed"));
+                         });
+        QObject::connect(&waveformProvider, &WaveformProvider::peaksReady,
+                         &performanceProfiler, [&performanceProfiler]() {
+                             performanceProfiler.captureMemoryCheckpoint(
+                                 QStringLiteral("waveform.peaks_ready"));
+                         });
+
+        QTimer::singleShot(0, &performanceProfiler, [&performanceProfiler]() {
+            performanceProfiler.captureMemoryCheckpoint(QStringLiteral("app.startup_ready"));
+        });
 
         sessionManager.restoreSession();
+        QTimer::singleShot(300, &performanceProfiler, [&performanceProfiler]() {
+            performanceProfiler.captureMemoryCheckpoint(QStringLiteral("session.restore_complete"));
+        });
         QObject::connect(&app, &QCoreApplication::aboutToQuit,
                          &playbackController, &PlaybackController::forceFlushPlaybackStats);
         QObject::connect(&app, &QCoreApplication::aboutToQuit,

@@ -920,7 +920,7 @@ EqualizerPresetManager::ExportResult EqualizerPresetManager::exportPresetsAsBund
     QJsonObject root;
     root.insert(QStringLiteral("schema"), kBundleSchema);
     root.insert(QStringLiteral("app"), QStringLiteral("WaveFlux"));
-    root.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
+    root.insert(QStringLiteral("version"), QStringLiteral("1.1.0"));
     root.insert(QStringLiteral("exportedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
     root.insert(QStringLiteral("bandCount"), kBandCount);
 

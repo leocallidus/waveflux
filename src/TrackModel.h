@@ -3,8 +3,11 @@
 
 #include <QAbstractListModel>
 #include <QFutureWatcher>
+#include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QThreadPool>
+#include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
 #include <memory>
@@ -32,7 +35,6 @@ struct Track {
     int bitDepth = 0;
     int bpm = 0;
     QString albumArt;
-    QString searchTextLower;
     bool cueSegment = false;
     qint64 cueStartMs = 0;
     qint64 cueEndMs = -1;
@@ -200,6 +202,7 @@ public:
     Q_INVOKABLE void sortByArtistDesc();
     Q_INVOKABLE void sortByAlbumAsc();
     Q_INVOKABLE void sortByAlbumDesc();
+    Q_INVOKABLE void restoreOrder(const QVariantList &filePaths);
     Q_INVOKABLE void shuffleOrder();
     Q_INVOKABLE QVariantList exportTracksSnapshot() const;
     Q_INVOKABLE void importTracksSnapshot(const QVariantList &snapshot, int requestedCurrentIndex = -1);
@@ -256,6 +259,7 @@ private:
         int bitDepth = 0;
         int bpm = 0;
         QString albumArt;
+        bool albumArtChecked = false;
     };
 
     static ParsedMetadata readMetadataForFile(const QString &filePath, bool includeAlbumArt);
@@ -300,9 +304,17 @@ private:
     void onAsyncSearchFinished();
     void notifySearchResultsUpdated();
     void applyParsedMetadata(const ParsedMetadata &metadata);
+    void scheduleMetadataRead(const QString &filePath, bool includeAlbumArt);
+    void pumpMetadataReadQueue();
     static QString buildSearchTextLower(const Track &track);
-    void refreshSearchText(Track &track);
+    void internTrackStrings(Track &track);
+    QString internString(const QString &value);
+    void clearSearchTextCache();
+    const QString &searchTextLowerAt(int index) const;
     void invalidateSearchCache();
+    void resetTransientSearchState();
+    void resetTransientMetadataState();
+    bool shouldMaterializeAsyncSearchText(int fieldMask, int quickFilterMask) const;
     void ensureSearchCache(const QString &normalizedQuery,
                            int fieldMask,
                            int quickFilterMask) const;
@@ -317,6 +329,8 @@ private:
                               const QVector<int> &ingestTrackOffsets,
                               const QVector<int> &metadataTrackOffsets);
     void loadMetadata(int index, bool includeAlbumArt = false, bool forceReload = false);
+    void trimAlbumArtToCurrentTrack(bool emitDataChangedForRows = false);
+    void syncCurrentAlbumArtCache();
     void updateProfilerPlaylistCount();
     
     QVector<Track> m_tracks;
@@ -348,6 +362,16 @@ private:
     std::unique_ptr<LibraryRepository> m_libraryRepository;
     std::unique_ptr<SearchRepository> m_searchRepository;
     bool m_collectionViewActive = false;
+    QSet<QString> m_stringPool;
+    QThreadPool m_metadataThreadPool;
+    QHash<QString, bool> m_pendingMetadataReads;
+    QHash<QString, bool> m_inFlightMetadataReads;
+    quint64 m_metadataReadGeneration = 0;
+    QString m_currentAlbumArt;
+    mutable QVector<QString> m_searchTextLowerCache;
+    mutable QVector<quint8> m_searchTextLowerReady;
+
+    static constexpr int kExpandedAsyncSearchTextTrackBudget = 1500;
 };
 
 #endif // TRACKMODEL_H

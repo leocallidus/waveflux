@@ -2,9 +2,14 @@
 #define MPRISSERVICE_H
 
 #include <QObject>
+#include <QVariantMap>
+
+#if defined(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
 #include <QDBusConnection>
 #include <QDBusObjectPath>
-#include <QVariantMap>
+#else
+class QDBusObjectPath;
+#endif
 
 class AudioEngine;
 class PlaybackController;
@@ -70,6 +75,7 @@ private:
     TrackModel *m_trackModel = nullptr;
     PlaybackController *m_playbackController = nullptr;
 
+#if defined(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
     QDBusConnection m_connection;
     bool m_registered = false;
     QString m_serviceName = QStringLiteral("org.mpris.MediaPlayer2.waveflux");
@@ -78,6 +84,7 @@ private:
     MprisRootAdaptor *m_rootAdaptor = nullptr;
     MprisPlayerAdaptor *m_playerAdaptor = nullptr;
     qint64 m_lastTrackChangeWallClockMs = 0;
+#endif
 };
 
 #endif // MPRISSERVICE_H

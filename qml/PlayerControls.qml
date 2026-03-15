@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "components"
 import "IconResolver.js" as IconResolver
 
 Item {
@@ -98,7 +99,7 @@ Item {
                         opacity: 0.8
                     }
 
-                    Slider {
+                    AccentSlider {
                         id: rateSlider
                         from: 0.25
                         to: 2.0
@@ -137,7 +138,7 @@ Item {
                         color: audioEngine.pitchSemitones !== 0 ? themeManager.primaryColor : themeManager.textColor
                     }
 
-                    Slider {
+                    AccentSlider {
                         id: pitchSlider
                         from: -6
                         to: 6
@@ -212,7 +213,7 @@ Item {
                         }
                     }
 
-                    Slider {
+                    AccentSlider {
                         id: volumeSlider
                         from: 0
                         to: 1

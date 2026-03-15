@@ -49,7 +49,7 @@ private:
     void updatePlayPauseActionText();
     void toggleWindowVisibility();
     void showMainWindow();
-    QString tr(const QString &key) const;
+    QString translateKey(const QString &key) const;
 
     QPointer<QWindow> m_mainWindow;
     AudioEngine *m_audioEngine = nullptr;

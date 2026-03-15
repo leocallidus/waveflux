@@ -221,7 +221,7 @@ Rectangle {
                 ToolTip.visible: hovered
             }
 
-            Slider {
+            AccentSlider {
                 id: volumeSlider
                 from: 0
                 to: 1
@@ -383,7 +383,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignRight
             }
 
-            Slider {
+            AccentSlider {
                 id: speedSlider
                 from: 0.25
                 to: 2.0
@@ -446,7 +446,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignRight
             }
 
-            Slider {
+            AccentSlider {
                 id: pitchSlider
                 from: -6
                 to: 6

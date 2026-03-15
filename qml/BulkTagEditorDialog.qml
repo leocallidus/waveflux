@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "components"
 
 Dialog {
     id: root
@@ -98,7 +99,7 @@ Dialog {
             rowSpacing: Kirigami.Units.smallSpacing
             Layout.fillWidth: true
 
-            CheckBox {
+            AccentCheckBox {
                 id: titleCheck
             }
             Label { text: root.tr("tagEditor.titleLabel") }
@@ -109,7 +110,7 @@ Dialog {
                 Layout.minimumWidth: 120
             }
 
-            CheckBox {
+            AccentCheckBox {
                 id: artistCheck
             }
             Label { text: root.tr("tagEditor.artist") }
@@ -120,7 +121,7 @@ Dialog {
                 Layout.minimumWidth: 120
             }
 
-            CheckBox {
+            AccentCheckBox {
                 id: albumCheck
             }
             Label { text: root.tr("tagEditor.album") }
@@ -131,7 +132,7 @@ Dialog {
                 Layout.minimumWidth: 120
             }
 
-            CheckBox {
+            AccentCheckBox {
                 id: genreCheck
             }
             Label { text: root.tr("tagEditor.genre") }
@@ -142,7 +143,7 @@ Dialog {
                 Layout.minimumWidth: 120
             }
 
-            CheckBox {
+            AccentCheckBox {
                 id: yearCheck
             }
             Label { text: root.tr("tagEditor.year") }
@@ -154,7 +155,7 @@ Dialog {
                 editable: true
             }
 
-            CheckBox {
+            AccentCheckBox {
                 id: trackCheck
             }
             Label { text: root.tr("tagEditor.trackNumber") }

@@ -2,9 +2,11 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QMutexLocker>
 #include <QSaveFile>
@@ -13,8 +15,14 @@
 #include <QSysInfo>
 #include <algorithm>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <psapi.h>
+#endif
+
 namespace {
 constexpr int kPublishIntervalMs = 1000;
+constexpr qsizetype kMaxMemoryCheckpoints = 256;
 
 QString csvEscape(const QString &value)
 {
@@ -50,6 +58,23 @@ QString graphicsApiToString(QSGRendererInterface::GraphicsApi api)
     }
     return QStringLiteral("Unknown");
 }
+
+qint64 parseStatusKilobytes(const QByteArray &line)
+{
+    const int colonIndex = line.indexOf(':');
+    if (colonIndex < 0) {
+        return 0;
+    }
+
+    QList<QByteArray> parts = line.mid(colonIndex + 1).simplified().split(' ');
+    if (parts.isEmpty()) {
+        return 0;
+    }
+
+    bool ok = false;
+    const qint64 kilobytes = parts.constFirst().toLongLong(&ok);
+    return ok ? (kilobytes * 1024) : 0;
+}
 }
 
 PerformanceProfiler *PerformanceProfiler::s_instance = nullptr;
@@ -67,6 +92,8 @@ PerformanceProfiler::PerformanceProfiler(QObject *parent)
         m_enabledAtomic.store(true, std::memory_order_relaxed);
         m_overlayVisible = true;
         m_publishTimer.start();
+        reset();
+        captureMemoryCheckpoint(QStringLiteral("profiler.enabled"));
     }
 }
 
@@ -112,6 +139,7 @@ void PerformanceProfiler::setEnabled(bool enabled)
         if (enabled) {
             reset();
             m_publishTimer.start();
+            captureMemoryCheckpoint(QStringLiteral("profiler.enabled"));
         } else {
             m_publishTimer.stop();
             reset();
@@ -308,6 +336,36 @@ double PerformanceProfiler::searchFailuresPerSec() const
     return m_searchFailuresPerSec;
 }
 
+qint64 PerformanceProfiler::workingSetBytes() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_memorySnapshot.workingSetBytes;
+}
+
+qint64 PerformanceProfiler::peakWorkingSetBytes() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_memorySnapshot.peakWorkingSetBytes;
+}
+
+qint64 PerformanceProfiler::privateBytes() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_memorySnapshot.privateBytes;
+}
+
+qint64 PerformanceProfiler::commitBytes() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_memorySnapshot.commitBytes;
+}
+
+QString PerformanceProfiler::lastMemoryCheckpointLabel() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_lastMemoryCheckpointLabel;
+}
+
 QString PerformanceProfiler::lastExportPath() const
 {
     QMutexLocker lock(&m_mutex);
@@ -424,6 +482,7 @@ void PerformanceProfiler::recordSearchQuery(qint64 durationNs,
 
 void PerformanceProfiler::reset()
 {
+    const MemorySnapshot memorySnapshot = sampleProcessMemory();
     {
         QMutexLocker lock(&m_mutex);
 
@@ -464,9 +523,51 @@ void PerformanceProfiler::reset()
         m_searchFtsQueriesPerSec = 0.0;
         m_searchLikeQueriesPerSec = 0.0;
         m_searchFailuresPerSec = 0.0;
+        m_memorySnapshot = memorySnapshot;
+        m_memoryCheckpoints.clear();
+        m_lastMemoryCheckpointLabel.clear();
 
         m_frameClock.invalidate();
     }
+
+    emit metricsChanged();
+}
+
+void PerformanceProfiler::captureMemoryCheckpoint(const QString &label)
+{
+    if (!m_enabledAtomic.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    const QString trimmedLabel = label.trimmed().isEmpty()
+        ? QStringLiteral("manual")
+        : label.trimmed();
+    const QString timestampUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    const MemorySnapshot memorySnapshot = sampleProcessMemory();
+    int playlistTrackCount = 0;
+    bool fullscreenWaveformActive = false;
+
+    {
+        QMutexLocker lock(&m_mutex);
+        if (!m_enabled) {
+            return;
+        }
+
+        m_memorySnapshot = memorySnapshot;
+        appendMemoryCheckpointLocked(trimmedLabel, timestampUtc, memorySnapshot);
+        playlistTrackCount = m_playlistTrackCount;
+        fullscreenWaveformActive = m_fullscreenWaveformActive;
+    }
+
+    qInfo().noquote()
+        << QStringLiteral("[MemoryProfile] label=%1 workingSetMiB=%2 privateMiB=%3 commitMiB=%4 peakWorkingSetMiB=%5 playlistTracks=%6 fullscreenWaveform=%7")
+              .arg(trimmedLabel,
+                   formatMemoryMiB(memorySnapshot.workingSetBytes),
+                   formatMemoryMiB(memorySnapshot.privateBytes),
+                   formatMemoryMiB(memorySnapshot.commitBytes),
+                   formatMemoryMiB(memorySnapshot.peakWorkingSetBytes))
+              .arg(playlistTrackCount)
+              .arg(fullscreenWaveformActive ? QStringLiteral("yes") : QStringLiteral("no"));
 
     emit metricsChanged();
 }
@@ -504,6 +605,26 @@ QString PerformanceProfiler::exportSnapshotJson()
     QJsonObject snapshot;
     {
         QMutexLocker lock(&m_mutex);
+        QJsonObject memoryObject;
+        memoryObject.insert(QStringLiteral("working_set_bytes"), static_cast<double>(m_memorySnapshot.workingSetBytes));
+        memoryObject.insert(QStringLiteral("peak_working_set_bytes"), static_cast<double>(m_memorySnapshot.peakWorkingSetBytes));
+        memoryObject.insert(QStringLiteral("private_bytes"), static_cast<double>(m_memorySnapshot.privateBytes));
+        memoryObject.insert(QStringLiteral("commit_bytes"), static_cast<double>(m_memorySnapshot.commitBytes));
+
+        QJsonArray memoryCheckpoints;
+        for (const MemoryCheckpoint &checkpoint : m_memoryCheckpoints) {
+            QJsonObject checkpointObject;
+            checkpointObject.insert(QStringLiteral("label"), checkpoint.label);
+            checkpointObject.insert(QStringLiteral("timestamp_utc"), checkpoint.timestampUtc);
+            checkpointObject.insert(QStringLiteral("playlist_track_count"), checkpoint.playlistTrackCount);
+            checkpointObject.insert(QStringLiteral("fullscreen_waveform_active"), checkpoint.fullscreenWaveformActive);
+            checkpointObject.insert(QStringLiteral("working_set_bytes"), static_cast<double>(checkpoint.memory.workingSetBytes));
+            checkpointObject.insert(QStringLiteral("peak_working_set_bytes"), static_cast<double>(checkpoint.memory.peakWorkingSetBytes));
+            checkpointObject.insert(QStringLiteral("private_bytes"), static_cast<double>(checkpoint.memory.privateBytes));
+            checkpointObject.insert(QStringLiteral("commit_bytes"), static_cast<double>(checkpoint.memory.commitBytes));
+            memoryCheckpoints.append(checkpointObject);
+        }
+
         snapshot.insert(QStringLiteral("timestamp_utc"), timestampIso);
         snapshot.insert(QStringLiteral("application"), QCoreApplication::applicationName());
         snapshot.insert(QStringLiteral("app_version"), QCoreApplication::applicationVersion());
@@ -535,6 +656,10 @@ QString PerformanceProfiler::exportSnapshotJson()
         snapshot.insert(QStringLiteral("search_fts_queries_per_sec"), m_searchFtsQueriesPerSec);
         snapshot.insert(QStringLiteral("search_like_queries_per_sec"), m_searchLikeQueriesPerSec);
         snapshot.insert(QStringLiteral("search_failures_per_sec"), m_searchFailuresPerSec);
+        snapshot.insert(QStringLiteral("memory"), memoryObject);
+        snapshot.insert(QStringLiteral("memory_checkpoint_count"), static_cast<int>(m_memoryCheckpoints.size()));
+        snapshot.insert(QStringLiteral("last_memory_checkpoint_label"), m_lastMemoryCheckpointLabel);
+        snapshot.insert(QStringLiteral("memory_checkpoints"), memoryCheckpoints);
     }
 
     const QString outPath = QDir(outDirPath).filePath(QStringLiteral("snapshot_%1.json").arg(timestampFile));
@@ -618,6 +743,12 @@ QString PerformanceProfiler::exportSnapshotCsv()
             QString::number(m_searchFtsQueriesPerSec, 'f', 3),
             QString::number(m_searchLikeQueriesPerSec, 'f', 3),
             QString::number(m_searchFailuresPerSec, 'f', 3),
+            QString::number(m_memorySnapshot.workingSetBytes),
+            QString::number(m_memorySnapshot.peakWorkingSetBytes),
+            QString::number(m_memorySnapshot.privateBytes),
+            QString::number(m_memorySnapshot.commitBytes),
+            m_lastMemoryCheckpointLabel,
+            QString::number(m_memoryCheckpoints.size()),
         };
     }
 
@@ -653,6 +784,12 @@ QString PerformanceProfiler::exportSnapshotCsv()
         QStringLiteral("search_fts_queries_per_sec"),
         QStringLiteral("search_like_queries_per_sec"),
         QStringLiteral("search_failures_per_sec"),
+        QStringLiteral("working_set_bytes"),
+        QStringLiteral("peak_working_set_bytes"),
+        QStringLiteral("private_bytes"),
+        QStringLiteral("commit_bytes"),
+        QStringLiteral("last_memory_checkpoint_label"),
+        QStringLiteral("memory_checkpoint_count"),
     };
 
     QStringList escapedHeader;
@@ -756,6 +893,7 @@ void PerformanceProfiler::publishSnapshot()
     if (!m_enabledAtomic.load(std::memory_order_relaxed)) {
         return;
     }
+    const MemorySnapshot memorySnapshot = sampleProcessMemory();
     {
         QMutexLocker lock(&m_mutex);
         if (!m_enabled) {
@@ -796,6 +934,7 @@ void PerformanceProfiler::publishSnapshot()
         m_searchFtsQueriesPerSec = m_searchFtsQueries / seconds;
         m_searchLikeQueriesPerSec = m_searchLikeQueries / seconds;
         m_searchFailuresPerSec = m_searchFailures / seconds;
+        m_memorySnapshot = memorySnapshot;
         if (!m_searchQuerySamplesNs.isEmpty()) {
             std::sort(m_searchQuerySamplesNs.begin(), m_searchQuerySamplesNs.end());
             const qsizetype sampleCount = m_searchQuerySamplesNs.size();
@@ -840,6 +979,75 @@ QString PerformanceProfiler::profilingDirectoryPath() const
         base = QDir::home().filePath(QStringLiteral(".waveflux"));
     }
     return QDir(base).filePath(QStringLiteral("profiling"));
+}
+
+PerformanceProfiler::MemorySnapshot PerformanceProfiler::sampleProcessMemory()
+{
+    MemorySnapshot snapshot;
+
+#ifdef Q_OS_WIN
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+    if (GetProcessMemoryInfo(GetCurrentProcess(),
+                             reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&counters),
+                             sizeof(counters))) {
+        snapshot.workingSetBytes = static_cast<qint64>(counters.WorkingSetSize);
+        snapshot.peakWorkingSetBytes = static_cast<qint64>(counters.PeakWorkingSetSize);
+        snapshot.privateBytes = static_cast<qint64>(counters.PrivateUsage);
+        snapshot.commitBytes = static_cast<qint64>(counters.PagefileUsage);
+    }
+#elif defined(Q_OS_LINUX)
+    QFile statusFile(QStringLiteral("/proc/self/status"));
+    if (statusFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!statusFile.atEnd()) {
+            const QByteArray line = statusFile.readLine();
+            if (line.startsWith("VmRSS:")) {
+                snapshot.workingSetBytes = parseStatusKilobytes(line);
+            } else if (line.startsWith("VmHWM:")) {
+                snapshot.peakWorkingSetBytes = parseStatusKilobytes(line);
+            } else if (line.startsWith("VmData:")) {
+                snapshot.privateBytes = parseStatusKilobytes(line);
+            } else if (line.startsWith("VmSize:")) {
+                snapshot.commitBytes = parseStatusKilobytes(line);
+            }
+        }
+    }
+    if (snapshot.peakWorkingSetBytes < snapshot.workingSetBytes) {
+        snapshot.peakWorkingSetBytes = snapshot.workingSetBytes;
+    }
+    if (snapshot.privateBytes <= 0) {
+        snapshot.privateBytes = snapshot.workingSetBytes;
+    }
+    if (snapshot.commitBytes <= 0) {
+        snapshot.commitBytes = snapshot.privateBytes;
+    }
+#endif
+
+    return snapshot;
+}
+
+QString PerformanceProfiler::formatMemoryMiB(qint64 bytes)
+{
+    const double mib = static_cast<double>(bytes) / (1024.0 * 1024.0);
+    return QString::number(mib, 'f', 1);
+}
+
+void PerformanceProfiler::appendMemoryCheckpointLocked(const QString &label,
+                                                       const QString &timestampUtc,
+                                                       const MemorySnapshot &memorySnapshot)
+{
+    if (m_memoryCheckpoints.size() >= kMaxMemoryCheckpoints) {
+        m_memoryCheckpoints.remove(0, m_memoryCheckpoints.size() - kMaxMemoryCheckpoints + 1);
+    }
+
+    MemoryCheckpoint checkpoint;
+    checkpoint.label = label;
+    checkpoint.timestampUtc = timestampUtc;
+    checkpoint.playlistTrackCount = m_playlistTrackCount;
+    checkpoint.fullscreenWaveformActive = m_fullscreenWaveformActive;
+    checkpoint.memory = memorySnapshot;
+    m_memoryCheckpoints.append(checkpoint);
+    m_lastMemoryCheckpointLabel = label;
 }
 
 bool PerformanceProfiler::setLastExportResultLocked(const QString &path, const QString &error,

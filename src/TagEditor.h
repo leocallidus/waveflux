@@ -57,6 +57,8 @@ public:
     void setRemoveCover(bool removeCover);
     
     bool hasChanges() const { return m_hasChanges; }
+    Q_INVOKABLE bool supportsCoverEditing() const;
+    Q_INVOKABLE QString coverEditingUnsupportedMessage() const;
     
     Q_INVOKABLE void loadTags();
     Q_INVOKABLE bool saveTags();

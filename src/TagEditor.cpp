@@ -1,4 +1,5 @@
 #include "TagEditor.h"
+#include "TagLibPath.h"
 
 #include <QDebug>
 #include <QDir>
@@ -34,6 +35,21 @@ QString normalizeLocalPath(const QString &pathOrUrl)
         return {};
     }
 
+    if (trimmed.size() >= 3
+        && trimmed[1] == QLatin1Char(':')
+        && (trimmed[2] == QLatin1Char('/') || trimmed[2] == QLatin1Char('\\'))
+        && trimmed[0].isLetter()) {
+        return QDir::cleanPath(trimmed);
+    }
+
+    if (trimmed.size() >= 4
+        && trimmed[0] == QLatin1Char('/')
+        && trimmed[2] == QLatin1Char(':')
+        && (trimmed[3] == QLatin1Char('/') || trimmed[3] == QLatin1Char('\\'))
+        && trimmed[1].isLetter()) {
+        return QDir::cleanPath(trimmed.mid(1));
+    }
+
     const QUrl asUrl(trimmed);
     if (asUrl.isValid() && !asUrl.scheme().isEmpty()) {
         if (!asUrl.isLocalFile()) {
@@ -65,6 +81,21 @@ QString resolveImageMimeType(const QString &imagePath)
     }
 
     return mime.startsWith(QStringLiteral("image/")) ? mime : QString();
+}
+
+QString unsupportedCoverEditingMessage(const QString &extension)
+{
+    const QString normalizedExtension = extension.trimmed().toUpper();
+    if (normalizedExtension == QStringLiteral("WAV")) {
+        return QStringLiteral("WAV cover art is not supported. Use MP3 or FLAC for embedded cover editing.");
+    }
+
+    if (!normalizedExtension.isEmpty()) {
+        return QStringLiteral("Cover editing is not supported for %1 files. Use MP3 or FLAC for embedded cover editing.")
+            .arg(normalizedExtension);
+    }
+
+    return QStringLiteral("Cover editing is currently supported for MP3 and FLAC files.");
 }
 
 void applyCommonTags(TagLib::Tag *tag,
@@ -197,6 +228,17 @@ TagEditor::TagEditor(QObject *parent)
 {
 }
 
+bool TagEditor::supportsCoverEditing() const
+{
+    const QString extension = upperExtension(m_filePath);
+    return extension == QStringLiteral("MP3") || extension == QStringLiteral("FLAC");
+}
+
+QString TagEditor::coverEditingUnsupportedMessage() const
+{
+    return unsupportedCoverEditingMessage(upperExtension(m_filePath));
+}
+
 void TagEditor::setFilePath(const QString &path)
 {
     if (m_filePath != path) {
@@ -296,8 +338,8 @@ void TagEditor::setRemoveCover(bool removeCover)
 void TagEditor::loadTags()
 {
     if (m_filePath.isEmpty()) return;
-    
-    TagLib::FileRef file(m_filePath.toUtf8().constData());
+
+    const auto file = WaveFlux::TagLibPath::makeFileRef(m_filePath, false);
     
     if (file.isNull() || !file.tag()) {
         qWarning() << "Failed to read tags from:" << m_filePath;
@@ -356,65 +398,64 @@ bool TagEditor::saveTags()
         }
     }
 
-    const QByteArray filePathUtf8 = m_filePath.toUtf8();
     const QString extension = upperExtension(m_filePath);
 
     if (coverChangeRequested && extension == QStringLiteral("MP3")) {
-        TagLib::MPEG::File file(filePathUtf8.constData());
-        if (!file.isValid()) {
+        const auto file = WaveFlux::TagLibPath::openMpegFile(m_filePath, false);
+        if (!file) {
             emit saveFailed("Failed to open MP3 file for writing");
             return false;
         }
 
-        (void)file.ID3v2Tag(true);
-        TagLib::Tag *tag = file.tag();
+        (void)file->ID3v2Tag(true);
+        TagLib::Tag *tag = file->tag();
         if (!tag) {
             emit saveFailed("Failed to access MP3 tag");
             return false;
         }
 
         applyCommonTags(tag, m_title, m_artist, m_album, m_genre, m_year, m_trackNumber);
-        if (!applyMp3Cover(&file, imageData, imageMimeType, m_removeCover, &coverError)) {
+        if (!applyMp3Cover(file.get(), imageData, imageMimeType, m_removeCover, &coverError)) {
             emit saveFailed(coverError.isEmpty() ? QStringLiteral("Failed to update MP3 cover") : coverError);
             return false;
         }
 
-        if (!file.save()) {
+        if (!file->save()) {
             emit saveFailed("Failed to save MP3 tags");
             return false;
         }
     } else if (coverChangeRequested && extension == QStringLiteral("FLAC")) {
-        TagLib::FLAC::File file(filePathUtf8.constData());
-        if (!file.isValid()) {
+        const auto file = WaveFlux::TagLibPath::openFlacFile(m_filePath, false);
+        if (!file) {
             emit saveFailed("Failed to open FLAC file for writing");
             return false;
         }
 
-        if (!file.tag()) {
-            (void)file.xiphComment(true);
+        if (!file->tag()) {
+            (void)file->xiphComment(true);
         }
 
-        TagLib::Tag *tag = file.tag();
+        TagLib::Tag *tag = file->tag();
         if (!tag) {
             emit saveFailed("Failed to access FLAC tag");
             return false;
         }
 
         applyCommonTags(tag, m_title, m_artist, m_album, m_genre, m_year, m_trackNumber);
-        if (!applyFlacCover(&file, imageData, imageMimeType, m_removeCover, &coverError)) {
+        if (!applyFlacCover(file.get(), imageData, imageMimeType, m_removeCover, &coverError)) {
             emit saveFailed(coverError.isEmpty() ? QStringLiteral("Failed to update FLAC cover") : coverError);
             return false;
         }
 
-        if (!file.save()) {
+        if (!file->save()) {
             emit saveFailed("Failed to save FLAC tags");
             return false;
         }
     } else if (coverChangeRequested) {
-        emit saveFailed("Cover editing is currently supported for MP3 and FLAC files.");
+        emit saveFailed(unsupportedCoverEditingMessage(extension));
         return false;
     } else {
-        TagLib::FileRef file(filePathUtf8.constData());
+        auto file = WaveFlux::TagLibPath::makeFileRef(m_filePath, false);
         if (file.isNull() || !file.tag()) {
             emit saveFailed("Failed to open file for writing");
             return false;
@@ -477,7 +518,7 @@ bool TagEditor::saveTagsForFiles(const QStringList &filePaths,
             continue;
         }
 
-        TagLib::FileRef file(path.toUtf8().constData());
+        auto file = WaveFlux::TagLibPath::makeFileRef(path, false);
         if (file.isNull() || !file.tag()) {
             ++failedCount;
             if (firstError.isEmpty()) {

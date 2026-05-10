@@ -50,6 +50,16 @@ copy_qt_plugin_subdir() {
     cp -a "${root}/${subdir}/." "${APPDIR}/usr/plugins/${subdir}/"
 }
 
+copy_qml_module() {
+    local root="$1"
+    local module="$2"
+
+    [[ -d "${root}/${module}" ]] || return 0
+    rm -rf "${APPDIR}/usr/qml/${module}"
+    mkdir -p "${APPDIR}/usr/qml/${module}"
+    cp -a "${root}/${module}/." "${APPDIR}/usr/qml/${module}/"
+}
+
 qmake_query() {
     local key="$1"
     if command -v qmake6 >/dev/null 2>&1; then
@@ -108,7 +118,24 @@ copy_host_path() {
 
 ldd_dependencies() {
     local target="$1"
-    ldd "${target}" 2>/dev/null | while IFS= read -r line; do
+    local output
+    local status=0
+    local timeout_seconds="${APPIMAGE_LDD_TIMEOUT_SECONDS:-10}"
+
+    if command -v timeout >/dev/null 2>&1; then
+        output="$(timeout --kill-after=2s "${timeout_seconds}" ldd "${target}" 2>/dev/null)" || status=$?
+    else
+        output="$(ldd "${target}" 2>/dev/null)" || status=$?
+    fi
+
+    if ((status != 0)); then
+        if [[ "${status}" -eq 124 || "${status}" -eq 137 ]]; then
+            warn "Timed out while scanning dependencies for ${target}"
+        fi
+        return 0
+    fi
+
+    while IFS= read -r line; do
         case "${line}" in
             *"=> not found"*)
                 warn "Unresolved dependency for ${target}: ${line}"
@@ -122,32 +149,61 @@ ldd_dependencies() {
                 printf '%s\n' "${line%% (*}"
                 ;;
         esac
-    done
+    done <<< "${output}"
+}
+
+enqueue_bundle_candidate() {
+    local candidate="$1"
+
+    [[ -n "${candidate}" && -e "${candidate}" ]] || return 0
+
+    local key
+    key="$(readlink -f "${candidate}" 2>/dev/null || printf '%s' "${candidate}")"
+    [[ -n "${seen["${key}"]:-}" || -n "${queued["${key}"]:-}" ]] && return 0
+
+    queue+=("${candidate}")
+    queued["${key}"]=1
 }
 
 bundle_elf_closure() {
     declare -A seen=()
-    local queue=("$@")
+    declare -A queued=()
+    local queue=()
+    local processed=0
+    local progress_interval="${APPIMAGE_BUNDLE_PROGRESS_INTERVAL:-50}"
+    local root
+    for root in "$@"; do
+        enqueue_bundle_candidate "${root}"
+    done
 
-    while ((${#queue[@]} > 0)); do
-        local file="${queue[0]}"
-        queue=("${queue[@]:1}")
+    local queue_index=0
+    while ((queue_index < ${#queue[@]})); do
+        local file="${queue[queue_index]}"
+        ((queue_index += 1))
 
         [[ -e "${file}" ]] || continue
         is_elf "${file}" || continue
-        [[ -n "${seen["${file}"]:-}" ]] && continue
-        seen["${file}"]=1
+
+        local file_key
+        file_key="$(readlink -f "${file}" 2>/dev/null || printf '%s' "${file}")"
+        [[ -n "${seen["${file_key}"]:-}" ]] && continue
+        seen["${file_key}"]=1
+        ((processed += 1))
+
+        if ((progress_interval > 0 && processed % progress_interval == 0)); then
+            log "Bundled dependency scan: ${processed} ELF files processed, ${#queue[@]} queued"
+        fi
 
         while IFS= read -r dep; do
             [[ -n "${dep}" ]] || continue
             should_skip_dependency "${dep}" && continue
 
             if [[ "${dep}" == "${APPDIR}"/* ]]; then
-                queue+=("${dep}")
+                enqueue_bundle_candidate "${dep}"
                 local dep_resolved
                 dep_resolved="$(readlink -f "${dep}" 2>/dev/null || true)"
                 if [[ -n "${dep_resolved}" && "${dep_resolved}" == "${APPDIR}"/* ]]; then
-                    queue+=("${dep_resolved}")
+                    enqueue_bundle_candidate "${dep_resolved}"
                 fi
                 continue
             fi
@@ -157,15 +213,17 @@ bundle_elf_closure() {
                 continue
             fi
 
-            queue+=("${APPDIR}${dep}")
+            enqueue_bundle_candidate "${APPDIR}${dep}"
 
             local resolved
             resolved="$(readlink -f "${dep}" 2>/dev/null || true)"
             if [[ -n "${resolved}" ]]; then
-                queue+=("${APPDIR}${resolved}")
+                enqueue_bundle_candidate "${APPDIR}${resolved}"
             fi
         done < <(ldd_dependencies "${file}")
     done
+
+    log "Bundled dependency scan complete: ${processed} ELF files processed"
 }
 
 collect_elf_files() {
@@ -338,6 +396,7 @@ QT_PLUGIN_SUBDIRS=(
     imageformats
     iconengines
     styles
+    multimedia
     tls
     networkinformation
     sqldrivers
@@ -352,6 +411,9 @@ rm -f \
     "${APPDIR}/usr/plugins/imageformats/kimg_jxr.so"
 
 bundle_qml_imports "${ROOT_DIR}/qml" "${QT_QML_DIR}"
+copy_qml_module "${QT_QML_DIR}" "org/kde/desktop"
+copy_qml_module "${QT_QML_DIR}" "org/kde/qqc2desktopstyle"
+copy_qml_module "${QT_QML_DIR}" "org/kde/sonnet"
 
 if [[ -n "${QT_TRANSLATIONS_DIR}" && -d "${QT_TRANSLATIONS_DIR}" ]]; then
     log "Bundling Qt translations"
@@ -372,7 +434,6 @@ QmlImports=qml
 Translations=translations
 EOF
 
-log "Bundling shared-library closure"
 declare -a bundle_roots=("${APP_BIN}")
 while IFS= read -r file; do
     bundle_roots+=("${file}")
@@ -384,6 +445,7 @@ while IFS= read -r file; do
     bundle_roots+=("${file}")
 done < <(collect_elf_files "${APPDIR}/usr/lib/gstreamer-1.0")
 
+log "Bundling shared-library closure (${#bundle_roots[@]} roots)"
 bundle_elf_closure "${bundle_roots[@]}"
 
 mkdir -p "${APPDIR}/usr/share/applications"
@@ -431,12 +493,22 @@ append_ld_path() {
 
 append_ld_path "${APPDIR}/usr/lib"
 append_ld_path "${APPDIR}/usr/lib64"
+append_ld_path "${APPDIR}/usr/lib/libproxy"
+append_ld_path "${APPDIR}/usr/lib/pulseaudio"
 append_ld_path "${APPDIR}/usr/lib/x86_64-linux-gnu"
+append_ld_path "${APPDIR}/usr/lib/x86_64-linux-gnu/libproxy"
+append_ld_path "${APPDIR}/usr/lib/x86_64-linux-gnu/pulseaudio"
 append_ld_path "${APPDIR}/usr/lib/aarch64-linux-gnu"
+append_ld_path "${APPDIR}/usr/lib/aarch64-linux-gnu/libproxy"
+append_ld_path "${APPDIR}/usr/lib/aarch64-linux-gnu/pulseaudio"
 append_ld_path "${APPDIR}/lib"
 append_ld_path "${APPDIR}/lib64"
 append_ld_path "${APPDIR}/lib/x86_64-linux-gnu"
+append_ld_path "${APPDIR}/lib/x86_64-linux-gnu/libproxy"
+append_ld_path "${APPDIR}/lib/x86_64-linux-gnu/pulseaudio"
 append_ld_path "${APPDIR}/lib/aarch64-linux-gnu"
+append_ld_path "${APPDIR}/lib/aarch64-linux-gnu/libproxy"
+append_ld_path "${APPDIR}/lib/aarch64-linux-gnu/pulseaudio"
 
 export QT_PLUGIN_PATH="${APPDIR}/usr/plugins${QT_PLUGIN_PATH:+:${QT_PLUGIN_PATH}}"
 export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/plugins/platforms"

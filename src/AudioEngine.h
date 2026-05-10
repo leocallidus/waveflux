@@ -6,8 +6,20 @@
 #include <QUrl>
 #include <QTimer>
 #include <QVariantList>
+#include <QVariantMap>
+#include <QVector>
 #include <atomic>
+#include <memory>
 #include <gst/gst.h>
+#include "playback/PlaybackBackendRouting.h"
+
+namespace WaveFlux {
+class OpenMptPlaybackBackend;
+class RemoteTrackerSourceCache;
+enum class PlaybackBackendState;
+struct PlaybackBackendCapabilities;
+struct PlaybackMetadata;
+}
 
 /**
  * @brief AudioEngine - GStreamer-based audio playback engine
@@ -34,10 +46,32 @@ class AudioEngine : public QObject
     Q_PROPERTY(QString title READ title NOTIFY metadataChanged)
     Q_PROPERTY(QString artist READ artist NOTIFY metadataChanged)
     Q_PROPERTY(QString album READ album NOTIFY metadataChanged)
+    Q_PROPERTY(QString trackerType READ trackerType NOTIFY metadataChanged)
+    Q_PROPERTY(QString trackerMessage READ trackerMessage NOTIFY metadataChanged)
+    Q_PROPERTY(int trackerChannelCount READ trackerChannelCount NOTIFY metadataChanged)
+    Q_PROPERTY(int trackerPatternCount READ trackerPatternCount NOTIFY metadataChanged)
+    Q_PROPERTY(int trackerInstrumentCount READ trackerInstrumentCount NOTIFY metadataChanged)
+    Q_PROPERTY(bool trackerMetadataAvailable READ trackerMetadataAvailable NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList spectrumLevels READ spectrumLevels NOTIFY spectrumLevelsChanged)
     Q_PROPERTY(QVariantList equalizerBandFrequencies READ equalizerBandFrequencies CONSTANT)
     Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains NOTIFY equalizerBandGainsChanged)
+    Q_PROPERTY(QVariantMap playbackCapabilities READ playbackCapabilities NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(QVariantMap playbackCapabilityReasons READ playbackCapabilityReasons NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool seekAvailable READ seekAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool waveformAvailable READ waveformAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool spectrumAvailable READ spectrumAvailable NOTIFY playbackCapabilitiesChanged)
     Q_PROPERTY(bool equalizerAvailable READ equalizerAvailable NOTIFY equalizerAvailableChanged)
+    Q_PROPERTY(bool reverseAvailable READ reverseAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool gaplessAvailable READ gaplessAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool rateAvailable READ rateAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool pitchAvailable READ pitchAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool rateWithPitchChangeAvailable READ rateWithPitchChangeAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool timeStretchAvailable READ timeStretchAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool pitchShiftAvailable READ pitchShiftAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool remoteSourcesAvailable READ remoteSourcesAvailable NOTIFY playbackCapabilitiesChanged)
+    Q_PROPERTY(bool remoteTrackerDownloadActive READ remoteTrackerDownloadActive NOTIFY remoteTrackerDownloadChanged)
+    Q_PROPERTY(double remoteTrackerDownloadProgress READ remoteTrackerDownloadProgress NOTIFY remoteTrackerDownloadChanged)
+    Q_PROPERTY(QString remoteTrackerDownloadStatus READ remoteTrackerDownloadStatus NOTIFY remoteTrackerDownloadChanged)
     
 public:
     enum PlaybackState {
@@ -66,21 +100,46 @@ public:
     QString title() const { return m_title; }
     QString artist() const { return m_artist; }
     QString album() const { return m_album; }
+    QString trackerType() const { return m_trackerType; }
+    QString trackerMessage() const { return m_trackerMessage; }
+    int trackerChannelCount() const { return m_trackerChannelCount; }
+    int trackerPatternCount() const { return m_trackerPatternCount; }
+    int trackerInstrumentCount() const { return m_trackerInstrumentCount; }
+    bool trackerMetadataAvailable() const;
     QVariantList spectrumLevels() const { return m_spectrumLevels; }
     QVariantList equalizerBandFrequencies() const { return m_equalizerBandFrequencies; }
     QVariantList equalizerBandGains() const { return m_equalizerBandGains; }
-    bool equalizerAvailable() const { return m_equalizerAvailable; }
+    QVariantMap playbackCapabilities() const;
+    QVariantMap playbackCapabilityReasons() const;
+    bool seekAvailable() const;
+    bool waveformAvailable() const;
+    bool spectrumAvailable() const;
+    bool equalizerAvailable() const;
+    bool reverseAvailable() const;
+    bool gaplessAvailable() const;
+    bool rateAvailable() const;
+    bool pitchAvailable() const;
+    bool rateWithPitchChangeAvailable() const;
+    bool timeStretchAvailable() const;
+    bool pitchShiftAvailable() const;
+    bool remoteSourcesAvailable() const;
+    bool remoteTrackerDownloadActive() const;
+    double remoteTrackerDownloadProgress() const;
+    QString remoteTrackerDownloadStatus() const;
     quint64 currentTransitionId() const { return m_currentTransitionId; }
     quint64 lastAboutToFinishTransitionId() const { return m_lastAboutToFinishTransitionId; }
     quint64 lastEndOfStreamTransitionId() const { return m_lastEndOfStreamTransitionId; }
+    WaveFlux::PlaybackBackendKind currentBackendKind() const { return m_currentBackendKind; }
     
 public slots:
     void play();
     void pause();
     void stop();
+    void unload();
     void togglePlayPause();
     void seek(qint64 position);
     Q_INVOKABLE void seekWithSource(qint64 position, const QString &source);
+    Q_INVOKABLE QVariantMap trackerDiagnosticsSnapshot() const;
     void setVolume(double volume);
     void setPlaybackRate(double rate);
     void setReversePlayback(bool enabled);
@@ -109,12 +168,30 @@ signals:
     void metadataChanged();
     void spectrumLevelsChanged();
     void equalizerBandGainsChanged();
+    void playbackCapabilitiesChanged();
     void equalizerAvailableChanged();
+    void remoteTrackerDownloadChanged();
     void aboutToFinish();
     void endOfStream();
     void error(const QString &message);
     
 private:
+    bool usingOpenMptBackend() const;
+    WaveFlux::PlaybackBackendCapabilities currentBackendCapabilities() const;
+    WaveFlux::PlaybackBackendCapabilities gstreamerCapabilities() const;
+    bool effectiveEqualizerAvailable() const;
+    void emitPlaybackCapabilitiesChanged();
+    void emitEqualizerAvailabilityIfChanged();
+    void updateRemoteTrackerDownloadState(bool active,
+                                          qint64 bytesReceived,
+                                          qint64 bytesTotal,
+                                          const QString &status);
+    void cancelRemoteTrackerDownload();
+    void beginOpenMptLoad(const QString &displaySource,
+                          const QString &backendSource,
+                          quint64 resolvedTransitionId);
+    void disableOpenMptIncompatibleFeatures();
+    static PlaybackState mapBackendStateToEngineState(WaveFlux::PlaybackBackendState state);
     void performSeek(qint64 positionMs);
     void applyPlaybackRateToPipeline();
     void setState(PlaybackState state);
@@ -127,10 +204,12 @@ private:
     void handleBusMessage(GstMessage *message);
     void drainBusMessages();
     void handleSpectrumMessage(const GstStructure *structure);
+    void handleOpenMptPcmSpectrum(QVector<float> monoSamples, int sampleRate);
     void syncEqualizerBandFrequenciesFromElement();
     void applyEqualizerBandSettings();
     void queueEqualizerApply(bool allowRamp, bool immediate = false);
     void applyEqualizerBandValues(const QVariantList &gainsDb);
+    void applyOpenMptEqualizerBands(const QVariantList &gainsDb);
     void startEqualizerRamp(const QVariantList &targetGainsDb);
     void processEqualizerRampStep();
     void applyEqualizerBandGain(int bandIndex);
@@ -142,6 +221,8 @@ private:
                              const QVariantMap &extra = {});
     void handleAboutToFinishOnMainThread(quint64 callbackSerial);
     void extractMetadata();
+    void clearMetadata();
+    void applyOpenMptMetadata(const WaveFlux::PlaybackMetadata &metadata);
     void resetSpectrumLevels();
     quint64 resolveTransitionId(quint64 requestedTransitionId);
     qint64 stabilizeDurationValue(qint64 rawDurationMs, qint64 nowMs) const;
@@ -193,6 +274,11 @@ private:
     QString m_title;
     QString m_artist;
     QString m_album;
+    QString m_trackerType;
+    QString m_trackerMessage;
+    int m_trackerChannelCount = 0;
+    int m_trackerPatternCount = 0;
+    int m_trackerInstrumentCount = 0;
     
     QTimer *m_positionTimer = nullptr;
     QTimer m_busPollTimer;
@@ -221,6 +307,10 @@ private:
     bool m_pendingReverseStart = false;
     bool m_isLoading = false;
     std::atomic<quint64> m_callbackSerial {0};
+    bool m_remoteTrackerDownloadActive = false;
+    double m_remoteTrackerDownloadProgress = 0.0;
+    QString m_remoteTrackerDownloadStatus;
+    QString m_remoteTrackerPendingSource;
     bool m_spectrumEnabled = false;
     int m_spectrumDisplayBandCount = 15;
     int m_spectrumAnalysisBandCount = 96;
@@ -232,6 +322,10 @@ private:
     QVariantList m_equalizerRampStartGains;
     QVariantList m_equalizerRampTargetGains;
     bool m_equalizerAvailable = false;
+    WaveFlux::PlaybackBackendKind m_currentBackendKind = WaveFlux::PlaybackBackendKind::GStreamer;
+    std::unique_ptr<WaveFlux::OpenMptPlaybackBackend> m_openMptBackend;
+    std::unique_ptr<WaveFlux::RemoteTrackerSourceCache> m_remoteTrackerSourceCache;
+    bool m_reportedEqualizerAvailable = false;
     bool m_equalizerPendingApplyAllowRamp = false;
     int m_equalizerRampCurrentStep = 0;
     int m_equalizerRampTotalSteps = 0;
@@ -261,6 +355,7 @@ private:
     static constexpr qint64 kGaplessProgressWatchMinAdvanceMs = 220;
     static constexpr qint64 kReverseStartMarginMs = 120;
     static constexpr qint64 kReverseEnableSeekNudgeMs = 45;
+    static constexpr int kOpenMptSeekCoalesceIntervalMs = 45;
     static constexpr int kEqualizerApplyCoalesceMs = 20;
     static constexpr int kEqualizerRampDurationMs = 32;
     static constexpr int kEqualizerRampStepMs = 8;

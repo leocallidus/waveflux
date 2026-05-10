@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import QtCore
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
-import WaveFlux 1.1
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -97,7 +96,17 @@ Kirigami.ApplicationWindow {
     property bool isCompactSkin: appSettings.skinMode === "compact"
     property string waveformKeyboardBadgeText: ""
     property bool waveformKeyboardBadgeVisible: false
+    property bool spaceHoldShortcutPressed: false
+    property bool spaceHoldShortcutPendingTap: false
+    property bool spaceHoldShortcutEngaged: false
+    property real spaceHoldShortcutOriginalRate: 1.0
     property var pendingSelectedExportPaths: []
+    property bool pendingAudioConverterSaveFile: false
+    property string pendingBatchReportExportFormat: ""
+    property bool pendingBatchAudioConverterFolderPick: false
+    property bool pendingBatchAudioConverterSourceFilesPick: false
+    property bool pendingBatchAudioConverterSourceFolderPick: false
+    property bool pendingYtDlpImportFolderPick: false
     property string pendingPresetSaveMode: ""
     property string pendingPresetExportPresetId: ""
     property string pendingPresetExportPresetName: ""
@@ -111,15 +120,34 @@ Kirigami.ApplicationWindow {
     property var playlistPlaybackProgressById: ({})
     property var collectionPlaybackProgressById: ({})
     property var workingPlaylistPlaybackProgress: ({ filePath: "", currentIndex: -1, positionMs: 0 })
+    property var playlistTrackViewStateById: ({})
+    property var collectionTrackViewStateById: ({})
+    property var workingPlaylistTrackViewState: ({ contentY: 0 })
     property string pendingContextRestoreTrackPath: ""
     property int pendingContextRestorePositionMs: -1
     property int pendingContextRestoreAttempts: 0
     property bool contextProgressPersistenceLoaded: false
     property string contextProgressPersistSignature: ""
     property bool suppressPlaylistAutosave: false
+    readonly property bool ytDlpImportSessionActive: ytDlpImportService.isRunning || ytDlpImportService.isProbing
+    readonly property bool ytDlpImportSessionHasReport: ytDlpImportService.finalSummary
+                                                       && ytDlpImportService.finalSummary.totalCount !== undefined
+    readonly property bool ytDlpImportSessionHasQueue: (ytDlpImportService.sources || []).length > 0
+                                                       || (ytDlpImportService.items || []).length > 0
+    readonly property bool ytDlpImportSessionAvailable: root.ytDlpImportSessionActive
+                                                        || root.ytDlpImportSessionHasReport
+                                                        || root.ytDlpImportSessionHasQueue
+    readonly property bool ytDlpImportSessionHidden: root.ytDlpImportSessionAvailable
+                                                     && !ytDlpImportDialog.visible
     readonly property QtObject menuActions: appMenuActions
     property var libraryMenuPlaylists: []
     property var libraryMenuCollections: []
+
+    onActiveChanged: {
+        if (!active) {
+            root.cancelSpaceHoldShortcut()
+        }
+    }
 
     Settings {
         id: sidebarSectionSettings
@@ -187,6 +215,12 @@ Kirigami.ApplicationWindow {
         },
         {
             group: "playlist",
+            action: root.tr("menu.importUrl"),
+            sequence: "Ctrl+U",
+            context: root.tr("help.shortcutsContextMainWindow")
+        },
+        {
+            group: "playlist",
             action: root.tr("playlists.saveCurrent"),
             sequence: "Ctrl+Shift+S",
             context: root.tr("help.shortcutsContextMainWindow")
@@ -211,7 +245,7 @@ Kirigami.ApplicationWindow {
         },
         {
             group: "playback",
-            action: root.tr("player.play") + " / " + root.tr("player.pause"),
+            action: root.tr("player.play") + " / " + root.tr("player.pause") + ", " + root.tr("player.spaceHoldSpeed2x"),
             sequence: "Space",
             context: root.tr("help.shortcutsContextGlobal")
         },
@@ -383,6 +417,24 @@ Kirigami.ApplicationWindow {
     function sampleRateKhz(sampleRate) {
         if (!sampleRate || sampleRate <= 0) return ""
         return (sampleRate / 1000).toFixed(1) + " kHz"
+    }
+
+    function trackerCompactTechLabel() {
+        if (!audioEngine || !audioEngine.trackerMetadataAvailable) return ""
+        const type = (audioEngine.trackerType || "").trim()
+        const stats = []
+        if (audioEngine.trackerChannelCount > 0) stats.push(String(audioEngine.trackerChannelCount) + "ch")
+        if (audioEngine.trackerPatternCount > 0) stats.push(String(audioEngine.trackerPatternCount) + "pat")
+        if (audioEngine.trackerInstrumentCount > 0) stats.push(String(audioEngine.trackerInstrumentCount) + "ins")
+        if (type && stats.length > 0) return type + " " + stats.join("/")
+        if (type) return type
+        return stats.join("/")
+    }
+
+    function appendTrackerCompactTech(base) {
+        const tracker = root.trackerCompactTechLabel()
+        if (!tracker) return base
+        return base ? (base + " | " + tracker) : tracker
     }
 
     function formatTime(ms) {
@@ -783,6 +835,39 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    function activeTrackListViewHost() {
+        if (root.isCompactSkin && compactSkinLoader.item && compactSkinLoader.item.exportTrackListViewState) {
+            return compactSkinLoader.item
+        }
+        if (playlistTable && playlistTable.exportTrackListViewState) {
+            return playlistTable
+        }
+        return null
+    }
+
+    function captureActiveTrackListViewState() {
+        const host = activeTrackListViewHost()
+        if (!host || !host.exportTrackListViewState) {
+            return
+        }
+        const viewState = host.exportTrackListViewState()
+        if (collectionModeActive && selectedCollectionId > 0) {
+            collectionTrackViewStateById[String(selectedCollectionId)] = viewState
+        } else if (selectedPlaylistProfileId > 0) {
+            playlistTrackViewStateById[String(selectedPlaylistProfileId)] = viewState
+        } else {
+            workingPlaylistTrackViewState = viewState
+        }
+    }
+
+    function restoreTrackListViewState(viewState) {
+        const host = activeTrackListViewHost()
+        if (!host || !host.restoreTrackListViewState) {
+            return
+        }
+        host.restoreTrackListViewState(viewState || { contentY: 0 })
+    }
+
     function stopPlaybackForContextSwitch() {
         clearPendingContextRestore()
         if (audioEngine.state !== 0) {
@@ -850,6 +935,7 @@ Kirigami.ApplicationWindow {
 
     function ensurePlaylistModeForMutation() {
         captureActiveContextProgress(true)
+        captureActiveTrackListViewState()
         if (collectionModeActive) {
             restorePlaylistFromSnapshot()
         }
@@ -859,6 +945,7 @@ Kirigami.ApplicationWindow {
         const switchingContext = collectionModeActive || selectedPlaylistProfileId >= 0
         flushSelectedPlaylistAutosave(false)
         captureActiveContextProgress(true)
+        captureActiveTrackListViewState()
         if (switchingContext) {
             stopPlaybackForContextSwitch()
         }
@@ -889,6 +976,7 @@ Kirigami.ApplicationWindow {
         const switchingContext = !collectionModeActive || Number(selectedCollectionId) !== Number(collectionId)
         flushSelectedPlaylistAutosave(false)
         captureActiveContextProgress(true)
+        captureActiveTrackListViewState()
         if (switchingContext) {
             stopPlaybackForContextSwitch()
         }
@@ -914,6 +1002,7 @@ Kirigami.ApplicationWindow {
         selectedPlaylistProfileId = -1
         suppressPlaylistAutosave = false
         applyProgressState(collectionPlaybackProgressById[String(collectionId)], trackModel.currentIndex)
+        restoreTrackListViewState(collectionTrackViewStateById[String(collectionId)])
     }
 
     function applyPlaylistProfile(playlistId, playlistName) {
@@ -923,6 +1012,7 @@ Kirigami.ApplicationWindow {
         const switchingContext = collectionModeActive || Number(selectedPlaylistProfileId) !== Number(playlistId)
         flushSelectedPlaylistAutosave(false)
         captureActiveContextProgress(true)
+        captureActiveTrackListViewState()
         if (switchingContext) {
             stopPlaybackForContextSwitch()
         }
@@ -947,6 +1037,7 @@ Kirigami.ApplicationWindow {
         selectedPlaylistProfileId = playlistId
         suppressPlaylistAutosave = false
         applyProgressState(playlistPlaybackProgressById[String(playlistId)], currentIndex)
+        restoreTrackListViewState(playlistTrackViewStateById[String(playlistId)])
     }
 
     function restorePlaylistFromSnapshot() {
@@ -954,6 +1045,7 @@ Kirigami.ApplicationWindow {
             return
         }
         captureActiveContextProgress(true)
+        captureActiveTrackListViewState()
         suppressPlaylistAutosave = true
         trackModel.importTracksSnapshot(playlistSnapshotTracks, playlistSnapshotCurrentIndex)
         collectionModeActive = false
@@ -964,6 +1056,7 @@ Kirigami.ApplicationWindow {
         selectedPlaylistProfileId = -1
         suppressPlaylistAutosave = false
         applyProgressState(workingPlaylistPlaybackProgress, trackModel.currentIndex)
+        restoreTrackListViewState(workingPlaylistTrackViewState)
     }
 
     function reloadActiveCollection() {
@@ -1121,6 +1214,52 @@ Kirigami.ApplicationWindow {
         return appSettings.translate(key)
     }
 
+    function profilerOverlayText() {
+        const mode = performanceProfiler.fullscreenWaveformActive
+                ? root.tr("profiler.modeFullscreen")
+                : root.tr("profiler.modeWindowed")
+        let text = root.tr("profiler.title") + " " + mode
+        text += "\n" + root.tr("profiler.playlistTracks") + ": " + performanceProfiler.playlistTrackCount
+        text += "\n" + root.tr("profiler.sceneFps") + ": " + performanceProfiler.sceneFps.toFixed(1)
+             + " | " + root.tr("profiler.avg") + " " + performanceProfiler.sceneFrameMsAvg.toFixed(2)
+             + " ms | " + root.tr("profiler.worst") + " " + performanceProfiler.sceneFrameMsWorst.toFixed(2) + " ms"
+        text += "\n" + root.tr("profiler.wavePaintsPerSec") + ": " + performanceProfiler.waveformPaintsPerSec.toFixed(1)
+             + " | " + root.tr("profiler.avg") + " " + performanceProfiler.waveformPaintMsAvg.toFixed(2)
+             + " ms | " + root.tr("profiler.worst") + " " + performanceProfiler.waveformPaintMsWorst.toFixed(2) + " ms"
+        text += "\n" + root.tr("profiler.repaintsFullPerSec") + ": " + performanceProfiler.waveformFullRepaintsPerSec.toFixed(1)
+             + " | " + root.tr("profiler.partial") + ": " + performanceProfiler.waveformPartialRepaintsPerSec.toFixed(1)
+             + " | " + root.tr("profiler.dirty") + ": " + performanceProfiler.waveformDirtyCoveragePct.toFixed(1) + "%"
+        text += "\n" + root.tr("profiler.playlistDataPerSec") + ": " + performanceProfiler.playlistDataCallsPerSec.toFixed(1)
+             + " | " + root.tr("profiler.avg") + " " + performanceProfiler.playlistDataUsAvg.toFixed(1)
+             + " us | " + root.tr("profiler.worst") + " " + performanceProfiler.playlistDataUsWorst.toFixed(1) + " us"
+        text += "\n" + root.tr("profiler.searchQueriesPerSec") + ": " + performanceProfiler.searchQueriesPerSec.toFixed(1)
+             + " | " + root.tr("profiler.avg") + " " + performanceProfiler.searchQueryMsAvg.toFixed(2)
+             + " ms | " + root.tr("profiler.p95") + " " + performanceProfiler.searchQueryMsP95.toFixed(2)
+             + " ms | " + root.tr("profiler.worst") + " " + performanceProfiler.searchQueryMsWorst.toFixed(2) + " ms"
+        text += "\n" + root.tr("profiler.searchBackendPerSec") + ": " + performanceProfiler.searchSqliteQueriesPerSec.toFixed(1)
+             + " | " + root.tr("profiler.searchBackendFts") + ": " + performanceProfiler.searchFtsQueriesPerSec.toFixed(1)
+             + " | " + root.tr("profiler.searchBackendLike") + ": " + performanceProfiler.searchLikeQueriesPerSec.toFixed(1)
+             + " | " + root.tr("profiler.searchBackendFail") + ": " + performanceProfiler.searchFailuresPerSec.toFixed(1)
+        text += "\n" + root.tr("profiler.memoryWorkingSet") + ": " + (performanceProfiler.workingSetBytes / (1024 * 1024)).toFixed(1)
+             + " MiB | " + root.tr("profiler.private") + ": " + (performanceProfiler.privateBytes / (1024 * 1024)).toFixed(1) + " MiB"
+        text += "\n" + root.tr("profiler.memoryCommit") + ": " + (performanceProfiler.commitBytes / (1024 * 1024)).toFixed(1)
+             + " MiB | " + root.tr("profiler.peakWorkingSet") + ": " + (performanceProfiler.peakWorkingSetBytes / (1024 * 1024)).toFixed(1) + " MiB"
+        text += "\n" + root.tr("profiler.lastCheckpoint") + ": "
+             + (performanceProfiler.lastMemoryCheckpointLabel.length > 0
+                ? performanceProfiler.lastMemoryCheckpointLabel
+                : root.tr("profiler.notAvailable"))
+        text += "\n" + root.tr("profiler.lastExport") + ": "
+             + (performanceProfiler.lastExportPath.length > 0
+                ? performanceProfiler.lastExportPath
+                : root.tr("profiler.notAvailable"))
+        if (performanceProfiler.lastExportError.length > 0) {
+            text += "\n" + root.tr("profiler.exportError") + ": " + performanceProfiler.lastExportError
+        }
+        text += "\n" + root.tr("profiler.hotkeys")
+        text += "\n" + root.tr("profiler.exportHotkeys")
+        return text
+    }
+
     function xspfSourceDisplayName(sourcePath) {
         const rawSource = String(sourcePath || "").trim()
         if (rawSource.length === 0) {
@@ -1222,6 +1361,21 @@ Kirigami.ApplicationWindow {
         pendingSelectedExportPaths = []
     }
 
+    function clearPendingAudioConverterPickerFlow() {
+        pendingAudioConverterSaveFile = false
+        pendingBatchReportExportFormat = ""
+    }
+
+    function clearPendingBatchAudioConverterPickerFlow() {
+        pendingBatchAudioConverterFolderPick = false
+        pendingBatchAudioConverterSourceFilesPick = false
+        pendingBatchAudioConverterSourceFolderPick = false
+    }
+
+    function clearPendingYtDlpImportPickerFlow() {
+        pendingYtDlpImportFolderPick = false
+    }
+
     function clearPendingPresetPickerFlow() {
         pendingPresetSaveMode = ""
         pendingPresetExportPresetId = ""
@@ -1245,7 +1399,334 @@ Kirigami.ApplicationWindow {
         if (localPart.length > 0 && localPart[0] !== "/") {
             localPart = "/" + localPart
         }
+        if (/^\/[A-Za-z]:[\/\\]/.test(localPart)) {
+            localPart = localPart.substring(1)
+        }
         return decodeURIComponent(localPart)
+    }
+
+    function fileNameFromPath(path) {
+        const normalized = String(path || "").replace(/\\/g, "/")
+        const idx = normalized.lastIndexOf("/")
+        return idx >= 0 ? normalized.substring(idx + 1) : normalized
+    }
+
+    function directoryPathFromTrackSource(filePath) {
+        const localPath = localFilePathFromUrl(filePath)
+        const normalized = String(localPath || "").replace(/\\/g, "/").trim()
+        const idx = normalized.lastIndexOf("/")
+        if (idx <= 0) {
+            return ""
+        }
+        return normalized.substring(0, idx)
+    }
+
+    function preferredYtDlpImportOutputDirectory() {
+        const currentIndex = Number(trackModel.currentIndex)
+        if (Number.isFinite(currentIndex)
+                && currentIndex >= 0
+                && currentIndex < trackModel.count) {
+            const currentPath = String(trackModel.getFilePath(currentIndex) || "").trim()
+            if (currentPath.length > 0 && isLocalTrackSource(currentPath)) {
+                const currentDirectory = directoryPathFromTrackSource(currentPath)
+                if (currentDirectory.length > 0) {
+                    return currentDirectory
+                }
+            }
+        }
+
+        for (let i = 0; i < trackModel.count; ++i) {
+            const filePath = String(trackModel.getFilePath(i) || "").trim()
+            if (filePath.length === 0 || !isLocalTrackSource(filePath)) {
+                continue
+            }
+            const directory = directoryPathFromTrackSource(filePath)
+            if (directory.length > 0) {
+                return directory
+            }
+        }
+
+        return ""
+    }
+
+    function audioConverterSourceMeta(index) {
+        if (index !== trackModel.currentIndex) {
+            return ""
+        }
+
+        const parts = []
+        if (trackModel.currentArtist && trackModel.currentArtist.length > 0) {
+            parts.push(trackModel.currentArtist)
+        }
+        if (trackModel.currentAlbum && trackModel.currentAlbum.length > 0) {
+            parts.push(trackModel.currentAlbum)
+        }
+        return parts.join(" / ")
+    }
+
+    function openAudioConverterForTrack(index) {
+        const safeIndex = Number(index)
+        if (!Number.isFinite(safeIndex) || safeIndex < 0 || safeIndex >= trackModel.count) {
+            exportStatusDialog.title = root.tr("main.exportError")
+            exportStatusDialog.text = root.tr("audioConverter.errorTrackRequired")
+            exportStatusDialog.open()
+            return false
+        }
+
+        if (trackModel.isCueTrack && trackModel.isCueTrack(safeIndex)) {
+            exportStatusDialog.title = root.tr("main.exportError")
+            exportStatusDialog.text = root.tr("audioConverter.errorCueUnsupported")
+            exportStatusDialog.open()
+            return false
+        }
+
+        const sourceFile = trackModel.getFilePath(safeIndex)
+        if (!isLocalTrackSource(sourceFile)) {
+            exportStatusDialog.title = root.tr("main.exportError")
+            exportStatusDialog.text = root.tr("audioConverter.errorLocalOnly")
+            exportStatusDialog.open()
+            return false
+        }
+
+        const isCurrentTrack = safeIndex === trackModel.currentIndex
+        let sourceDisplayName = fileNameFromPath(sourceFile)
+        if (isCurrentTrack && trackModel.currentTitle && trackModel.currentTitle.length > 0) {
+            if (trackModel.currentArtist && trackModel.currentArtist.length > 0) {
+                sourceDisplayName = trackModel.currentArtist + " - " + trackModel.currentTitle
+            } else {
+                sourceDisplayName = trackModel.currentTitle
+            }
+        }
+
+        audioConverterDialog.prepareForSource({
+            sourceFile: sourceFile,
+            sourceDisplayName: sourceDisplayName,
+            sourceMetaText: audioConverterSourceMeta(safeIndex),
+            sourceFormatText: isCurrentTrack ? trackModel.currentFormat : "",
+            sourceBitrateKbps: isCurrentTrack ? trackModel.currentBitrate : 0,
+            sourceSampleRateHz: isCurrentTrack ? trackModel.currentSampleRate : 0,
+            sourceDurationMs: isCurrentTrack ? audioEngine.duration : 0
+        })
+        return true
+    }
+
+    function audioConverterTargetIndex() {
+        if (trackModel.currentIndex >= 0 && trackModel.currentIndex < trackModel.count) {
+            return trackModel.currentIndex
+        }
+        if (playbackController.activeTrackIndex >= 0 && playbackController.activeTrackIndex < trackModel.count) {
+            return playbackController.activeTrackIndex
+        }
+        return -1
+    }
+
+    function canOpenAudioConverterForTrack(index) {
+        const safeIndex = Number(index)
+        if (!Number.isFinite(safeIndex) || safeIndex < 0 || safeIndex >= trackModel.count) {
+            return false
+        }
+        if (trackModel.isCueTrack && trackModel.isCueTrack(safeIndex)) {
+            return false
+        }
+        return root.isLocalTrackSource(trackModel.getFilePath(safeIndex))
+    }
+
+    function requestAudioConverterOutputPath(defaultName) {
+        clearPendingPlaylistExportFlow()
+        clearPendingPresetPickerFlow()
+        clearPendingBatchAudioConverterPickerFlow()
+        clearPendingAudioConverterPickerFlow()
+        clearPendingYtDlpImportPickerFlow()
+        pendingAudioConverterSaveFile = true
+        xdgPortalFilePicker.saveFile(root.tr("audioConverter.saveDialogTitle"),
+                                     String(defaultName || "").trim().length > 0
+                                     ? String(defaultName)
+                                     : fileNameFromPath(audioConverterService.outputFile))
+    }
+
+    function requestBatchReportExport(format, suggestedFileName) {
+        clearPendingPlaylistExportFlow()
+        clearPendingPresetPickerFlow()
+        clearPendingBatchAudioConverterPickerFlow()
+        clearPendingAudioConverterPickerFlow()
+        clearPendingYtDlpImportPickerFlow()
+        pendingAudioConverterSaveFile = true
+        pendingBatchReportExportFormat = String(format || "").trim().toLowerCase()
+        xdgPortalFilePicker.saveFile(root.tr("main.export"),
+                                     String(suggestedFileName || "").trim().length > 0
+                                     ? String(suggestedFileName)
+                                     : batchAudioConverterService.suggestedReportFileName(pendingBatchReportExportFormat))
+    }
+
+    function requestBatchAudioConverterOutputDirectory() {
+        clearPendingPlaylistExportFlow()
+        clearPendingPresetPickerFlow()
+        clearPendingAudioConverterPickerFlow()
+        clearPendingBatchAudioConverterPickerFlow()
+        clearPendingYtDlpImportPickerFlow()
+        pendingBatchAudioConverterFolderPick = true
+        xdgPortalFilePicker.openFolder(root.tr("batchAudioConverter.selectOutputFolderTitle"))
+    }
+
+    function requestYtDlpImportOutputDirectory() {
+        clearPendingPlaylistExportFlow()
+        clearPendingPresetPickerFlow()
+        clearPendingAudioConverterPickerFlow()
+        clearPendingBatchAudioConverterPickerFlow()
+        clearPendingYtDlpImportPickerFlow()
+        pendingYtDlpImportFolderPick = true
+        xdgPortalFilePicker.openFolder(root.tr("ytDlpImport.selectOutputFolderTitle"))
+    }
+
+    function requestBatchAudioConverterSourceFiles() {
+        clearPendingPlaylistExportFlow()
+        clearPendingPresetPickerFlow()
+        clearPendingAudioConverterPickerFlow()
+        clearPendingBatchAudioConverterPickerFlow()
+        clearPendingYtDlpImportPickerFlow()
+        pendingBatchAudioConverterSourceFilesPick = true
+        xdgPortalFilePicker.openAudioFiles(
+                    root.tr("batchAudioConverter.selectInputFilesTitle"),
+                    root.tr("dialogs.audioFilterLabel"),
+                    root.tr("dialogs.xspfFilterLabel"),
+                    root.tr("dialogs.allFilesFilterLabel"))
+    }
+
+    function requestBatchAudioConverterSourceFolder() {
+        clearPendingPlaylistExportFlow()
+        clearPendingPresetPickerFlow()
+        clearPendingAudioConverterPickerFlow()
+        clearPendingBatchAudioConverterPickerFlow()
+        clearPendingYtDlpImportPickerFlow()
+        pendingBatchAudioConverterSourceFolderPick = true
+        xdgPortalFilePicker.openFolder(root.tr("batchAudioConverter.selectInputFolderTitle"))
+    }
+
+    function looksLikeSupportedWebUrl(value) {
+        return /^https?:\/\/\S+$/i.test(String(value || "").trim())
+    }
+
+    function openYtDlpImportDialog(sourceUrl, shouldProbe) {
+        const normalizedUrl = String(sourceUrl || "").trim()
+        const probeNow = shouldProbe === true && root.looksLikeSupportedWebUrl(normalizedUrl)
+        const preferredOutputDirectory = root.preferredYtDlpImportOutputDirectory()
+
+        if (preferredOutputDirectory.length > 0
+                && !ytDlpImportService.isRunning
+                && !ytDlpImportService.isProbing) {
+            ytDlpImportService.outputDirectory = preferredOutputDirectory
+        }
+
+        if (normalizedUrl.length > 0) {
+            if (!ytDlpImportService.isRunning && !ytDlpImportService.isProbing) {
+                ytDlpImportDialog.applyExternalSourceUrl(normalizedUrl, probeNow)
+                return
+            }
+            ytDlpImportDialog.open()
+            return
+        }
+
+        ytDlpImportDialog.open()
+    }
+
+    function showCurrentYtDlpImportSession() {
+        ytDlpImportDialog.open()
+    }
+
+    function ytDlpImportSessionBannerTitle() {
+        if (root.ytDlpImportSessionHasReport) {
+            const summaryHeadline = String(ytDlpImportService.finalSummary.headlineText || "").trim()
+            if (summaryHeadline.length > 0) {
+                return summaryHeadline
+            }
+        }
+        return root.tr("ytDlpImport.dialogTitle")
+    }
+
+    function ytDlpImportSessionBannerBody() {
+        if (root.ytDlpImportSessionActive) {
+            const runtimeText = String(ytDlpImportService.statusText || "").trim()
+            if (runtimeText.length > 0) {
+                return runtimeText
+            }
+            return ytDlpImportService.isProbing
+                    ? root.tr("ytDlpImport.probeStarted")
+                    : root.tr("ytDlpImport.importStarted")
+        }
+        if (root.ytDlpImportSessionHasReport) {
+            const summaryDetail = String(ytDlpImportService.finalSummary.detailText || "").trim()
+            if (summaryDetail.length > 0) {
+                return summaryDetail
+            }
+        }
+        return root.tr("ytDlpImport.sessionReadyHidden")
+    }
+
+    function pasteClipboardUrlIntoYtDlpImportDialog() {
+        const clipboardText = String(xdgPortalFilePicker.readTextFromClipboard() || "").trim()
+        if (clipboardText.length === 0) {
+            exportStatusDialog.title = root.tr("menu.importUrl")
+            exportStatusDialog.text = root.tr("ytDlpImport.clipboardEmpty")
+            exportStatusDialog.open()
+            root.openYtDlpImportDialog("", false)
+            return
+        }
+
+        root.openYtDlpImportDialog(clipboardText, true)
+    }
+
+    function openBatchAudioConverterForSelection(filePaths) {
+        const intakeResult = batchAudioConverterDialog.prepareForPlaylistSelection(filePaths || [])
+        const queueCount = Number(intakeResult && intakeResult.queueCount !== undefined
+                                  ? intakeResult.queueCount
+                                  : 0)
+        if (queueCount <= 0) {
+            exportStatusDialog.title = root.tr("main.exportError")
+            exportStatusDialog.text = root.tr("batchAudioConverter.errorSelectionRequired")
+            exportStatusDialog.open()
+            return false
+        }
+        return true
+    }
+
+    function openBatchAudioConverterForFiles(filePaths) {
+        const intakeResult = batchAudioConverterDialog.visible
+                             ? batchAudioConverterDialog.appendFiles(filePaths || [])
+                             : batchAudioConverterDialog.prepareForFiles(filePaths || [])
+        const queueCount = Number(intakeResult && intakeResult.queueCount !== undefined
+                                  ? intakeResult.queueCount
+                                  : 0)
+        if (queueCount <= 0) {
+            exportStatusDialog.title = root.tr("main.exportError")
+            exportStatusDialog.text = root.tr("batchAudioConverter.errorSelectionRequired")
+            exportStatusDialog.open()
+            return false
+        }
+        return true
+    }
+
+    function openBatchAudioConverterForFolder(folderPath) {
+        const intakeResult = batchAudioConverterDialog.visible
+                             ? batchAudioConverterDialog.appendFolder(folderPath)
+                             : batchAudioConverterDialog.prepareForFolder(folderPath)
+        const queueCount = Number(intakeResult && intakeResult.queueCount !== undefined
+                                  ? intakeResult.queueCount
+                                  : 0)
+        if (queueCount <= 0) {
+            exportStatusDialog.title = root.tr("main.exportError")
+            exportStatusDialog.text = root.tr("batchAudioConverter.errorInvalidSourceFolder")
+            exportStatusDialog.open()
+            return false
+        }
+        return true
+    }
+
+    function cmdOpenAudioConverter() {
+        const targetIndex = audioConverterTargetIndex()
+        if (targetIndex < 0) {
+            return
+        }
+        openAudioConverterForTrack(targetIndex)
     }
 
     function presetDefaultFileName(baseName) {
@@ -1409,6 +1890,14 @@ Kirigami.ApplicationWindow {
 
     function cmdAddFolder() {
         xdgPortalFilePicker.openFolder(root.tr("dialogs.addFolder"))
+    }
+
+    function cmdOpenYtDlpImportDialog() {
+        root.openYtDlpImportDialog("", false)
+    }
+
+    function cmdShowCurrentYtDlpImportSession() {
+        root.showCurrentYtDlpImportSession()
     }
 
     function cmdExportPlaylist() {
@@ -1708,10 +2197,6 @@ Kirigami.ApplicationWindow {
         audioEngine.pitchSemitones = 0
     }
 
-    function cmdLibraryActivateCurrentPlaylist() {
-        root.activateCurrentPlaylistView()
-    }
-
     function defaultAutoPlaylistName() {
         return "Playlist " + Qt.formatDateTime(new Date(), "yyyy-MM-dd hh:mm:ss")
     }
@@ -1959,6 +2444,8 @@ Kirigami.ApplicationWindow {
 
         readonly property var fileOpenFiles: actionFileOpenFiles
         readonly property var fileAddFolder: actionFileAddFolder
+        readonly property var fileOpenAudioConverter: actionFileOpenAudioConverter
+        readonly property var fileImportUrl: actionFileImportUrl
         readonly property var fileExportPlaylist: actionFileExportPlaylist
         readonly property var fileClearPlaylist: actionFileClearPlaylist
         readonly property var fileSettings: actionFileSettings
@@ -2003,7 +2490,6 @@ Kirigami.ApplicationWindow {
         readonly property var playbackResetSpeed: actionPlaybackResetSpeed
         readonly property var playbackResetPitch: actionPlaybackResetPitch
 
-        readonly property var libraryCurrentPlaylist: actionLibraryCurrentPlaylist
         readonly property var librarySaveCurrentPlaylist: actionLibrarySaveCurrentPlaylist
         readonly property var libraryNewEmptyPlaylist: actionLibraryNewEmptyPlaylist
         readonly property var libraryOpenCollectionsPanel: actionLibraryOpenCollectionsPanel
@@ -2015,6 +2501,9 @@ Kirigami.ApplicationWindow {
         readonly property var fileActions: [
             actionFileOpenFiles,
             actionFileAddFolder,
+            actionFileOpenAudioConverter,
+            actionFileImportUrl,
+            actionFileShowUrlImportSession,
             actionFileExportPlaylist,
             actionFileClearPlaylist,
             actionFileSettings,
@@ -2067,7 +2556,6 @@ Kirigami.ApplicationWindow {
         ]
 
         readonly property var libraryActions: [
-            actionLibraryCurrentPlaylist,
             actionLibrarySaveCurrentPlaylist,
             actionLibraryNewEmptyPlaylist,
             actionLibraryOpenCollectionsPanel,
@@ -2094,6 +2582,30 @@ Kirigami.ApplicationWindow {
         text: root.tr("menu.addFolder")
         shortcut: "Ctrl+Shift+O"
         onTriggered: root.cmdAddFolder()
+    }
+
+    Action {
+        id: actionFileOpenAudioConverter
+        objectName: "file.audioConverter"
+        text: root.tr("menu.audioConverter")
+        enabled: root.canOpenAudioConverterForTrack(root.audioConverterTargetIndex())
+        onTriggered: root.cmdOpenAudioConverter()
+    }
+
+    Action {
+        id: actionFileImportUrl
+        objectName: "file.importUrl"
+        text: root.tr("menu.importUrl")
+        shortcut: "Ctrl+U"
+        onTriggered: root.cmdOpenYtDlpImportDialog()
+    }
+
+    Action {
+        id: actionFileShowUrlImportSession
+        objectName: "file.showUrlImportSession"
+        text: root.tr("ytDlpImport.showSession")
+        enabled: root.ytDlpImportSessionAvailable
+        onTriggered: root.cmdShowCurrentYtDlpImportSession()
     }
 
     Action {
@@ -2438,6 +2950,7 @@ Kirigami.ApplicationWindow {
         text: audioEngine.equalizerAvailable
               ? root.tr("player.equalizer")
               : root.tr("player.equalizerUnavailable")
+        enabled: audioEngine.equalizerAvailable
         onTriggered: root.cmdPlaybackOpenEqualizer()
     }
 
@@ -2445,7 +2958,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackResetSpeed
         objectName: "playback.resetSpeed"
         text: root.tr("player.resetSpeed")
-        enabled: Math.abs(audioEngine.playbackRate - 1.0) > 0.001
+        enabled: audioEngine.rateAvailable && Math.abs(audioEngine.playbackRate - 1.0) > 0.001
         onTriggered: root.cmdPlaybackResetSpeed()
     }
 
@@ -2453,15 +2966,8 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackResetPitch
         objectName: "playback.resetPitch"
         text: root.tr("player.resetPitch")
-        enabled: audioEngine.pitchSemitones !== 0
+        enabled: audioEngine.pitchAvailable && audioEngine.pitchSemitones !== 0
         onTriggered: root.cmdPlaybackResetPitch()
-    }
-
-    Action {
-        id: actionLibraryCurrentPlaylist
-        objectName: "library.currentPlaylist"
-        text: root.tr("collections.currentPlaylist")
-        onTriggered: root.cmdLibraryActivateCurrentPlaylist()
     }
 
     Action {
@@ -2526,11 +3032,6 @@ Kirigami.ApplicationWindow {
     }
     
     // Global keyboard shortcuts
-    Shortcut {
-        sequence: "Space"
-        enabled: !root.isCompactSkin
-        onActivated: audioEngine.togglePlayPause()
-    }
     // Accelerated keyboard seek state without relying on key-release hooks.
     property int _seekBurstCount: 0
     property int _seekBurstDirection: 0   // -1 back, 1 forward
@@ -2581,11 +3082,106 @@ Kirigami.ApplicationWindow {
         )
     }
 
+    function armSpaceHoldShortcut() {
+        root.spaceHoldShortcutPressed = true
+        root.spaceHoldShortcutPendingTap = true
+        root.spaceHoldShortcutEngaged = false
+        root.spaceHoldShortcutOriginalRate = audioEngine ? audioEngine.playbackRate : 1.0
+        spaceHoldShortcutTimer.restart()
+    }
+
+    function engageSpaceHoldShortcut() {
+        if (!root.spaceHoldShortcutPressed
+                || !root.spaceHoldShortcutPendingTap
+                || !audioEngine
+                || !audioEngine.rateAvailable
+                || trackModel.count <= 0) {
+            return
+        }
+
+        root.spaceHoldShortcutEngaged = true
+        root.spaceHoldShortcutPendingTap = false
+        root.spaceHoldShortcutOriginalRate = audioEngine.playbackRate
+        audioEngine.playbackRate = 2.0
+        waveformKeyboardBadgeTimer.stop()
+        root.waveformKeyboardBadgeText = root.tr("player.speed") + ": 2.00x"
+        root.waveformKeyboardBadgeVisible = true
+    }
+
+    function releaseSpaceHoldShortcut() {
+        spaceHoldShortcutTimer.stop()
+
+        if (root.spaceHoldShortcutEngaged && audioEngine) {
+            audioEngine.playbackRate = root.spaceHoldShortcutOriginalRate
+        } else if (root.spaceHoldShortcutPendingTap) {
+            root.cmdPlaybackPlayPause()
+        }
+
+        root.spaceHoldShortcutPressed = false
+        root.spaceHoldShortcutPendingTap = false
+        root.spaceHoldShortcutEngaged = false
+        root.spaceHoldShortcutOriginalRate = audioEngine ? audioEngine.playbackRate : 1.0
+        root.waveformKeyboardBadgeVisible = false
+    }
+
+    function cancelSpaceHoldShortcut() {
+        spaceHoldShortcutTimer.stop()
+
+        if (root.spaceHoldShortcutEngaged && audioEngine) {
+            audioEngine.playbackRate = root.spaceHoldShortcutOriginalRate
+        }
+
+        root.spaceHoldShortcutPressed = false
+        root.spaceHoldShortcutPendingTap = false
+        root.spaceHoldShortcutEngaged = false
+        root.spaceHoldShortcutOriginalRate = audioEngine ? audioEngine.playbackRate : 1.0
+        root.waveformKeyboardBadgeVisible = false
+    }
+
     Timer {
         id: waveformKeyboardBadgeTimer
         interval: 1100
         repeat: false
         onTriggered: root.waveformKeyboardBadgeVisible = false
+    }
+
+    Timer {
+        id: spaceHoldShortcutTimer
+        interval: 170
+        repeat: false
+        onTriggered: root.engageSpaceHoldShortcut()
+    }
+
+    Connections {
+        target: globalKeyMonitor
+
+        function onPlainSpacePressed() {
+            if (!root.spaceHoldShortcutPressed) {
+                root.armSpaceHoldShortcut()
+            }
+        }
+
+        function onPlainSpaceReleased() {
+            if (root.spaceHoldShortcutPressed) {
+                root.releaseSpaceHoldShortcut()
+            }
+        }
+
+        function onPlainSpaceCanceled() {
+            if (root.spaceHoldShortcutPressed) {
+                root.cancelSpaceHoldShortcut()
+            }
+        }
+    }
+
+    Connections {
+        target: appSettings
+
+        function onSkinModeChanged() {
+            if (root.spaceHoldShortcutPressed) {
+                root.cancelSpaceHoldShortcut()
+            }
+        }
     }
 
     Shortcut {
@@ -2615,6 +3211,7 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "["
+        enabled: audioEngine.rateAvailable
         onActivated: {
             const nextRate = Math.max(0.25, Math.round((audioEngine.playbackRate - 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
@@ -2623,6 +3220,7 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "]"
+        enabled: audioEngine.rateAvailable
         onActivated: {
             const nextRate = Math.min(2.0, Math.round((audioEngine.playbackRate + 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
@@ -2631,6 +3229,7 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "Backspace"
+        enabled: audioEngine.rateAvailable
         onActivated: {
             audioEngine.playbackRate = 1.0
             root.showSpeedShortcutBadge(1.0)
@@ -2638,6 +3237,7 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "-"
+        enabled: audioEngine.pitchAvailable
         onActivated: {
             const nextPitch = Math.max(-6, audioEngine.pitchSemitones - 1)
             audioEngine.pitchSemitones = nextPitch
@@ -2646,6 +3246,7 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "="
+        enabled: audioEngine.pitchAvailable
         onActivated: {
             const nextPitch = Math.min(6, audioEngine.pitchSemitones + 1)
             audioEngine.pitchSemitones = nextPitch
@@ -2654,6 +3255,7 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "0"
+        enabled: audioEngine.pitchAvailable
         onActivated: {
             audioEngine.pitchSemitones = 0
             root.showPitchShortcutBadge(0)
@@ -2786,6 +3388,7 @@ Kirigami.ApplicationWindow {
                 function onSettingsRequested() { root.cmdOpenSettings() }
                 function onOpenFilesRequested() { root.cmdOpenFiles() }
                 function onAddFolderRequested() { root.cmdAddFolder() }
+                function onUrlImportRequested() { root.cmdOpenYtDlpImportDialog() }
                 function onEnsurePlaylistModeRequested() { root.ensurePlaylistModeForMutation() }
                 function onExportPlaylistRequested() {
                     root.cmdExportPlaylist()
@@ -2806,6 +3409,19 @@ Kirigami.ApplicationWindow {
                     bulkTagEditorDialog.filePaths = localFilePaths
                     bulkTagEditorDialog.open()
                 }
+                function onAudioConverterRequested(trackIndex, filePath) {
+                    if (!root.isLocalTrackSource(filePath)) {
+                        return
+                    }
+                    root.openAudioConverterForTrack(trackIndex)
+                }
+                function onBatchAudioConverterRequested(filePaths) {
+                    const localFilePaths = root.filterLocalTrackPaths(filePaths || [])
+                    if (localFilePaths.length === 0) {
+                        return
+                    }
+                    root.openBatchAudioConverterForSelection(localFilePaths)
+                }
                 function onExportSelectionRequested(filePaths) {
                     root.clearPendingPresetPickerFlow()
                     root.pendingSelectedExportPaths = filePaths
@@ -2825,6 +3441,12 @@ Kirigami.ApplicationWindow {
                 }
                 function onCreateSmartCollectionRequested() {
                     smartCollectionDialog.openForCreate()
+                }
+                function onHelpAboutRequested() {
+                    root.cmdOpenHelpAbout()
+                }
+                function onHelpShortcutsRequested() {
+                    root.cmdOpenHelpShortcuts()
                 }
             }
         }
@@ -2872,9 +3494,9 @@ Kirigami.ApplicationWindow {
                     } else if (sampleRateKhz) {
                         quality = sampleRateKhz + " kHz"
                     }
-                    if (format && quality) return format.toUpperCase() + " " + quality
-                    if (format) return format.toUpperCase()
-                    return quality
+                    if (format && quality) return root.appendTrackerCompactTech(format.toUpperCase() + " " + quality)
+                    if (format) return root.appendTrackerCompactTech(format.toUpperCase())
+                    return root.appendTrackerCompactTech(quality)
                 }
 
                 onOpenFilesRequested: root.cmdOpenFiles()
@@ -2947,7 +3569,7 @@ Kirigami.ApplicationWindow {
                     Layout.fillHeight: true
                     collectionModeActive: root.collectionModeActive
                     columnPreset: root.playlistColumnPreset
-                    searchQuery: headerBar.searchText
+                    searchQuery: headerBar.submittedSearchText
                     searchFieldMask: headerBar.searchFieldMask
                     searchQuickFilterMask: headerBar.searchQuickFilterMask
                     onEditTagsRequested: function(filePath) {
@@ -2957,6 +3579,12 @@ Kirigami.ApplicationWindow {
                         tagEditor.filePath = filePath
                         tagEditorDialog.open()
                     }
+                    onAudioConverterRequested: function(trackIndex, filePath) {
+                        if (!root.isLocalTrackSource(filePath)) {
+                            return
+                        }
+                        root.openAudioConverterForTrack(trackIndex)
+                    }
                     onEditTagsSelectionRequested: function(filePaths) {
                         const localFilePaths = root.filterLocalTrackPaths(filePaths || [])
                         if (localFilePaths.length === 0) {
@@ -2964,6 +3592,9 @@ Kirigami.ApplicationWindow {
                         }
                         bulkTagEditorDialog.filePaths = localFilePaths
                         bulkTagEditorDialog.open()
+                    }
+                    onBatchAudioConverterRequested: function(filePaths) {
+                        root.openBatchAudioConverterForSelection(filePaths || [])
                     }
                     onExportSelectionRequested: function(filePaths) {
                         root.clearPendingPresetPickerFlow()
@@ -3001,6 +3632,21 @@ Kirigami.ApplicationWindow {
                         })
                         item.albumArt = Qt.binding(function() {
                             return trackModel.currentAlbumArt
+                        })
+                        item.trackerType = Qt.binding(function() {
+                            return audioEngine.trackerType
+                        })
+                        item.trackerMessage = Qt.binding(function() {
+                            return audioEngine.trackerMessage
+                        })
+                        item.trackerChannelCount = Qt.binding(function() {
+                            return audioEngine.trackerChannelCount
+                        })
+                        item.trackerPatternCount = Qt.binding(function() {
+                            return audioEngine.trackerPatternCount
+                        })
+                        item.trackerInstrumentCount = Qt.binding(function() {
+                            return audioEngine.trackerInstrumentCount
                         })
                     }
                 }
@@ -3150,7 +3796,7 @@ Kirigami.ApplicationWindow {
             else result = quality
             if (bitrate && result) result += " | " + bitrate
             else if (bitrate) result = bitrate
-            return result
+            return root.appendTrackerCompactTech(result)
         }
 
         Rectangle {
@@ -3232,45 +3878,7 @@ Kirigami.ApplicationWindow {
                 color: themeManager.textColor
                 font.family: themeManager.monoFontFamily
                 font.pixelSize: 10
-                text: "Profiler " + (performanceProfiler.fullscreenWaveformActive ? "[fullscreen]" : "[windowed]")
-                      + "\nPlaylist tracks: " + performanceProfiler.playlistTrackCount
-                      + "\nScene FPS: " + performanceProfiler.sceneFps.toFixed(1)
-                      + " | avg " + performanceProfiler.sceneFrameMsAvg.toFixed(2)
-                      + " ms | worst " + performanceProfiler.sceneFrameMsWorst.toFixed(2) + " ms"
-                      + "\nWave paint/s: " + performanceProfiler.waveformPaintsPerSec.toFixed(1)
-                      + " | avg " + performanceProfiler.waveformPaintMsAvg.toFixed(2)
-                      + " ms | worst " + performanceProfiler.waveformPaintMsWorst.toFixed(2) + " ms"
-                      + "\nRepaint/s full: " + performanceProfiler.waveformFullRepaintsPerSec.toFixed(1)
-                      + " | partial: " + performanceProfiler.waveformPartialRepaintsPerSec.toFixed(1)
-                      + " | dirty: " + performanceProfiler.waveformDirtyCoveragePct.toFixed(1) + "%"
-                      + "\nPlaylist data/s: " + performanceProfiler.playlistDataCallsPerSec.toFixed(1)
-                      + " | avg " + performanceProfiler.playlistDataUsAvg.toFixed(1)
-                      + " us | worst " + performanceProfiler.playlistDataUsWorst.toFixed(1) + " us"
-                      + "\nSearch q/s: " + performanceProfiler.searchQueriesPerSec.toFixed(1)
-                      + " | avg " + performanceProfiler.searchQueryMsAvg.toFixed(2)
-                      + " ms | p95 " + performanceProfiler.searchQueryMsP95.toFixed(2)
-                      + " ms | worst " + performanceProfiler.searchQueryMsWorst.toFixed(2) + " ms"
-                      + "\nSearch backend/s sqlite: " + performanceProfiler.searchSqliteQueriesPerSec.toFixed(1)
-                      + " | fts: " + performanceProfiler.searchFtsQueriesPerSec.toFixed(1)
-                      + " | like: " + performanceProfiler.searchLikeQueriesPerSec.toFixed(1)
-                      + " | fail: " + performanceProfiler.searchFailuresPerSec.toFixed(1)
-                      + "\nMemory WS: " + (performanceProfiler.workingSetBytes / (1024 * 1024)).toFixed(1)
-                      + " MiB | private: " + (performanceProfiler.privateBytes / (1024 * 1024)).toFixed(1)
-                      + " MiB"
-                      + "\nMemory commit: " + (performanceProfiler.commitBytes / (1024 * 1024)).toFixed(1)
-                      + " MiB | peak WS: " + (performanceProfiler.peakWorkingSetBytes / (1024 * 1024)).toFixed(1) + " MiB"
-                      + "\nLast checkpoint: "
-                      + (performanceProfiler.lastMemoryCheckpointLabel.length > 0
-                         ? performanceProfiler.lastMemoryCheckpointLabel
-                         : "n/a")
-                      + "\nLast export: " + (performanceProfiler.lastExportPath.length > 0
-                                             ? performanceProfiler.lastExportPath
-                                             : "n/a")
-                      + (performanceProfiler.lastExportError.length > 0
-                         ? "\nExport error: " + performanceProfiler.lastExportError
-                         : "")
-                      + "\nHotkeys: Ctrl+Shift+P overlay, Ctrl+Shift+E enable, Ctrl+Shift+R reset"
-                      + "\nExport: Ctrl+Shift+J json, Ctrl+Shift+C csv, Ctrl+Shift+B bundle"
+                text: root.profilerOverlayText()
             }
         }
 
@@ -3464,10 +4072,259 @@ Kirigami.ApplicationWindow {
         id: tagEditorDialog
     }
 
+    AudioConverterDialog {
+        id: audioConverterDialog
+        onBrowseOutputRequested: function(defaultName) {
+            root.requestAudioConverterOutputPath(defaultName)
+        }
+        onShowResultInPlaylistRequested: function(outputPath) {
+            const localPath = String(outputPath || "").trim()
+            if (localPath.length === 0 || !playlistTable || !trackModel) {
+                return
+            }
+
+            for (let i = 0; i < trackModel.count; ++i) {
+                if (trackModel.getFilePath(i) !== localPath) {
+                    continue
+                }
+                if (playlistTable.selectOnlyIndex) {
+                    playlistTable.selectOnlyIndex(i)
+                }
+                if (playlistTable.locateIndex) {
+                    playlistTable.locateIndex(i)
+                }
+                break
+            }
+        }
+        onOpenResultInFileManagerRequested: function(outputPath) {
+            const localPath = String(outputPath || "").trim()
+            if (localPath.length > 0 && isLocalTrackSource(localPath)) {
+                xdgPortalFilePicker.openInFileManager(localPath)
+            }
+        }
+    }
+
+    BatchAudioConverterDialog {
+        id: batchAudioConverterDialog
+        onBrowseOutputDirectoryRequested: root.requestBatchAudioConverterOutputDirectory()
+        onBrowseInputFilesRequested: root.requestBatchAudioConverterSourceFiles()
+        onBrowseInputFolderRequested: root.requestBatchAudioConverterSourceFolder()
+    }
+
+    YtDlpImportDialog {
+        id: ytDlpImportDialog
+        onBrowseOutputDirectoryRequested: root.requestYtDlpImportOutputDirectory()
+        onPasteUrlRequested: root.pasteClipboardUrlIntoYtDlpImportDialog()
+    }
+
+    Frame {
+        id: ytDlpImportSessionBanner
+        parent: Overlay.overlay
+        visible: root.ytDlpImportSessionHidden
+        z: 4000
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: Kirigami.Units.largeSpacing
+        anchors.bottomMargin: Kirigami.Units.largeSpacing
+        width: Math.min(parent ? parent.width - (Kirigami.Units.largeSpacing * 2) : 420,
+                        Kirigami.Units.gridUnit * 26)
+        padding: Kirigami.Units.largeSpacing
+
+        background: Rectangle {
+            radius: 12
+            color: Qt.rgba(themeManager.surfaceColor.r,
+                           themeManager.surfaceColor.g,
+                           themeManager.surfaceColor.b,
+                           themeManager.darkMode ? 0.96 : 0.985)
+            border.width: 1
+            border.color: themeManager.borderColor
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Kirigami.Units.smallSpacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Label {
+                    Layout.fillWidth: true
+                    text: root.ytDlpImportSessionBannerTitle()
+                    color: themeManager.textColor
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+
+                Label {
+                    text: ytDlpImportService.isProbing
+                          ? root.tr("ytDlpImport.stateProbing")
+                          : (ytDlpImportService.isRunning
+                             ? root.tr("ytDlpImport.stateRunning")
+                             : (root.ytDlpImportSessionHasReport
+                                ? (Number(ytDlpImportService.finalSummary.succeededCount || 0) > 0
+                                   ? root.tr("ytDlpImport.stateSucceeded")
+                                   : root.tr("ytDlpImport.stateFailed"))
+                                : root.tr("ytDlpImport.stateReady")))
+                    color: ytDlpImportService.isRunning || ytDlpImportService.isProbing
+                           ? Kirigami.Theme.highlightColor
+                           : themeManager.textSecondaryColor
+                    font.pixelSize: Math.max(11, Kirigami.Units.gridUnit - 4)
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: root.ytDlpImportSessionBannerBody()
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+                color: themeManager.textSecondaryColor
+            }
+
+            AccentProgressBar {
+                Layout.fillWidth: true
+                visible: root.ytDlpImportSessionActive
+                from: 0
+                to: 1
+                value: Number(ytDlpImportService.batchProgress || 0)
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Button {
+                    text: root.tr("ytDlpImport.showSession")
+                    onClicked: root.showCurrentYtDlpImportSession()
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    visible: !root.ytDlpImportSessionActive
+                    text: root.tr("ytDlpImport.clearButton")
+                    onClicked: ytDlpImportService.clear()
+                }
+            }
+        }
+    }
+
     Connections {
         target: tagEditorDialog
         function onClosed() {
             performanceProfiler.captureMemoryCheckpoint("dialog.tag_editor.closed")
+        }
+    }
+
+    Connections {
+        target: audioConverterDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.audio_converter.closed")
+        }
+    }
+
+    Connections {
+        target: batchAudioConverterDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.batch_audio_converter.closed")
+        }
+    }
+
+    Connections {
+        target: ytDlpImportDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.ytdlp_import.closed")
+        }
+    }
+
+    Connections {
+        target: audioConverterService
+
+        function onConversionFinished(outputPath) {
+            const localPath = String(outputPath || "").trim()
+            if (localPath.length === 0) {
+                return
+            }
+
+            root.ensurePlaylistModeForMutation()
+            const insertIndex = trackModel.count
+            trackModel.addFile(localPath)
+            if (trackModel.count <= insertIndex) {
+                return
+            }
+
+            if (playlistTable && playlistTable.selectOnlyIndex) {
+                playlistTable.selectOnlyIndex(insertIndex)
+            }
+            if (playlistTable && playlistTable.locateIndex) {
+                playlistTable.locateIndex(insertIndex)
+            }
+        }
+    }
+
+    Connections {
+        target: batchAudioConverterService
+
+        function onPlaylistResultReady(outputPath) {
+            const localPath = String(outputPath || "").trim()
+            if (localPath.length === 0) {
+                return
+            }
+
+            trackModel.addFile(localPath)
+        }
+    }
+
+    Connections {
+        target: ytDlpImportService
+
+        function onPlaylistImportReady(filePaths) {
+            if (!trackModel || !filePaths || filePaths.length === 0) {
+                return
+            }
+
+            root.ensurePlaylistModeForMutation()
+            const report = trackModel.addFilesWithReport(filePaths)
+            const insertedCount = Number(report && report.insertedCount !== undefined
+                                         ? report.insertedCount
+                                         : 0)
+            const firstInsertedIndex = Number(report && report.firstInsertedIndex !== undefined
+                                              ? report.firstInsertedIndex
+                                              : -1)
+            const lastInsertedIndex = Number(report && report.lastInsertedIndex !== undefined
+                                             ? report.lastInsertedIndex
+                                             : -1)
+            if (insertedCount <= 0 || firstInsertedIndex < 0) {
+                return
+            }
+
+            if (playlistTable) {
+                if (insertedCount === 1) {
+                    if (playlistTable.selectOnlyIndex) {
+                        playlistTable.selectOnlyIndex(firstInsertedIndex)
+                    }
+                } else {
+                    if (playlistTable.selectOnlyIndex) {
+                        playlistTable.selectOnlyIndex(firstInsertedIndex)
+                    }
+                    if (playlistTable.selectRangeToIndex) {
+                        playlistTable.selectRangeToIndex(lastInsertedIndex)
+                    }
+                }
+                if (playlistTable.locateIndex) {
+                    playlistTable.locateIndex(firstInsertedIndex)
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: batchAudioConverterDialog
+
+        function onReportExportRequested(format, suggestedFileName) {
+            root.requestBatchReportExport(format, suggestedFileName)
         }
     }
 
@@ -3615,6 +4472,12 @@ Kirigami.ApplicationWindow {
         target: xdgPortalFilePicker
 
         function onOpenFilesSelected(urls) {
+            if (root.pendingBatchAudioConverterSourceFilesPick) {
+                root.clearPendingBatchAudioConverterPickerFlow()
+                root.openBatchAudioConverterForFiles(urls || [])
+                return
+            }
+
             root.ensurePlaylistModeForMutation()
             trackModel.addUrls(urls)
             if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
@@ -3623,6 +4486,45 @@ Kirigami.ApplicationWindow {
         }
 
         function onFolderSelected(folderUrl) {
+            if (root.pendingYtDlpImportFolderPick) {
+                const localPath = root.localFilePathFromUrl(folderUrl)
+                root.clearPendingYtDlpImportPickerFlow()
+                if (localPath.length === 0) {
+                    exportStatusDialog.title = root.tr("main.filePickerError")
+                    exportStatusDialog.text = root.tr("ytDlpImport.errorInvalidOutputDirectory")
+                    exportStatusDialog.open()
+                    return
+                }
+                ytDlpImportDialog.applyBrowsedOutputDirectory(localPath)
+                return
+            }
+
+            if (root.pendingBatchAudioConverterFolderPick) {
+                const localPath = root.localFilePathFromUrl(folderUrl)
+                root.clearPendingBatchAudioConverterPickerFlow()
+                if (localPath.length === 0) {
+                    exportStatusDialog.title = root.tr("main.filePickerError")
+                    exportStatusDialog.text = root.tr("batchAudioConverter.errorInvalidOutputDirectory")
+                    exportStatusDialog.open()
+                    return
+                }
+                batchAudioConverterDialog.applyBrowsedOutputDirectory(localPath)
+                return
+            }
+
+            if (root.pendingBatchAudioConverterSourceFolderPick) {
+                const localPath = root.localFilePathFromUrl(folderUrl)
+                root.clearPendingBatchAudioConverterPickerFlow()
+                if (localPath.length === 0) {
+                    exportStatusDialog.title = root.tr("main.filePickerError")
+                    exportStatusDialog.text = root.tr("batchAudioConverter.errorInvalidSourceFolder")
+                    exportStatusDialog.open()
+                    return
+                }
+                root.openBatchAudioConverterForFolder(localPath)
+                return
+            }
+
             root.ensurePlaylistModeForMutation()
             trackModel.addFolder(folderUrl)
             if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
@@ -3631,6 +4533,29 @@ Kirigami.ApplicationWindow {
         }
 
         function onSaveFileSelected(fileUrl) {
+            if (root.pendingAudioConverterSaveFile) {
+                const localPath = root.localFilePathFromUrl(fileUrl)
+                const pendingBatchReportExportFormat = root.pendingBatchReportExportFormat
+                root.clearPendingAudioConverterPickerFlow()
+                if (localPath.length === 0) {
+                    exportStatusDialog.title = root.tr("main.filePickerError")
+                    exportStatusDialog.text = root.tr("audioConverter.errorInvalidOutputPath")
+                    exportStatusDialog.open()
+                    return
+                }
+                if (pendingBatchReportExportFormat.length > 0) {
+                    if (!batchAudioConverterService.exportCurrentReportToFile(localPath,
+                                                                             pendingBatchReportExportFormat)) {
+                        exportStatusDialog.title = root.tr("main.exportError")
+                        exportStatusDialog.text = batchAudioConverterService.reportExportError
+                        exportStatusDialog.open()
+                    }
+                    return
+                }
+                audioConverterDialog.applyBrowsedOutputPath(localPath)
+                return
+            }
+
             let ok = false
             if (root.pendingSelectedExportPaths && root.pendingSelectedExportPaths.length > 0) {
                 ok = playlistExportService.exportSelectedToFile(fileUrl, root.pendingSelectedExportPaths)
@@ -3665,6 +4590,9 @@ Kirigami.ApplicationWindow {
             }
 
             root.clearPendingPlaylistExportFlow()
+            root.clearPendingAudioConverterPickerFlow()
+            root.clearPendingBatchAudioConverterPickerFlow()
+            root.clearPendingYtDlpImportPickerFlow()
             root.clearPendingPresetPickerFlow()
             exportStatusDialog.title = root.tr("main.filePickerError")
             exportStatusDialog.text = normalizedMessage

@@ -12,6 +12,7 @@ Rectangle {
     property bool fullscreenMode: false
     property bool canExport: false
     property alias searchText: searchField.text
+    property string submittedSearchText: ""
     property int searchFieldMask: 0
     property int searchQuickFilterMask: 0
     property bool showCollectionsButton: false
@@ -64,6 +65,20 @@ Rectangle {
 
     function clearSearchFieldFocus() {
         searchField.focus = false
+    }
+
+    function applySearch() {
+        submittedSearchText = searchField.text
+    }
+
+    function handleSearchTextEdited(text) {
+        if (text.length === 0) {
+            submittedSearchText = ""
+            return
+        }
+        if (appSettings.automaticPlaylistSearch) {
+            submittedSearchText = text
+        }
     }
 
     function searchFieldContainsPoint(point, relativeToItem) {
@@ -197,6 +212,26 @@ Rectangle {
         hoverEnabled: true
         implicitWidth: 28
         implicitHeight: 28
+        icon.width: 16
+        icon.height: 16
+
+        contentItem: Item {
+            implicitWidth: control.icon.width
+            implicitHeight: control.icon.height
+
+            Image {
+                anchors.centerIn: parent
+                width: control.icon.width
+                height: control.icon.height
+                source: control.icon.source
+                sourceSize.width: Math.round(width)
+                sourceSize.height: Math.round(height)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                opacity: control.enabled ? 1.0 : 0.56
+            }
+        }
 
         background: Rectangle {
             radius: themeManager.borderRadius
@@ -386,11 +421,17 @@ Rectangle {
                     anchors.rightMargin: 30
                     anchors.topMargin: 2
                     anchors.bottomMargin: 2
-                    placeholderText: root.tr("header.searchPlaceholder")
+                    placeholderText: appSettings.automaticPlaylistSearch
+                                     ? root.tr("header.searchPlaceholder")
+                                     : root.tr("header.searchManualPlaceholder")
                     color: themeManager.textColor
                     font.family: themeManager.fontFamily
                     font.pixelSize: 11
                     background: Item {}
+                    onTextEdited: function() {
+                        root.handleSearchTextEdited(text)
+                    }
+                    onAccepted: root.applySearch()
                     Keys.priority: Keys.BeforeItem
                     Keys.onShortcutOverride: function(event) {
                         if (root.shouldYieldSearchShortcut(event)) {
@@ -405,7 +446,7 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     icon.source: IconResolver.themed("edit-find", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                    enabled: false
+                    onClicked: root.applySearch()
                 }
 
                 HeaderIconButton {
@@ -425,6 +466,7 @@ Rectangle {
                 visible: root.mobileLayout
                 icon.source: IconResolver.themed("edit-find", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                onClicked: root.applySearch()
             }
 
             HeaderIconButton {
@@ -561,6 +603,12 @@ Rectangle {
         }
         FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileAddFolder : null
+        }
+        FluxMenuItem {
+            action: root.menuActions ? root.menuActions.fileOpenAudioConverter : null
+        }
+        FluxMenuItem {
+            action: root.menuActions ? root.menuActions.fileImportUrl : null
         }
         MenuSeparator {}
         FluxMenuItem {
@@ -737,6 +785,7 @@ Rectangle {
             title: root.tr("menu.file")
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileOpenFiles : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileAddFolder : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileOpenAudioConverter : null }
             MenuSeparator {}
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileExportPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileClearPlaylist : null }
@@ -885,6 +934,15 @@ Rectangle {
             title: root.tr("menu.help")
             FluxMenuItem { action: root.menuActions ? root.menuActions.helpAbout : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.helpShortcuts : null }
+        }
+    }
+
+    Connections {
+        target: appSettings
+        function onAutomaticPlaylistSearchChanged() {
+            if (appSettings.automaticPlaylistSearch || searchField.text.length === 0) {
+                root.applySearch()
+            }
         }
     }
 }

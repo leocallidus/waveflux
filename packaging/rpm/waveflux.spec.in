@@ -15,15 +15,18 @@ BuildRequires:  ninja-build
 BuildRequires:  pkgconf-pkg-config
 BuildRequires:  qt6-qtbase-devel
 BuildRequires:  qt6-qtdeclarative-devel
+BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  kf6-kirigami-devel
 BuildRequires:  kf6-kcoreaddons-devel
 BuildRequires:  kf6-ki18n-devel
 BuildRequires:  gstreamer1-devel
 BuildRequires:  gstreamer1-plugins-base-devel
+BuildRequires:  libopenmpt-devel
 BuildRequires:  taglib-devel
 
 Requires:       qt6-qtbase
 Requires:       qt6-qtdeclarative
+Requires:       qt6-qtmultimedia
 Requires:       kf6-kirigami
 Requires:       kf6-kcoreaddons
 Requires:       kf6-ki18n
@@ -31,6 +34,7 @@ Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 Requires:       gstreamer1-plugins-good
 Requires:       gstreamer1-plugins-bad-free
+Requires:       libopenmpt
 Requires:       taglib
 Recommends:     gstreamer1-plugins-ugly
 

@@ -41,6 +41,8 @@ private:
     QString playbackStatus() const;
     QString loopStatus() const;
     double rate() const;
+    double minimumRate() const;
+    double maximumRate() const;
     bool shuffle() const;
     QVariantMap metadata() const;
     double volume() const;
@@ -83,7 +85,6 @@ private:
 
     MprisRootAdaptor *m_rootAdaptor = nullptr;
     MprisPlayerAdaptor *m_playerAdaptor = nullptr;
-    qint64 m_lastTrackChangeWallClockMs = 0;
 #endif
 };
 

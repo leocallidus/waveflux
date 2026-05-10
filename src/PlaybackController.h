@@ -161,6 +161,7 @@ private:
     void onAudioEndOfStream();
     void prepareGaplessTransitionForSource(quint64 sourceTransitionId);
     void handleTrackEndedInternal(quint64 eosTransitionId, bool fromEosSignal);
+    bool activeBackendIsOpenMpt() const;
 
     bool isShuffleStateValid() const;
     void regenerateShuffleOrder(int startIndex = -1);

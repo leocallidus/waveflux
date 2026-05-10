@@ -28,9 +28,12 @@ public:
     Q_INVOKABLE void openPresetFile(const QString &title);
     Q_INVOKABLE void savePresetFile(const QString &title, const QString &defaultName);
     Q_INVOKABLE void openImageFile(const QString &title);
+    Q_INVOKABLE void openExecutableFile(const QString &title);
     Q_INVOKABLE bool openInFileManager(const QString &filePath);
     Q_INVOKABLE bool moveFileToTrash(const QString &filePath);
     Q_INVOKABLE bool openExternalUrl(const QString &url);
+    Q_INVOKABLE bool copyTextToClipboard(const QString &text) const;
+    Q_INVOKABLE QString readTextFromClipboard() const;
 
 signals:
     void lastErrorChanged();
@@ -40,6 +43,7 @@ signals:
     void presetFileSelected(const QUrl &fileUrl);
     void savePresetFileSelected(const QUrl &fileUrl);
     void imageFileSelected(const QUrl &fileUrl);
+    void executableFileSelected(const QUrl &fileUrl);
     void pickerFailed(const QString &message);
 
 private slots:
@@ -54,7 +58,8 @@ private:
         SaveFile,
         OpenPresetFile,
         SavePresetFile,
-        OpenImageFile
+        OpenImageFile,
+        OpenExecutableFile
     };
 
     void startRequest(RequestKind kind,

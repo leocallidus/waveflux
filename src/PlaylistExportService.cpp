@@ -1,5 +1,6 @@
 #include "PlaylistExportService.h"
 
+#include "AppSettingsManager.h"
 #include "TrackModel.h"
 
 #include <QDateTime>
@@ -16,6 +17,13 @@ PlaylistExportService::PlaylistExportService(QObject *parent)
 {
 }
 
+namespace {
+QString localizedExportText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
+}
+
 void PlaylistExportService::initialize(TrackModel *trackModel)
 {
     m_trackModel = trackModel;
@@ -24,7 +32,7 @@ void PlaylistExportService::initialize(TrackModel *trackModel)
 bool PlaylistExportService::exportToFile(const QUrl &targetUrl)
 {
     if (!m_trackModel) {
-        setLastError(QStringLiteral("Playlist export service is not initialized."));
+        setLastError(localizedExportText(QStringLiteral("error.playlistExportNotInitialized")));
         emit exportCompleted(false, m_lastError);
         return false;
     }
@@ -35,13 +43,13 @@ bool PlaylistExportService::exportToFile(const QUrl &targetUrl)
 bool PlaylistExportService::exportSelectedToFile(const QUrl &targetUrl, const QStringList &filePaths)
 {
     if (!m_trackModel) {
-        setLastError(QStringLiteral("Playlist export service is not initialized."));
+        setLastError(localizedExportText(QStringLiteral("error.playlistExportNotInitialized")));
         emit exportCompleted(false, m_lastError);
         return false;
     }
 
     if (filePaths.isEmpty()) {
-        setLastError(QStringLiteral("No tracks selected."));
+        setLastError(localizedExportText(QStringLiteral("error.noTracksSelected")));
         emit exportCompleted(false, m_lastError);
         return false;
     }
@@ -75,14 +83,14 @@ bool PlaylistExportService::exportSelectedToFile(const QUrl &targetUrl, const QS
 bool PlaylistExportService::exportTracksToFile(const QVector<Track> &tracks, const QUrl &targetUrl)
 {
     if (tracks.isEmpty()) {
-        setLastError(QStringLiteral("Playlist is empty."));
+        setLastError(localizedExportText(QStringLiteral("error.playlistEmpty")));
         emit exportCompleted(false, m_lastError);
         return false;
     }
 
     QString filePath = targetUrl.isLocalFile() ? targetUrl.toLocalFile() : targetUrl.toString();
     if (filePath.isEmpty()) {
-        setLastError(QStringLiteral("No output path selected."));
+        setLastError(localizedExportText(QStringLiteral("error.noOutputPathSelected")));
         emit exportCompleted(false, m_lastError);
         return false;
     }
@@ -96,7 +104,7 @@ bool PlaylistExportService::exportTracksToFile(const QVector<Track> &tracks, con
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-        setLastError(QStringLiteral("Failed to open output file for writing."));
+        setLastError(localizedExportText(QStringLiteral("error.failedOpenOutputFileWriting")));
         emit exportCompleted(false, m_lastError);
         return false;
     }
@@ -105,7 +113,7 @@ bool PlaylistExportService::exportTracksToFile(const QVector<Track> &tracks, con
     file.close();
 
     setLastError(QString());
-    emit exportCompleted(true, QStringLiteral("Playlist exported to %1").arg(filePath));
+    emit exportCompleted(true, localizedExportText(QStringLiteral("status.playlistExportedTo")).arg(filePath));
     return true;
 }
 

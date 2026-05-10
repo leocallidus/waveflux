@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
-import WaveFlux 1.1
+import WaveFlux 1.2
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -31,6 +31,7 @@ Item {
     property int ctrlDragAnchorIndex: -1
     property bool ctrlDragMoved: false
     property bool ctrlDragConsumeClick: false
+    property real pendingRestoredPlaylistContentY: -1
     property var cueSegments: []
     readonly property int selectedCount: selectedFilePaths.length
     readonly property bool isPlaying: audioEngine ? audioEngine.state === 1 : false
@@ -84,6 +85,9 @@ Item {
     signal clearPlaylistRequested()
     signal editTagsRequested(string filePath)
     signal editTagsSelectionRequested(var filePaths)
+    signal audioConverterRequested(int trackIndex, string filePath)
+    signal batchAudioConverterRequested(var filePaths)
+    signal urlImportRequested()
     signal exportSelectionRequested(var filePaths)
     signal playlistModeRequested()
     signal newPlaylistRequested()
@@ -91,6 +95,8 @@ Item {
     signal playlistProfileRequested(int playlistId, string playlistName)
     signal createSmartCollectionRequested()
     signal equalizerRequested()
+    signal helpAboutRequested()
+    signal helpShortcutsRequested()
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -151,6 +157,53 @@ Item {
         let minutes = Math.floor(totalSeconds / 60)
         let seconds = totalSeconds % 60
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
+    }
+
+    function isLocalTrackSource(filePath) {
+        const source = String(filePath || "").trim()
+        if (source.length === 0) {
+            return false
+        }
+
+        if (/^[A-Za-z]:[\\/]/.test(source)) {
+            return true
+        }
+        if (source[0] === "/") {
+            return true
+        }
+        if (source.toLowerCase().indexOf("file://") === 0) {
+            return true
+        }
+
+        const schemeMatch = source.match(/^([A-Za-z][A-Za-z0-9+.-]*):/)
+        if (schemeMatch) {
+            return schemeMatch[1].toLowerCase() === "file"
+        }
+
+        return true
+    }
+
+    function hasOnlyLocalSelection() {
+        if (selectedFilePaths.length === 0) {
+            return false
+        }
+        for (let i = 0; i < selectedFilePaths.length; ++i) {
+            if (!isLocalTrackSource(selectedFilePaths[i])) {
+                return false
+            }
+        }
+        return true
+    }
+
+    function audioConverterTargetIndex() {
+        if (trackModel.currentIndex >= 0 && trackModel.currentIndex < trackModel.count) {
+            return trackModel.currentIndex
+        }
+        if (playbackController.activeTrackIndex >= 0
+                && playbackController.activeTrackIndex < trackModel.count) {
+            return playbackController.activeTrackIndex
+        }
+        return -1
     }
 
     function cueTrackPrefix(index) {
@@ -277,6 +330,30 @@ Item {
         })
     }
 
+    function exportTrackListViewState() {
+        return {
+            "contentY": Math.max(0, Number(compactPlaylist.contentY || 0))
+        }
+    }
+
+    function restoreTrackListViewState(state) {
+        const contentY = Math.max(0, Number(state && state.contentY !== undefined ? state.contentY : 0))
+        pendingRestoredPlaylistContentY = contentY
+        applyPendingTrackListViewState()
+    }
+
+    function applyPendingTrackListViewState() {
+        if (pendingRestoredPlaylistContentY < 0) {
+            return
+        }
+        if (!compactPlaylist || compactPlaylist.height <= 0) {
+            return
+        }
+        const maxContentY = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
+        compactPlaylist.contentY = Math.max(0, Math.min(maxContentY, pendingRestoredPlaylistContentY))
+        pendingRestoredPlaylistContentY = -1
+    }
+
     function searchDebounceIntervalMs() {
         const count = trackModel.count
         if (count < 1000) return 40
@@ -297,6 +374,27 @@ Item {
         pendingSearchText = text
         searchDebounceTimer.interval = searchDebounceIntervalMs()
         searchDebounceTimer.restart()
+    }
+
+    function applySearchQuery(text) {
+        searchDebounceTimer.stop()
+        pendingSearchText = text
+        debouncedSearchQuery = text
+    }
+
+    function handleSearchTextEdited(text) {
+        searchQuery = text
+        if (text.length === 0) {
+            applySearchQuery("")
+            return
+        }
+        if (appSettings.automaticPlaylistSearch) {
+            scheduleDebouncedSearchUpdate(text)
+        }
+    }
+
+    function submitSearchQuery() {
+        applySearchQuery(searchQuery)
     }
 
     function matchCount() {
@@ -406,6 +504,15 @@ Item {
         interval: 90
         repeat: false
         onTriggered: root.debouncedSearchQuery = root.pendingSearchText
+    }
+
+    Connections {
+        target: appSettings
+        function onAutomaticPlaylistSearchChanged() {
+            if (appSettings.automaticPlaylistSearch || root.searchQuery.length === 0) {
+                root.submitSearchQuery()
+            }
+        }
     }
 
     Timer {
@@ -578,6 +685,43 @@ Item {
             border.width: 1
             border.color: themeManager.borderColor
 
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: visible ? 4 : 0
+                color: Qt.rgba(themeManager.primaryColor.r,
+                               themeManager.primaryColor.g,
+                               themeManager.primaryColor.b,
+                               0.12)
+                visible: audioEngine && audioEngine.remoteTrackerDownloadActive
+                z: 3
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width * Math.max(0, Math.min(1, audioEngine.remoteTrackerDownloadProgress))
+                    color: themeManager.primaryColor
+                    visible: audioEngine.remoteTrackerDownloadProgress > 0
+                }
+            }
+
+            Label {
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.top: parent.top
+                anchors.topMargin: 4
+                visible: audioEngine && audioEngine.remoteTrackerDownloadActive
+                z: 3
+                text: audioEngine ? audioEngine.remoteTrackerDownloadStatus : ""
+                color: themeManager.textSecondaryColor
+                font.pixelSize: 10
+                elide: Text.ElideRight
+                width: Math.min(220, parent.width * 0.42)
+                horizontalAlignment: Text.AlignRight
+            }
+
             ColumnLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 4
@@ -596,6 +740,20 @@ Item {
                         progress: audioEngine.duration > 0 ? audioEngine.position / audioEngine.duration : 0
                         loading: waveformProvider.loading
                         generationProgress: waveformProvider.progress
+                        loadingLabelTemplate: root.tr("waveform.loadingPlaceholder")
+                        emptyStateText: {
+                            const state = String(waveformProvider ? waveformProvider.placeholderState || "" : "")
+                            if (state === "unsupported") {
+                                return root.tr("waveform.unsupportedPlaceholder")
+                            }
+                            if (state === "failed") {
+                                return root.tr("waveform.failedPlaceholder")
+                            }
+                            if (state === "empty") {
+                                return root.tr("waveform.silentPlaceholder")
+                            }
+                            return root.tr("waveform.emptyPlaceholder")
+                        }
                         waveformColor: themeManager.waveformColor
                         progressColor: themeManager.progressColor
                         backgroundColor: themeManager.surfaceColor
@@ -1002,6 +1160,37 @@ Item {
                             AccentMenuSeparator {}
 
                             AccentMenuItem {
+                                text: root.tr("menu.importUrl")
+                                icon.source: IconResolver.themed("document-open", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.urlImportRequested()
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                readonly property int targetIndex: root.audioConverterTargetIndex()
+                                text: root.tr("menu.audioConverter")
+                                icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: targetIndex >= 0
+                                         && root.isLocalTrackSource(trackModel.getFilePath(targetIndex))
+                                         && (!trackModel.isCueTrack || !trackModel.isCueTrack(targetIndex))
+                                onTriggered: root.audioConverterRequested(targetIndex,
+                                                                          trackModel.getFilePath(targetIndex))
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("playlist.audioConverterSelected")
+                                icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: root.selectedCount > 1 && root.hasOnlyLocalSelection()
+                                onTriggered: root.batchAudioConverterRequested(root.selectedFilePathsSnapshot())
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
                                 text: root.playlistVisible ? root.tr("compact.hidePlaylist") : root.tr("compact.showPlaylist")
                                 icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
                                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1033,6 +1222,7 @@ Item {
                                 icon.source: themeManager.darkMode
                                              ? "qrc:/WaveFlux/resources/icons/equalizer-dark.svg"
                                              : "qrc:/WaveFlux/resources/icons/equalizer-light.svg"
+                                enabled: audioEngine.equalizerAvailable
                                 onTriggered: root.equalizerRequested()
                             }
 
@@ -1043,6 +1233,22 @@ Item {
                                 icon.source: IconResolver.themed("configure", themeManager.darkMode)
                                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                                 onTriggered: root.settingsRequested()
+                            }
+
+                            AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                text: root.tr("help.shortcuts")
+                                icon.source: IconResolver.themed("help-contents", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.helpShortcutsRequested()
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("help.about")
+                                icon.source: IconResolver.themed("help-about", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                onTriggered: root.helpAboutRequested()
                             }
                         }
                     }
@@ -1290,18 +1496,30 @@ Item {
                         anchors.rightMargin: 8
                         spacing: 6
 
-                        Label {
+                        ToolButton {
                             text: "\u2315"
-                            color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: 12
+                            display: AbstractButton.TextOnly
+                            padding: 0
+                            implicitWidth: 18
+                            implicitHeight: 18
                             Layout.alignment: Qt.AlignVCenter
+                            contentItem: Text {
+                                text: parent.text
+                                color: themeManager.textMutedColor
+                                font.family: themeManager.monoFontFamily
+                                font.pixelSize: 12
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: root.submitSearchQuery()
                         }
 
                         TextField {
                             id: compactSearchField
                             Layout.fillWidth: true
-                            placeholderText: root.tr("header.searchPlaceholder")
+                            placeholderText: appSettings.automaticPlaylistSearch
+                                             ? root.tr("header.searchPlaceholder")
+                                             : root.tr("header.searchManualPlaceholder")
                             text: root.searchQuery
                             selectByMouse: true
                             color: themeManager.textColor
@@ -1318,9 +1536,9 @@ Item {
                                 border.color: themeManager.primaryColor
                             }
                             onTextEdited: {
-                                root.searchQuery = text
-                                root.scheduleDebouncedSearchUpdate(text)
+                                root.handleSearchTextEdited(text)
                             }
+                            onAccepted: root.submitSearchQuery()
                             Keys.priority: Keys.BeforeItem
                             Keys.onShortcutOverride: function(event) {
                                 if (root.shouldYieldSearchShortcut(event)) {
@@ -1337,9 +1555,7 @@ Item {
                             implicitHeight: 22
                             onClicked: {
                                 compactSearchField.clear()
-                                root.searchQuery = ""
-                                root.pendingSearchText = ""
-                                root.debouncedSearchQuery = ""
+                                root.applySearchQuery("")
                             }
                         }
                     }
@@ -1354,6 +1570,8 @@ Item {
                     currentIndex: root.uiActiveIndex()
                     highlightFollowsCurrentItem: true
                     highlightMoveDuration: 100
+                    onContentHeightChanged: root.applyPendingTrackListViewState()
+                    onHeightChanged: root.applyPendingTrackListViewState()
 
                     ScrollBar.vertical: ScrollBar {
                         width: 6
@@ -1599,6 +1817,17 @@ Item {
                     onTriggered: root.editTagsRequested(trackContextMenu.trackFilePath)
                 }
 
+                AccentMenuItem {
+                    text: root.tr("playlist.audioConverter")
+                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    enabled: trackContextMenu.trackIndex >= 0
+                             && root.isLocalTrackSource(trackContextMenu.trackFilePath)
+                             && (!trackModel.isCueTrack || !trackModel.isCueTrack(trackContextMenu.trackIndex))
+                    onTriggered: root.audioConverterRequested(trackContextMenu.trackIndex,
+                                                              trackContextMenu.trackFilePath)
+                }
+
                 AccentMenuSeparator {}
 
                 AccentMenuItem {
@@ -1607,6 +1836,14 @@ Item {
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     enabled: root.selectedCount > 0
                     onTriggered: root.editTagsSelectionRequested(root.selectedFilePathsSnapshot())
+                }
+
+                AccentMenuItem {
+                    text: root.tr("playlist.audioConverterSelected")
+                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    enabled: root.selectedCount > 1 && root.hasOnlyLocalSelection()
+                    onTriggered: root.batchAudioConverterRequested(root.selectedFilePathsSnapshot())
                 }
 
                 AccentMenuItem {
@@ -1730,10 +1967,6 @@ Item {
     }
 
     // Keyboard shortcuts
-    Shortcut {
-        sequence: "Space"
-        onActivated: audioEngine.togglePlayPause()
-    }
     Shortcut {
         sequence: "Left"
         onActivated: root.seekRelative(-5000)

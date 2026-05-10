@@ -1,5 +1,7 @@
 #include "WaveformProvider.h"
 #include "PeaksCacheManager.h"
+#include "playback/OpenMptWaveformRenderer.h"
+#include "playback/PlaybackBackendRouting.h"
 #include <QtConcurrent>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -79,6 +81,16 @@ bool sanitizePeaksForRendering(QVector<float> &peaks)
         peak = std::clamp(peak, 0.0f, 1.0f);
     }
     return true;
+}
+
+bool peaksHaveEnergy(const QVector<float> &peaks)
+{
+    for (float peak : peaks) {
+        if (peak > 0.0005f) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int chooseWindowSamples(gint64 durationNs, int targetSamples)
@@ -209,11 +221,13 @@ void WaveformProvider::loadFile(const QString &filePath)
     m_currentFilePath = filePath.trimmed();
     m_runtimeCacheTrimmed = false;
     if (m_currentFilePath.isEmpty()) {
+        setPlaceholderState(QStringLiteral("empty"));
         return;
     }
 
     if (isRemoteSourceUri(m_currentFilePath)) {
         qDebug() << "WaveformProvider: skipping extraction for remote source" << m_currentFilePath;
+        setPlaceholderState(QStringLiteral("unsupported"));
         return;
     }
 
@@ -222,7 +236,12 @@ void WaveformProvider::loadFile(const QString &filePath)
         QVector<float> cachedPeaks = std::move(*cached);
         if (sanitizePeaksForRendering(cachedPeaks)) {
             qDebug() << "WaveformProvider: using cached peaks for" << m_currentFilePath;
-            m_peaks = std::move(cachedPeaks);
+            if (peaksHaveEnergy(cachedPeaks)) {
+                m_peaks = std::move(cachedPeaks);
+                setPlaceholderState(QString());
+            } else {
+                setPlaceholderState(QStringLiteral("empty"));
+            }
             m_progress = 1.0;
             emit peaksReady();
             emit progressChanged(m_progress);
@@ -235,6 +254,7 @@ void WaveformProvider::loadFile(const QString &filePath)
     // ── Cache miss – full extraction ────────────────────────────────
     m_loading = true;
     emit loadingChanged(m_loading);
+    setPlaceholderState(QStringLiteral("loading"));
 
     const quint64 generationId = ++m_generationId;
     m_cancelToken = std::make_shared<std::atomic_bool>(false);
@@ -333,6 +353,19 @@ WaveformProvider::WaveformData WaveformProvider::extractWaveform(
         if (localUri.isLocalFile()) {
             localPath = localUri.toLocalFile();
         }
+    }
+
+    if (WaveFlux::isTrackerModuleSource(localPath)) {
+        const WaveFlux::OpenMptWaveformRenderResult trackerResult =
+            WaveFlux::OpenMptWaveformRenderer::render(localPath,
+                                                      targetSamples,
+                                                      partialCallback,
+                                                      cancelRequested);
+        result.peaks = trackerResult.peaks;
+        result.success = trackerResult.success;
+        result.canceled = trackerResult.canceled;
+        result.errorMessage = trackerResult.errorMessage;
+        return result;
     }
 
     qDebug() << "extractWaveform: URI =" << uri;
@@ -660,12 +693,19 @@ void WaveformProvider::onExtractionFinished(QFutureWatcher<WaveformData> *watche
     }
 
     if (result.success && !result.peaks.isEmpty() && sanitizePeaksForRendering(result.peaks)) {
-        m_peaks = std::move(result.peaks);
+        const QVector<float> peaksForCache = result.peaks;
+        if (peaksHaveEnergy(result.peaks)) {
+            m_peaks = std::move(result.peaks);
+            setPlaceholderState(QString());
+        } else {
+            m_peaks.clear();
+            setPlaceholderState(QStringLiteral("empty"));
+        }
         m_runtimeCacheTrimmed = false;
         qDebug() << "WaveformProvider: Peaks ready, count:" << m_peaks.size();
 
         // Persist to disk cache for next time
-        m_cache->store(m_currentFilePath, m_peaks);
+        m_cache->store(m_currentFilePath, peaksForCache);
 
         emit peaksReady();
         if (!qFuzzyCompare(m_progress, 1.0)) {
@@ -678,6 +718,7 @@ void WaveformProvider::onExtractionFinished(QFutureWatcher<WaveformData> *watche
             m_progress = 0.0;
             emit progressChanged(m_progress);
         }
+        setPlaceholderState(QStringLiteral("failed"));
         const QString fallbackError = result.errorMessage.trimmed().isEmpty()
             ? QStringLiteral("Waveform extraction failed")
             : result.errorMessage.trimmed();
@@ -714,6 +755,9 @@ void WaveformProvider::restoreTrimmedCacheIfNeeded()
         if (sanitizePeaksForRendering(cachedPeaks)) {
             m_peaks = std::move(cachedPeaks);
             m_runtimeCacheTrimmed = false;
+            setPlaceholderState(m_peaks.isEmpty() || !peaksHaveEnergy(m_peaks)
+                                    ? QStringLiteral("empty")
+                                    : QString());
             emit peaksReady();
             return;
         }
@@ -751,4 +795,14 @@ QVector<float> WaveformProvider::getPeaksForWidth(int width) const
     }
     
     return resampled;
+}
+
+void WaveformProvider::setPlaceholderState(const QString &state)
+{
+    if (m_placeholderState == state) {
+        return;
+    }
+
+    m_placeholderState = state;
+    emit placeholderStateChanged();
 }

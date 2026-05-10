@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMimeDatabase>
+#include <QMimeType>
 #include <QUrl>
 
 #include <taglib/attachedpictureframe.h>
@@ -81,6 +82,100 @@ QString resolveImageMimeType(const QString &imagePath)
     }
 
     return mime.startsWith(QStringLiteral("image/")) ? mime : QString();
+}
+
+QString dataUrlFromBytes(const TagLib::ByteVector &bytes, const QString &mimeType)
+{
+    if (bytes.isEmpty()) {
+        return {};
+    }
+
+    const QByteArray raw(bytes.data(), static_cast<qsizetype>(bytes.size()));
+    QString mime = mimeType.trimmed().toLower();
+    if (mime == QStringLiteral("image/jpg")) {
+        mime = QStringLiteral("image/jpeg");
+    }
+    if (!mime.startsWith(QStringLiteral("image/"))) {
+        mime = QStringLiteral("image/jpeg");
+    }
+
+    return QStringLiteral("data:%1;base64,%2")
+        .arg(mime, QString::fromLatin1(raw.toBase64()));
+}
+
+QString selectedCoverPreviewSource(const QString &imagePath)
+{
+    return imagePath.isEmpty() ? QString() : QUrl::fromLocalFile(imagePath).toString();
+}
+
+QString embeddedCoverPreviewSource(const QString &filePath)
+{
+    const QString extension = upperExtension(filePath);
+    if (extension == QStringLiteral("MP3")) {
+        const auto file = WaveFlux::TagLibPath::openMpegFile(filePath, false);
+        if (!file) {
+            return {};
+        }
+
+        TagLib::ID3v2::Tag *id3v2Tag = file->ID3v2Tag(false);
+        if (!id3v2Tag) {
+            return {};
+        }
+
+        const auto frames = id3v2Tag->frameListMap()["APIC"];
+        if (frames.isEmpty()) {
+            return {};
+        }
+
+        const TagLib::ID3v2::AttachedPictureFrame *fallbackFrame = nullptr;
+        for (auto *rawFrame : frames) {
+            auto *frame = dynamic_cast<TagLib::ID3v2::AttachedPictureFrame *>(rawFrame);
+            if (!frame) {
+                continue;
+            }
+            if (!fallbackFrame) {
+                fallbackFrame = frame;
+            }
+            if (frame->type() == TagLib::ID3v2::AttachedPictureFrame::FrontCover) {
+                return dataUrlFromBytes(frame->picture(), toQString(frame->mimeType()));
+            }
+        }
+
+        return fallbackFrame
+            ? dataUrlFromBytes(fallbackFrame->picture(), toQString(fallbackFrame->mimeType()))
+            : QString();
+    }
+
+    if (extension == QStringLiteral("FLAC")) {
+        const auto file = WaveFlux::TagLibPath::openFlacFile(filePath, false);
+        if (!file) {
+            return {};
+        }
+
+        const auto pictures = file->pictureList();
+        if (pictures.isEmpty()) {
+            return {};
+        }
+
+        const TagLib::FLAC::Picture *fallbackPicture = nullptr;
+        for (const auto *picture : pictures) {
+            if (!picture) {
+                continue;
+            }
+            if (!fallbackPicture) {
+                fallbackPicture = picture;
+            }
+            if (picture->type() == TagLib::FLAC::Picture::FrontCover) {
+                return dataUrlFromBytes(picture->data(), toQString(picture->mimeType()));
+            }
+        }
+
+        return fallbackPicture
+            ? dataUrlFromBytes(fallbackPicture->data(), toQString(fallbackPicture->mimeType()))
+            : QString();
+    }
+
+    return {};
 }
 
 QString unsupportedCoverEditingMessage(const QString &extension)
@@ -314,6 +409,12 @@ void TagEditor::setCoverImagePath(const QString &coverImagePath)
             emit removeCoverChanged();
         }
 
+        const QString previewSource = selectedCoverPreviewSource(m_coverImagePath);
+        if (m_coverPreviewSource != previewSource) {
+            m_coverPreviewSource = previewSource;
+            emit coverPreviewSourceChanged();
+        }
+
         markChanged();
     }
 }
@@ -330,6 +431,16 @@ void TagEditor::setRemoveCover(bool removeCover)
     if (m_removeCover && !m_coverImagePath.isEmpty()) {
         m_coverImagePath.clear();
         emit coverImagePathChanged();
+    }
+
+    const QString previewSource = m_removeCover
+        ? QString()
+        : selectedCoverPreviewSource(m_coverImagePath).isEmpty()
+            ? m_originalCoverPreviewSource
+            : selectedCoverPreviewSource(m_coverImagePath);
+    if (m_coverPreviewSource != previewSource) {
+        m_coverPreviewSource = previewSource;
+        emit coverPreviewSourceChanged();
     }
 
     markChanged();
@@ -355,6 +466,7 @@ void TagEditor::loadTags()
     m_year = tag->year();
     m_trackNumber = tag->track();
     m_coverImagePath.clear();
+    m_coverPreviewSource = embeddedCoverPreviewSource(m_filePath);
     m_removeCover = false;
     
     // Store originals for revert
@@ -365,6 +477,7 @@ void TagEditor::loadTags()
     m_originalYear = m_year;
     m_originalTrackNumber = m_trackNumber;
     m_originalCoverImagePath = m_coverImagePath;
+    m_originalCoverPreviewSource = m_coverPreviewSource;
     m_originalRemoveCover = m_removeCover;
     
     m_hasChanges = false;
@@ -376,6 +489,7 @@ void TagEditor::loadTags()
     emit yearChanged();
     emit trackNumberChanged();
     emit coverImagePathChanged();
+    emit coverPreviewSourceChanged();
     emit removeCoverChanged();
     emit hasChangesChanged();
 }
@@ -476,6 +590,7 @@ bool TagEditor::saveTags()
     m_originalYear = m_year;
     m_originalTrackNumber = m_trackNumber;
     m_originalCoverImagePath = m_coverImagePath;
+    m_originalCoverPreviewSource = m_removeCover ? QString() : m_coverPreviewSource;
     m_originalRemoveCover = m_removeCover;
     
     m_hasChanges = false;
@@ -585,6 +700,7 @@ void TagEditor::revertChanges()
     m_year = m_originalYear;
     m_trackNumber = m_originalTrackNumber;
     m_coverImagePath = m_originalCoverImagePath;
+    m_coverPreviewSource = m_originalCoverPreviewSource;
     m_removeCover = m_originalRemoveCover;
     
     m_hasChanges = false;
@@ -596,6 +712,7 @@ void TagEditor::revertChanges()
     emit yearChanged();
     emit trackNumberChanged();
     emit coverImagePathChanged();
+    emit coverPreviewSourceChanged();
     emit removeCoverChanged();
     emit hasChangesChanged();
 }

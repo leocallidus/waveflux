@@ -1,4 +1,5 @@
 #include "PlaybackController.h"
+#include "AppSettingsManager.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -11,12 +12,18 @@
 #include <QVariantMap>
 #include <QtGlobal>
 #include "DiagnosticsFlags.h"
+#include "playback/PlaybackBackendRouting.h"
 #include <utility>
 
 namespace {
 bool seekDiagEnabled()
 {
     return DiagnosticsFlags::detailedDiagnosticsEnabled();
+}
+
+QString localizedPlaybackErrorText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
 }
 
 QString transitionTracePayload(const QString &component,
@@ -44,7 +51,7 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
     m_trackLoadTimer.setSingleShot(true);
     m_trackLoadTimer.setInterval(m_trackLoadTimeoutMs);
     connect(&m_trackLoadTimer, &QTimer::timeout, this, [this]() {
-        onLoadFailure(QStringLiteral("Track loading timed out"));
+        onLoadFailure(localizedPlaybackErrorText(QStringLiteral("error.trackLoadingTimedOut")));
     });
 
     m_playbackStatsDebounceTimer.setSingleShot(true);
@@ -75,6 +82,9 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
                 clearGaplessTransitionState();
             }
             if (m_trackModel->rowCount() <= 0) {
+                if (m_audioEngine && !m_audioEngine->currentFile().isEmpty()) {
+                    m_audioEngine->unload();
+                }
                 setActiveTrackIndex(-1);
                 setPendingTrackIndex(-1);
                 setTransitionState(TransitionIdle);
@@ -136,6 +146,9 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
                 clearGaplessTransitionState();
             }
             if (m_trackModel->rowCount() <= 0) {
+                if (m_audioEngine && !m_audioEngine->currentFile().isEmpty()) {
+                    m_audioEngine->unload();
+                }
                 setActiveTrackIndex(-1);
                 setPendingTrackIndex(-1);
                 setTransitionState(TransitionIdle);
@@ -995,6 +1008,12 @@ void PlaybackController::onAudioEndOfStream()
     handleTrackEndedInternal(eosTransitionId, true);
 }
 
+bool PlaybackController::activeBackendIsOpenMpt() const
+{
+    return m_audioEngine
+        && m_audioEngine->currentBackendKind() == WaveFlux::PlaybackBackendKind::OpenMpt;
+}
+
 void PlaybackController::requestPlayIndex(int index, const QString &reason)
 {
     if (!m_trackModel || !m_audioEngine) {
@@ -1278,6 +1297,8 @@ void PlaybackController::handleTrackEndedInternal(quint64 eosTransitionId, bool 
         {QStringLiteral("fromEosSignal"), fromEosSignal}
     });
 
+    const bool openMptBackend = activeBackendIsOpenMpt();
+
     if (fromEosSignal && eosTransitionId > 0) {
         if (m_activeTrackTransitionId > 0 && eosTransitionId < m_activeTrackTransitionId) {
             traceTransitionEvent("handle_track_ended_ignored_stale_eos", eosTransitionId);
@@ -1303,10 +1324,28 @@ void PlaybackController::handleTrackEndedInternal(quint64 eosTransitionId, bool 
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
+    const bool openMptGaplessPreparedForThisEos =
+        openMptBackend
+        && m_gaplessQueuedIndex >= 0
+        && m_gaplessTransitionPending
+        && eosTransitionId > 0
+        && m_lastPreparedGaplessSourceTransitionId == eosTransitionId;
+
+    if (openMptBackend
+        && !openMptGaplessPreparedForThisEos
+        && (m_gaplessQueuedIndex >= 0 || m_gaplessQueuedTransitionId > 0 || m_gaplessTransitionPending)) {
+        traceTransitionEvent("handle_track_ended_openmpt_clears_gapless_state", eosTransitionId, {
+            {QStringLiteral("queuedIndex"), m_gaplessQueuedIndex},
+            {QStringLiteral("queuedTransitionId"),
+             static_cast<qulonglong>(m_gaplessQueuedTransitionId)}
+        });
+        clearGaplessTransitionState();
+    }
+
     // Some backends can still emit EOS from the previous stream right after a
     // successful gapless switch. Guard only the short post-transition window,
     // then always clear stale markers to avoid swallowing real EOS later.
-    if (m_gaplessQueuedIndex >= 0 && !m_gaplessTransitionPending) {
+    if (!openMptBackend && m_gaplessQueuedIndex >= 0 && !m_gaplessTransitionPending) {
         const bool eosState = (m_audioEngine->state() == AudioEngine::EndedState);
         const bool guardActive =
             (m_gaplessTrailingEosGuardUntilMs > 0 && nowMs <= m_gaplessTrailingEosGuardUntilMs);
@@ -1444,6 +1483,8 @@ void PlaybackController::prepareGaplessTransitionForSource(quint64 sourceTransit
 
     traceTransitionEvent("prepare_gapless_requested", sourceTransitionId);
 
+    const bool openMptBackend = activeBackendIsOpenMpt();
+
     if (sourceTransitionId > 0
         && m_activeTrackTransitionId > 0
         && sourceTransitionId < m_activeTrackTransitionId) {
@@ -1483,6 +1524,18 @@ void PlaybackController::prepareGaplessTransitionForSource(quint64 sourceTransit
         return;
     }
 
+    const QString nextFile = m_trackModel->getFilePath(nextIndex);
+    if (openMptBackend && !WaveFlux::isTrackerModuleSource(nextFile)) {
+        traceTransitionEvent("prepare_gapless_skipped_openmpt_mixed_target", sourceTransitionId, {
+            {QStringLiteral("nextIndex"), nextIndex},
+            {QStringLiteral("nextFile"), nextFile}
+        });
+        clearGaplessTransitionState();
+        setPendingTrackIndex(-1);
+        setTransitionState(TransitionIdle);
+        return;
+    }
+
     if (m_gaplessTransitionPending
         && sourceTransitionId > 0
         && m_lastPreparedGaplessSourceTransitionId == sourceTransitionId) {
@@ -1506,12 +1559,12 @@ void PlaybackController::prepareGaplessTransitionForSource(quint64 sourceTransit
     m_lastPreparedGaplessSourceTransitionId = sourceTransitionId;
     setPendingTrackIndex(nextIndex);
     setTransitionState(TransitionPreparingGapless);
-    m_audioEngine->setNextFileWithTransition(m_trackModel->getFilePath(nextIndex), transitionId);
+    m_audioEngine->setNextFileWithTransition(nextFile, transitionId);
     traceTransitionEvent("prepare_gapless_set_next_file", transitionId, {
         {QStringLiteral("sourceTransitionId"),
          static_cast<qulonglong>(sourceTransitionId)},
         {QStringLiteral("nextIndex"), nextIndex},
-        {QStringLiteral("nextFile"), m_trackModel->getFilePath(nextIndex)}
+        {QStringLiteral("nextFile"), nextFile}
     });
 
     if (seekDiagEnabled()) {
@@ -1520,7 +1573,7 @@ void PlaybackController::prepareGaplessTransitionForSource(quint64 sourceTransit
             << "sourceTransitionId=" << sourceTransitionId
             << "queuedTransitionId=" << transitionId
             << "queuedIndex=" << m_gaplessQueuedIndex
-            << "queuedFile=" << m_trackModel->getFilePath(nextIndex);
+            << "queuedFile=" << nextFile;
     }
 }
 
@@ -1961,7 +2014,7 @@ void PlaybackController::onLoadFailure(const QString &message)
         setPendingTrackIndex(-1);
         setTransitionState(TransitionIdle);
         m_audioEngine->stop();
-        emit errorRaised(QStringLiteral("Playback stopped after repeated load failures."));
+        emit errorRaised(localizedPlaybackErrorText(QStringLiteral("error.playbackStoppedRepeatedFailures")));
     } else if (!canGoNext()) {
         setPendingTrackIndex(-1);
         setTransitionState(TransitionIdle);

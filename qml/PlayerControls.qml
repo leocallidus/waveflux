@@ -89,6 +89,7 @@ Item {
 
                 // Speed control
                 RowLayout {
+                    visible: audioEngine.rateAvailable
                     spacing: Kirigami.Units.smallSpacing
                     Layout.fillWidth: true
 
@@ -127,7 +128,7 @@ Item {
 
                 // Pitch (tone) control
                 RowLayout {
-                    visible: !root.veryCompactMode
+                    visible: !root.veryCompactMode && audioEngine.pitchAvailable
                     spacing: Kirigami.Units.smallSpacing
                     Layout.fillWidth: true
 

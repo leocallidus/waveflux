@@ -1,0 +1,25 @@
+{
+  "_type": "playlist",
+  "id": "flat123",
+  "title": "Flat Playlist",
+  "extractor_key": "YoutubeTab",
+  "entries": [
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "b1",
+      "title": "Flat One",
+      "url": "https://www.youtube.com/watch?v=b1",
+      "duration": 45,
+      "playlist_index": 1
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "b2",
+      "title": "Flat Two",
+      "url": "b2",
+      "playlist_index": 2
+    }
+  ]
+}

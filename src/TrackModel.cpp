@@ -3,6 +3,7 @@
 #include "PerformanceProfiler.h"
 #include "TagLibPath.h"
 #include "XspfPlaylistParser.h"
+#include "playback/PlaybackBackendRouting.h"
 #include "library/LibraryRepository.h"
 #include "library/SearchRepository.h"
 
@@ -13,6 +14,7 @@
 #include <QDirIterator>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QFileInfoList>
 #include <QSaveFile>
 #include <QCollator>
 #include <QMetaObject>
@@ -612,6 +614,18 @@ TrackModel::TrackModel(QObject *parent)
             &QFutureWatcher<AsyncSearchResult>::finished,
             this,
             &TrackModel::onAsyncSearchFinished);
+    m_playlistFolderRescanTimer.setSingleShot(true);
+    m_playlistFolderRescanTimer.setInterval(750);
+    connect(&m_playlistFolderRescanTimer,
+            &QTimer::timeout,
+            this,
+            &TrackModel::rescanWatchedPlaylistFolder);
+    connect(&m_playlistFolderWatcher,
+            &QFileSystemWatcher::directoryChanged,
+            this,
+            [this](const QString &) {
+                m_playlistFolderRescanTimer.start();
+            });
     updateProfilerPlaylistCount();
 }
 
@@ -819,6 +833,16 @@ void TrackModel::setRepeatableShuffle(bool enabled)
     emit repeatableShuffleChanged();
 }
 
+void TrackModel::setAutoAddTracksFromPlaylistFolderEnabled(bool enabled)
+{
+    if (m_autoAddTracksFromPlaylistFolderEnabled == enabled) {
+        return;
+    }
+
+    m_autoAddTracksFromPlaylistFolderEnabled = enabled;
+    updatePlaylistFolderWatch();
+}
+
 void TrackModel::configureLibraryStorage(bool enabled, const QString &databasePath)
 {
     if (!m_libraryRepository) {
@@ -873,8 +897,13 @@ void TrackModel::addFile(const QString &filePath)
 
 void TrackModel::addFiles(const QStringList &filePaths)
 {
+    (void)addFilesWithReport(filePaths);
+}
+
+QVariantMap TrackModel::addFilesWithReport(const QStringList &filePaths)
+{
     if (filePaths.isEmpty()) {
-        return;
+        return {};
     }
 
     QVector<Track> acceptedTracks;
@@ -940,15 +969,23 @@ void TrackModel::addFiles(const QStringList &filePaths)
         }
     }
 
-    appendAcceptedTracks(std::move(acceptedTracks), ingestTrackOffsets, metadataTrackOffsets);
+    const AppendReport report =
+        appendAcceptedTracks(std::move(acceptedTracks), ingestTrackOffsets, metadataTrackOffsets);
+    QVariantMap result;
+    result.insert(QStringLiteral("firstInsertedIndex"), report.firstInsertedIndex);
+    result.insert(QStringLiteral("lastInsertedIndex"), report.lastInsertedIndex);
+    result.insert(QStringLiteral("insertedCount"), report.insertedCount);
+    result.insert(QStringLiteral("insertedFilePaths"), report.insertedFilePaths);
+    return result;
 }
 
-void TrackModel::appendAcceptedTracks(QVector<Track> acceptedTracks,
-                                      const QVector<int> &ingestTrackOffsets,
-                                      const QVector<int> &metadataTrackOffsets)
+TrackModel::AppendReport TrackModel::appendAcceptedTracks(QVector<Track> acceptedTracks,
+                                                          const QVector<int> &ingestTrackOffsets,
+                                                          const QVector<int> &metadataTrackOffsets)
 {
+    AppendReport report;
     if (acceptedTracks.isEmpty()) {
-        return;
+        return report;
     }
 
     QVector<LibraryTrackUpsertData> ingestBatch;
@@ -966,6 +1003,13 @@ void TrackModel::appendAcceptedTracks(QVector<Track> acceptedTracks,
 
     const int first = m_tracks.size();
     const int last = first + acceptedTracks.size() - 1;
+    report.firstInsertedIndex = first;
+    report.lastInsertedIndex = last;
+    report.insertedCount = acceptedTracks.size();
+    report.insertedFilePaths.reserve(acceptedTracks.size());
+    for (const Track &track : std::as_const(acceptedTracks)) {
+        report.insertedFilePaths.push_back(track.filePath);
+    }
 
     beginInsertRows(QModelIndex(), first, last);
     m_tracks.reserve(last + 1);
@@ -988,6 +1032,10 @@ void TrackModel::appendAcceptedTracks(QVector<Track> acceptedTracks,
         }
         loadMetadata(first + offset, false);
     }
+
+    updatePlaylistFolderWatch();
+
+    return report;
 }
 
 void TrackModel::addFolder(const QUrl &folderUrl)
@@ -1101,7 +1149,8 @@ void TrackModel::addUrls(const QList<QUrl> &urls)
             }
 
             const QMimeType mimeType = mimeDb.mimeTypeForFile(localPath);
-            if (!mimeType.name().startsWith(QStringLiteral("audio/"))) {
+            if (!hasSupportedAudioExtension(localPath)
+                && !mimeType.name().startsWith(QStringLiteral("audio/"))) {
                 return 0;
             }
 
@@ -1259,6 +1308,8 @@ void TrackModel::removeAt(int index)
         && !removedFilePath.isEmpty()) {
         m_libraryRepository->enqueueSoftDeleteTrack(removedFilePath);
     }
+
+    updatePlaylistFolderWatch();
 }
 
 void TrackModel::clear()
@@ -1282,6 +1333,8 @@ void TrackModel::clear()
     if (!m_collectionViewActive && m_libraryRepository && hadTracks) {
         m_libraryRepository->enqueueSoftDeleteAll();
     }
+
+    updatePlaylistFolderWatch();
 }
 
 void TrackModel::setTracks(QVector<Track> tracks)
@@ -1318,6 +1371,8 @@ void TrackModel::setTracks(QVector<Track> tracks)
     for (int i = 0; i < m_tracks.size(); ++i) {
         loadMetadata(i, false);
     }
+
+    updatePlaylistFolderWatch();
 }
 
 void TrackModel::refreshMetadataForFile(const QString &filePath, bool includeAlbumArt)
@@ -1461,6 +1516,8 @@ void TrackModel::importTracksSnapshot(const QVariantList &snapshot, int requeste
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
+
+    updatePlaylistFolderWatch();
 }
 
 void TrackModel::applySmartCollectionRows(const QVariantList &rows)
@@ -1512,6 +1569,8 @@ void TrackModel::applySmartCollectionRows(const QVariantList &rows)
     if (m_currentIndex >= 0) {
         loadMetadata(m_currentIndex, true);
     }
+
+    updatePlaylistFolderWatch();
 }
 
 void TrackModel::move(int from, int to)
@@ -3165,14 +3224,190 @@ bool TrackModel::isLosslessFormat(const QString &format)
 
 bool TrackModel::hasSupportedAudioExtension(const QString &filePath)
 {
-    static const QSet<QString> extensions = {
+    static const QSet<QString> standardExtensions = {
         QStringLiteral("mp3"), QStringLiteral("ogg"), QStringLiteral("mp4"), QStringLiteral("wma"),
         QStringLiteral("flac"), QStringLiteral("ape"), QStringLiteral("wav"), QStringLiteral("wv"),
         QStringLiteral("tta"), QStringLiteral("mpc"), QStringLiteral("spx"), QStringLiteral("opus"),
-        QStringLiteral("m4a"), QStringLiteral("aac"), QStringLiteral("aiff"), QStringLiteral("alac"),
-        QStringLiteral("xm"), QStringLiteral("s3m"), QStringLiteral("it"), QStringLiteral("mod")
+        QStringLiteral("webm"),
+        QStringLiteral("m4a"), QStringLiteral("aac"), QStringLiteral("aiff"), QStringLiteral("alac")
     };
 
     const QString suffix = QFileInfo(filePath).suffix().toLower();
-    return extensions.contains(suffix);
+    return standardExtensions.contains(suffix) || WaveFlux::isTrackerModuleExtension(suffix);
+}
+
+bool TrackModel::isWatchedPlaylistCandidateFile(const QString &filePath)
+{
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    return suffix == QStringLiteral("cue") || hasSupportedAudioExtension(filePath);
+}
+
+QString TrackModel::normalizedLocalTrackPath(const QString &filePath)
+{
+    const QString trimmedPath = filePath.trimmed();
+    if (trimmedPath.isEmpty()) {
+        return {};
+    }
+
+    if (!isLocalSourcePath(trimmedPath)) {
+        return {};
+    }
+
+    const QString localPath = localPathFromSource(trimmedPath);
+    return localPath.isEmpty() ? QString() : QDir::cleanPath(localPath);
+}
+
+QString TrackModel::dominantPlaylistFolder(const QVector<Track> &tracks, bool collectionViewActive)
+{
+    if (collectionViewActive || tracks.isEmpty()) {
+        return {};
+    }
+
+    QHash<QString, int> folderCounts;
+    QSet<QString> uniqueLocalPaths;
+    int totalUniqueTrackSources = 0;
+
+    for (const Track &track : tracks) {
+        const QString normalizedPath = normalizedLocalTrackPath(track.filePath);
+        if (normalizedPath.isEmpty()) {
+            ++totalUniqueTrackSources;
+            continue;
+        }
+
+        if (uniqueLocalPaths.contains(normalizedPath)) {
+            continue;
+        }
+        uniqueLocalPaths.insert(normalizedPath);
+
+        ++totalUniqueTrackSources;
+        const QString folderPath = QFileInfo(normalizedPath).absolutePath();
+        if (folderPath.isEmpty()) {
+            continue;
+        }
+        folderCounts[folderPath] += 1;
+    }
+
+    if (folderCounts.isEmpty() || totalUniqueTrackSources <= 0) {
+        return {};
+    }
+
+    QString dominantFolderPath;
+    int dominantFolderCount = 0;
+    for (auto it = folderCounts.cbegin(); it != folderCounts.cend(); ++it) {
+        if (it.value() > dominantFolderCount
+            || (it.value() == dominantFolderCount
+                && !it.key().isEmpty()
+                && (dominantFolderPath.isEmpty()
+                    || QString::compare(it.key(), dominantFolderPath, Qt::CaseSensitive) < 0))) {
+            dominantFolderPath = it.key();
+            dominantFolderCount = it.value();
+        }
+    }
+
+    return dominantFolderCount > (totalUniqueTrackSources / 2) ? dominantFolderPath : QString();
+}
+
+QStringList TrackModel::watchedPlaylistFolderEntries(const QString &folderPath)
+{
+    const QString normalizedFolderPath = QDir::cleanPath(folderPath.trimmed());
+    if (normalizedFolderPath.isEmpty()) {
+        return {};
+    }
+
+    const QFileInfo folderInfo(normalizedFolderPath);
+    if (!folderInfo.exists() || !folderInfo.isDir()) {
+        return {};
+    }
+
+    QDir directory(normalizedFolderPath);
+    const QFileInfoList entries = directory.entryInfoList(QDir::Files | QDir::NoDotAndDotDot,
+                                                          QDir::Name | QDir::IgnoreCase);
+    QStringList result;
+    result.reserve(entries.size());
+    for (const QFileInfo &entryInfo : entries) {
+        const QString absolutePath = entryInfo.absoluteFilePath();
+        if (!isWatchedPlaylistCandidateFile(absolutePath)) {
+            continue;
+        }
+        result.push_back(QDir::cleanPath(absolutePath));
+    }
+    return result;
+}
+
+void TrackModel::updatePlaylistFolderWatch()
+{
+    if (!m_autoAddTracksFromPlaylistFolderEnabled) {
+        if (!m_watchedPlaylistFolder.isEmpty()) {
+            m_playlistFolderWatcher.removePath(m_watchedPlaylistFolder);
+        }
+        m_playlistFolderRescanTimer.stop();
+        m_watchedPlaylistFolder.clear();
+        m_knownWatchedFolderEntries.clear();
+        return;
+    }
+
+    const QString nextFolderPath = dominantPlaylistFolder(m_tracks, m_collectionViewActive);
+
+    if (nextFolderPath == m_watchedPlaylistFolder) {
+        if (m_watchedPlaylistFolder.isEmpty()) {
+            m_knownWatchedFolderEntries.clear();
+        } else {
+            const QStringList watchedEntries = watchedPlaylistFolderEntries(m_watchedPlaylistFolder);
+            m_knownWatchedFolderEntries = QSet<QString>(watchedEntries.cbegin(), watchedEntries.cend());
+        }
+        return;
+    }
+
+    if (!m_watchedPlaylistFolder.isEmpty()) {
+        m_playlistFolderWatcher.removePath(m_watchedPlaylistFolder);
+    }
+
+    m_playlistFolderRescanTimer.stop();
+    m_watchedPlaylistFolder = nextFolderPath;
+    m_knownWatchedFolderEntries.clear();
+
+    if (m_watchedPlaylistFolder.isEmpty()) {
+        return;
+    }
+
+    const QStringList watchedEntries = watchedPlaylistFolderEntries(m_watchedPlaylistFolder);
+    m_knownWatchedFolderEntries = QSet<QString>(watchedEntries.cbegin(), watchedEntries.cend());
+    if (!m_playlistFolderWatcher.addPath(m_watchedPlaylistFolder)) {
+        m_watchedPlaylistFolder.clear();
+        m_knownWatchedFolderEntries.clear();
+    }
+}
+
+void TrackModel::rescanWatchedPlaylistFolder()
+{
+    if (m_watchedPlaylistFolder.isEmpty()) {
+        return;
+    }
+
+    const QStringList currentEntries = watchedPlaylistFolderEntries(m_watchedPlaylistFolder);
+    const QSet<QString> currentEntrySet(currentEntries.cbegin(), currentEntries.cend());
+    QStringList newEntries;
+    newEntries.reserve(currentEntries.size());
+
+    for (const QString &entryPath : currentEntries) {
+        if (!m_knownWatchedFolderEntries.contains(entryPath) && findIndexByPath(entryPath) < 0) {
+            newEntries.push_back(entryPath);
+        }
+    }
+
+    m_knownWatchedFolderEntries = currentEntrySet;
+    if (newEntries.isEmpty()) {
+        return;
+    }
+
+    QCollator collator = makeNaturalCollator();
+    std::sort(newEntries.begin(), newEntries.end(), [&collator](const QString &a, const QString &b) {
+        const int cmp = collator.compare(a, b);
+        if (cmp == 0) {
+            return QString::compare(a, b, Qt::CaseSensitive) < 0;
+        }
+        return cmp < 0;
+    });
+
+    (void)addFilesWithReport(newEntries);
 }

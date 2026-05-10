@@ -452,7 +452,7 @@ Rectangle {
             collectionsModel.append({
                 collectionId: item.id,
                 name: item.name || ("#" + item.id),
-                enabled: item.enabled !== false,
+                entryEnabled: item.enabled !== false,
                 pinned: item.pinned === true
             })
         }
@@ -570,118 +570,6 @@ Rectangle {
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 48
-            radius: themeManager.borderRadiusLarge
-            readonly property bool selected: !root.collectionModeActive && root.selectedPlaylistProfileId < 0
-            color: {
-                if (selected) {
-                    return Qt.rgba(themeManager.primaryColor.r,
-                                   themeManager.primaryColor.g,
-                                   themeManager.primaryColor.b,
-                                   themeManager.darkMode ? 0.18 : 0.11)
-                }
-                if (currentPlaylistMouseArea.containsMouse) {
-                    return Qt.rgba(themeManager.primaryColor.r,
-                                   themeManager.primaryColor.g,
-                                   themeManager.primaryColor.b,
-                                   themeManager.darkMode ? 0.09 : 0.06)
-                }
-                return Qt.rgba(themeManager.surfaceColor.r,
-                               themeManager.surfaceColor.g,
-                               themeManager.surfaceColor.b,
-                               themeManager.darkMode ? 0.62 : 0.88)
-            }
-            border.width: 1
-            border.color: selected
-                          ? themeManager.primaryColor
-                          : (currentPlaylistMouseArea.containsMouse
-                             ? Qt.rgba(themeManager.primaryColor.r,
-                                       themeManager.primaryColor.g,
-                                       themeManager.primaryColor.b,
-                                       0.42)
-                             : Qt.rgba(themeManager.borderColor.r,
-                                       themeManager.borderColor.g,
-                                       themeManager.borderColor.b,
-                                       0.76))
-
-            Behavior on color {
-                ColorAnimation { duration: 120 }
-            }
-
-            Behavior on border.color {
-                ColorAnimation { duration: 120 }
-            }
-
-            MouseArea {
-                id: currentPlaylistMouseArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.playlistRequested()
-            }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 10
-
-                Rectangle {
-                    Layout.preferredWidth: 4
-                    Layout.fillHeight: true
-                    radius: 2
-                    color: parent.parent.selected
-                           ? themeManager.primaryColor
-                           : Qt.rgba(themeManager.primaryColor.r,
-                                     themeManager.primaryColor.g,
-                                     themeManager.primaryColor.b,
-                                     0.42)
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 1
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: root.tr("collections.currentPlaylist")
-                        color: themeManager.textColor
-                        elide: Text.ElideRight
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 11
-                        font.bold: parent.parent.parent.selected
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: trackModel.count > 0
-                              ? root.tr("playlists.trackCount").arg(trackModel.count)
-                              : root.tr("playlists.empty")
-                        color: parent.parent.parent.selected
-                               ? Qt.rgba(themeManager.textColor.r,
-                                         themeManager.textColor.g,
-                                         themeManager.textColor.b,
-                                         0.82)
-                               : themeManager.textMutedColor
-                        elide: Text.ElideRight
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 9
-                    }
-                }
-
-                Label {
-                    text: "\u25b6"
-                    color: parent.parent.selected
-                           ? themeManager.primaryColor
-                           : themeManager.textMutedColor
-                    font.pixelSize: 10
-                    opacity: currentPlaylistMouseArea.containsMouse || parent.parent.selected ? 1.0 : 0.7
-                }
-            }
-        }
-
         Label {
             Layout.fillWidth: true
             visible: root.playlistsEnabled && playlistsModel.count === 0
@@ -729,6 +617,9 @@ Rectangle {
                 }
                 border.width: (!root.collectionModeActive && root.selectedPlaylistProfileId === playlistId) ? 1 : 0
                 border.color: themeManager.primaryColor
+                ToolTip.text: name
+                ToolTip.visible: playlistMouseArea.containsMouse && playlistNameLabel.truncated
+                ToolTip.delay: 350
 
                 MouseArea {
                     id: playlistMouseArea
@@ -750,6 +641,8 @@ Rectangle {
                         spacing: 0
 
                         Label {
+                            id: playlistNameLabel
+
                             Layout.fillWidth: true
                             text: name
                             color: themeManager.textColor
@@ -885,7 +778,7 @@ Rectangle {
             delegate: Rectangle {
                 required property int collectionId
                 required property string name
-                required property bool enabled
+                required property bool entryEnabled
                 required property bool pinned
 
                 width: collectionsView.width
@@ -907,13 +800,13 @@ Rectangle {
                 }
                 border.width: root.collectionModeActive && root.selectedCollectionId === collectionId ? 1 : 0
                 border.color: themeManager.primaryColor
-                opacity: enabled ? 1.0 : 0.55
+                opacity: entryEnabled ? 1.0 : 0.55
 
                 MouseArea {
                     id: collectionMouseArea
                     anchors.fill: parent
                     hoverEnabled: true
-                    enabled: parent.enabled
+                    enabled: parent.entryEnabled
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.collectionRequested(collectionId, name)
                 }

@@ -546,7 +546,8 @@ bool createTimelineProperties(
 void publishTimelineState(
     ABI::Windows::Media::ISystemMediaTransportControls2 *transportControls2,
     const WindowsMediaControlsService::PlaybackSnapshot &playback,
-    const WindowsMediaControlsService::MetadataSnapshot &metadata)
+    const WindowsMediaControlsService::MetadataSnapshot &metadata,
+    const WindowsMediaControlsService::CapabilitiesSnapshot &capabilities)
 {
     if (!transportControls2) {
         return;
@@ -570,16 +571,16 @@ void publishTimelineState(
     timelineProperties->put_EndTime(endTime);
     timelineProperties->put_Position(positionTime);
 
-    // Stage 5 intentionally publishes a read-only timeline: progress is visible,
-    // but system-side seek isn't advertised until request handling is implemented.
-    timelineProperties->put_MinSeekTime(positionTime);
-    timelineProperties->put_MaxSeekTime(positionTime);
+    const bool allowSeekRange = capabilities.canSeek && endTimeMs > 0;
+    timelineProperties->put_MinSeekTime(allowSeekRange ? zeroTime : positionTime);
+    timelineProperties->put_MaxSeekTime(allowSeekRange ? endTime : positionTime);
 
-    smtcDiag(QStringLiteral("timeline update active=%1 positionMs=%2 durationMs=%3 endMs=%4")
+    smtcDiag(QStringLiteral("timeline update active=%1 positionMs=%2 durationMs=%3 endMs=%4 canSeek=%5")
                  .arg(hasTrackContext ? QStringLiteral("yes") : QStringLiteral("no"))
                  .arg(boundedPositionMs)
                  .arg(durationMs)
-                 .arg(endTimeMs));
+                 .arg(endTimeMs)
+                 .arg(allowSeekRange ? QStringLiteral("yes") : QStringLiteral("no")));
     transportControls2->UpdateTimelineProperties(timelineProperties);
     releaseCom(timelineProperties);
 }
@@ -769,7 +770,7 @@ WindowsMediaControlsService::CapabilitiesSnapshot WindowsMediaControlsService::c
         const bool hasLoadedTrack = !m_audioEngine->currentFile().isEmpty();
         snapshot.canPlay = hasLoadedTrack || (m_trackModel && m_trackModel->rowCount() > 0);
         snapshot.canPause = m_audioEngine->state() == AudioEngine::PlayingState;
-        snapshot.canSeek = m_audioEngine->duration() > 0;
+        snapshot.canSeek = m_audioEngine->seekAvailable() && m_audioEngine->duration() > 0;
     }
 
     if (m_playbackController) {
@@ -900,7 +901,10 @@ void WindowsMediaControlsService::updateTimelineState()
         return;
     }
 
-    publishTimelineState(m_transportControls2, playbackSnapshot(), metadataSnapshot());
+    publishTimelineState(m_transportControls2,
+                         playbackSnapshot(),
+                         metadataSnapshot(),
+                         capabilitiesSnapshot());
 #endif
 }
 
@@ -920,7 +924,10 @@ void WindowsMediaControlsService::deactivateSessionState()
     m_transportControls->put_IsPreviousEnabled(FALSE);
     m_transportControls->put_PlaybackStatus(ABI::Windows::Media::MediaPlaybackStatus_Closed);
     publishDisplayMetadata(m_transportControls, MetadataSnapshot {});
-    publishTimelineState(m_transportControls2, PlaybackSnapshot {}, MetadataSnapshot {});
+    publishTimelineState(m_transportControls2,
+                         PlaybackSnapshot {},
+                         MetadataSnapshot {},
+                         CapabilitiesSnapshot {});
     m_lastPublishedMetadata = MetadataSnapshot {};
     m_lastPublishedCapabilities = CapabilitiesSnapshot {};
     m_lastPublishedPlaybackStatus = static_cast<int>(ABI::Windows::Media::MediaPlaybackStatus_Closed);

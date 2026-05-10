@@ -27,6 +27,7 @@ class WaveformProvider : public QObject
     Q_PROPERTY(QVector<float> peaks READ peaks NOTIFY peaksReady)
     Q_PROPERTY(int sampleCount READ sampleCount NOTIFY peaksReady)
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
+    Q_PROPERTY(QString placeholderState READ placeholderState NOTIFY placeholderStateChanged)
     
 public:
     explicit WaveformProvider(QObject *parent = nullptr);
@@ -37,6 +38,7 @@ public:
     const QVector<float> &peaksRef() const { return m_peaks; }
     int sampleCount() const { return m_peaks.size(); }
     double progress() const { return m_progress; }
+    QString placeholderState() const { return m_placeholderState; }
     
     // Get peaks scaled for a specific width (for waveform rendering)
     Q_INVOKABLE QVector<float> getPeaksForWidth(int width) const;
@@ -49,6 +51,7 @@ signals:
     void loadingChanged(bool loading);
     void peaksReady();
     void progressChanged(double progress);
+    void placeholderStateChanged();
     void error(const QString &message);
     
 private:
@@ -71,10 +74,12 @@ private:
     void onExtractionFinished(QFutureWatcher<WaveformData> *watcher, quint64 generationId);
     void trimRuntimeCache(bool aggressive);
     void restoreTrimmedCacheIfNeeded();
+    void setPlaceholderState(const QString &state);
     
     QVector<float> m_peaks;
     bool m_loading = false;
     double m_progress = 0.0;
+    QString m_placeholderState = QStringLiteral("empty");
     QFutureWatcher<WaveformData> *m_watcher = nullptr;
     std::shared_ptr<std::atomic_bool> m_cancelToken;
     quint64 m_generationId = 0;

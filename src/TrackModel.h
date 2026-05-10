@@ -2,8 +2,10 @@
 #define TRACKMODEL_H
 
 #include <QAbstractListModel>
+#include <QFileSystemWatcher>
 #include <QFutureWatcher>
 #include <QHash>
+#include <QTimer>
 #include <QString>
 #include <QStringList>
 #include <QThreadPool>
@@ -160,11 +162,13 @@ public:
     void setDeterministicShuffleEnabled(bool enabled);
     void setShuffleSeed(quint32 seed);
     void setRepeatableShuffle(bool enabled);
+    void setAutoAddTracksFromPlaylistFolderEnabled(bool enabled);
     void configureLibraryStorage(bool enabled, const QString &databasePath);
     void recordPlaybackEvents(const QVector<TrackPlaybackEvent> &events, bool blocking = false);
     
     Q_INVOKABLE void addFile(const QString &filePath);
     Q_INVOKABLE void addFiles(const QStringList &filePaths);
+    Q_INVOKABLE QVariantMap addFilesWithReport(const QStringList &filePaths);
     Q_INVOKABLE void addFolder(const QUrl &folderUrl);
     Q_INVOKABLE void addUrl(const QUrl &url);
     Q_INVOKABLE void addUrls(const QList<QUrl> &urls);
@@ -295,6 +299,12 @@ private:
         bool success = false;
     };
     static AsyncSearchResult computeAsyncSearch(AsyncSearchRequest request);
+    struct AppendReport {
+        int firstInsertedIndex = -1;
+        int lastInsertedIndex = -1;
+        int insertedCount = 0;
+        QStringList insertedFilePaths;
+    };
     void scheduleAsyncSearch(const QString &normalizedQuery,
                              int fieldMask,
                              int quickFilterMask) const;
@@ -321,13 +331,19 @@ private:
     const Track *currentTrackPtr() const;
     static bool hasSupportedAudioExtension(const QString &filePath);
     static bool isLosslessFormat(const QString &format);
+    static bool isWatchedPlaylistCandidateFile(const QString &filePath);
+    static QString normalizedLocalTrackPath(const QString &filePath);
+    static QString dominantPlaylistFolder(const QVector<Track> &tracks, bool collectionViewActive);
+    static QStringList watchedPlaylistFolderEntries(const QString &folderPath);
     int findIndexByPath(const QString &filePath) const;
     quint32 nextShuffleSeed() const;
     void setCurrentIndexSilently(int index);
     void applyCurrentIndex(int index, bool emitTrackSelectedSignal);
-    void appendAcceptedTracks(QVector<Track> acceptedTracks,
-                              const QVector<int> &ingestTrackOffsets,
-                              const QVector<int> &metadataTrackOffsets);
+    AppendReport appendAcceptedTracks(QVector<Track> acceptedTracks,
+                                      const QVector<int> &ingestTrackOffsets,
+                                      const QVector<int> &metadataTrackOffsets);
+    void updatePlaylistFolderWatch();
+    void rescanWatchedPlaylistFolder();
     void loadMetadata(int index, bool includeAlbumArt = false, bool forceReload = false);
     void trimAlbumArtToCurrentTrack(bool emitDataChangedForRows = false);
     void syncCurrentAlbumArtCache();
@@ -358,6 +374,7 @@ private:
     bool m_deterministicShuffleEnabled = false;
     quint32 m_shuffleSeed = 0xA5C3D791u;
     bool m_repeatableShuffle = true;
+    bool m_autoAddTracksFromPlaylistFolderEnabled = true;
     mutable quint64 m_shuffleGeneration = 0;
     std::unique_ptr<LibraryRepository> m_libraryRepository;
     std::unique_ptr<SearchRepository> m_searchRepository;
@@ -368,6 +385,10 @@ private:
     QHash<QString, bool> m_inFlightMetadataReads;
     quint64 m_metadataReadGeneration = 0;
     QString m_currentAlbumArt;
+    QFileSystemWatcher m_playlistFolderWatcher;
+    QTimer m_playlistFolderRescanTimer;
+    QString m_watchedPlaylistFolder;
+    QSet<QString> m_knownWatchedFolderEntries;
     mutable QVector<QString> m_searchTextLowerCache;
     mutable QVector<quint8> m_searchTextLowerReady;
 

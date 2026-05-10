@@ -19,6 +19,7 @@ function Resolve-NormalizedPath {
 }
 
 $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $msysPrefix = Resolve-NormalizedPath -PathValue $MsysPrefix
 $msysBinDir = Join-Path $msysPrefix "bin"
 $cmakePath = Join-Path $msysBinDir "cmake.exe"
@@ -35,6 +36,14 @@ if (-not (Test-Path -LiteralPath $cmakePath)) {
 $env:PATH = "$msysBinDir;$env:PATH"
 
 if (-not $SkipBuild) {
+    & $cmakePath -S $repoRoot -B $buildDir -G Ninja `
+        -DCMAKE_BUILD_TYPE=Release `
+        -DBUILD_TESTING=ON `
+        "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$msysPrefix"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Configure failed for build directory '$buildDir'."
+    }
+
     & $cmakePath --build $buildDir --target $Target -j 8
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed for target '$Target'."

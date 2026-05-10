@@ -1,10 +1,48 @@
 import QtQuick
 import QtQuick.Controls
 
-ComboBox {
+Control {
     id: control
 
+    property var model: []
+    property string textRole: ""
+    property string valueRole: ""
+    property string enabledRole: ""
+    property int currentIndex: modelCount > 0 ? 0 : -1
+    readonly property int modelCount: {
+        if (model === undefined || model === null) {
+            return 0
+        }
+        if (typeof model.length === "number") {
+            return model.length
+        }
+        if (typeof model.count === "number") {
+            return model.count
+        }
+        return 0
+    }
+    readonly property string currentText: itemText(modelEntry(currentIndex), "")
+
+    signal activated(int index)
+
+    implicitWidth: 180
     implicitHeight: 34
+    hoverEnabled: true
+    focusPolicy: Qt.StrongFocus
+    leftPadding: 12
+    rightPadding: 30
+    topPadding: 7
+    bottomPadding: 7
+
+    function modelEntry(index) {
+        if (index < 0 || index >= modelCount || model === undefined || model === null) {
+            return undefined
+        }
+        if (typeof model.get === "function") {
+            return model.get(index)
+        }
+        return model[index]
+    }
 
     function itemText(entry, fallbackText) {
         if (textRole && textRole.length > 0
@@ -27,6 +65,45 @@ ComboBox {
         return String(entry)
     }
 
+    function itemEnabled(entry) {
+        if (enabledRole && enabledRole.length > 0
+                && entry !== undefined
+                && entry !== null
+                && typeof entry === "object"
+                && entry[enabledRole] !== undefined
+                && entry[enabledRole] !== null) {
+            return Boolean(entry[enabledRole])
+        }
+        return true
+    }
+
+    function activateIndex(index) {
+        if (index < 0 || index >= modelCount) {
+            return
+        }
+        if (!itemEnabled(modelEntry(index))) {
+            return
+        }
+        if (currentIndex !== index) {
+            currentIndex = index
+        }
+        activated(index)
+        popup.close()
+    }
+
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Space
+                || event.key === Qt.Key_Return
+                || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Down) {
+            popup.open()
+            event.accepted = true
+        } else if (event.key === Qt.Key_Escape && popup.visible) {
+            popup.close()
+            event.accepted = true
+        }
+    }
+
     background: Rectangle {
         radius: themeManager.borderRadiusLarge
         color: Qt.rgba(themeManager.surfaceColor.r,
@@ -34,7 +111,7 @@ ComboBox {
                        themeManager.surfaceColor.b,
                        themeManager.darkMode ? 0.84 : 0.97)
         border.width: 1
-        border.color: control.popup.visible
+        border.color: popup.visible
                       ? themeManager.primaryColor
                       : Qt.rgba(themeManager.borderColor.r,
                                 themeManager.borderColor.g,
@@ -43,9 +120,7 @@ ComboBox {
     }
 
     contentItem: Text {
-        leftPadding: 12
-        rightPadding: indicator.width + 12
-        text: control.displayText
+        text: control.currentText
         font.family: themeManager.fontFamily
         font.pixelSize: 11
         color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
@@ -53,7 +128,7 @@ ComboBox {
         elide: Text.ElideRight
     }
 
-    indicator: Text {
+    Text {
         x: control.width - width - 12
         y: (control.height - height) * 0.5
         text: "\u25be"
@@ -61,42 +136,29 @@ ComboBox {
         font.pixelSize: 11
     }
 
-    delegate: ItemDelegate {
-        id: delegateRoot
-        required property int index
-        required property var modelData
-        width: ListView.view ? ListView.view.width : control.width
-        highlighted: control.highlightedIndex === index
-
-        contentItem: Text {
-            text: control.itemText(delegateRoot.modelData, delegateRoot.text)
-            font.family: themeManager.fontFamily
-            font.pixelSize: 11
-            color: delegateRoot.highlighted ? themeManager.textColor : themeManager.textColor
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        enabled: control.enabled
+        onClicked: {
+            control.forceActiveFocus()
+            if (popup.visible) {
+                popup.close()
+            } else {
+                popup.open()
+            }
         }
-
-        background: Rectangle {
-            radius: themeManager.borderRadius
-            color: delegateRoot.highlighted
-                   ? Qt.rgba(themeManager.primaryColor.r,
-                             themeManager.primaryColor.g,
-                             themeManager.primaryColor.b,
-                             themeManager.darkMode ? 0.16 : 0.10)
-                   : "transparent"
-            border.width: delegateRoot.highlighted ? 1 : 0
-            border.color: Qt.rgba(themeManager.primaryColor.r,
-                                  themeManager.primaryColor.g,
-                                  themeManager.primaryColor.b,
-                                  0.42)
+        onWheel: function(wheel) {
+            wheel.accepted = true
         }
     }
 
-    popup: Popup {
+    Popup {
+        id: popup
         y: control.height + 4
         width: control.width
         padding: 6
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
 
         background: Rectangle {
             radius: themeManager.borderRadiusLarge
@@ -112,12 +174,48 @@ ComboBox {
         }
 
         contentItem: ListView {
+            id: listView
             clip: true
             implicitHeight: contentHeight
-            model: control.popup.visible ? control.delegateModel : null
-            currentIndex: control.highlightedIndex
+            model: popup.visible ? control.model : null
+            currentIndex: control.currentIndex
             spacing: 2
+            boundsBehavior: Flickable.StopAtBounds
             ScrollIndicator.vertical: ScrollIndicator {}
+
+            delegate: ItemDelegate {
+                required property int index
+                required property var modelData
+
+                width: listView.width
+                enabled: control.itemEnabled(modelData)
+                highlighted: control.currentIndex === index
+                onClicked: control.activateIndex(index)
+
+                contentItem: Text {
+                    text: control.itemText(modelData, typeof model !== "undefined" && model.text !== undefined ? model.text : "")
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: 11
+                    color: parent.enabled ? themeManager.textColor : themeManager.textMutedColor
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+
+                background: Rectangle {
+                    radius: themeManager.borderRadius
+                    color: parent.highlighted
+                           ? Qt.rgba(themeManager.primaryColor.r,
+                                     themeManager.primaryColor.g,
+                                     themeManager.primaryColor.b,
+                                     themeManager.darkMode ? 0.16 : 0.10)
+                           : "transparent"
+                    border.width: parent.highlighted ? 1 : 0
+                    border.color: Qt.rgba(themeManager.primaryColor.r,
+                                          themeManager.primaryColor.g,
+                                          themeManager.primaryColor.b,
+                                          0.42)
+                }
+            }
         }
     }
 }

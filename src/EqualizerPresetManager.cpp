@@ -1,4 +1,5 @@
 #include "EqualizerPresetManager.h"
+#include "AppSettingsManager.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -18,6 +19,11 @@ const QRegularExpression kUserIdPattern(QStringLiteral("^user:(\\d+)$"));
 const QString kBundleSchema = QStringLiteral("waveflux.eq.presets.v1");
 const QString kMergePolicyKeepBoth = QStringLiteral("keep_both");
 const QString kMergePolicyReplaceExisting = QStringLiteral("replace_existing");
+
+QString localizedPresetText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
 }
 
 QVariantMap EqualizerPresetManager::ImportResult::toVariantMap() const
@@ -149,7 +155,7 @@ QString EqualizerPresetManager::createUserPreset(const QString &name, const QVar
 {
     const QString uniqueName = makeUniqueUserPresetName(name);
     if (uniqueName.isEmpty()) {
-        setLastError(QStringLiteral("Preset name is empty"));
+        setLastError(localizedPresetText(QStringLiteral("error.presetNameEmpty")));
         return {};
     }
 
@@ -172,13 +178,13 @@ bool EqualizerPresetManager::updateUserPreset(const QString &presetId,
 {
     const int index = findUserPresetIndex(presetId);
     if (index < 0) {
-        setLastError(QStringLiteral("User preset not found"));
+        setLastError(localizedPresetText(QStringLiteral("error.userPresetNotFound")));
         return false;
     }
 
     const QString uniqueName = makeUniqueUserPresetName(name, presetId);
     if (uniqueName.isEmpty()) {
-        setLastError(QStringLiteral("Preset name is empty"));
+        setLastError(localizedPresetText(QStringLiteral("error.presetNameEmpty")));
         return false;
     }
 
@@ -203,13 +209,13 @@ bool EqualizerPresetManager::renameUserPreset(const QString &presetId, const QSt
 {
     const int index = findUserPresetIndex(presetId);
     if (index < 0) {
-        setLastError(QStringLiteral("User preset not found"));
+        setLastError(localizedPresetText(QStringLiteral("error.userPresetNotFound")));
         return false;
     }
 
     const QString uniqueName = makeUniqueUserPresetName(name, presetId);
     if (uniqueName.isEmpty()) {
-        setLastError(QStringLiteral("Preset name is empty"));
+        setLastError(localizedPresetText(QStringLiteral("error.presetNameEmpty")));
         return false;
     }
 
@@ -230,7 +236,7 @@ bool EqualizerPresetManager::deleteUserPreset(const QString &presetId)
 {
     const int index = findUserPresetIndex(presetId);
     if (index < 0) {
-        setLastError(QStringLiteral("User preset not found"));
+        setLastError(localizedPresetText(QStringLiteral("error.userPresetNotFound")));
         return false;
     }
 
@@ -267,21 +273,21 @@ bool EqualizerPresetManager::replaceUserPresets(const QVariantList &serializedPr
     for (int i = 0; i < serializedPresets.size(); ++i) {
         const QVariant value = serializedPresets.at(i);
         if (!value.canConvert<QVariantMap>()) {
-            setLastError(QStringLiteral("Invalid user preset at index %1").arg(i));
+            setLastError(localizedPresetText(QStringLiteral("error.invalidUserPresetAtIndex")).arg(i));
             return false;
         }
 
         Preset preset;
         QString parseError;
         if (!parseSerializedPreset(value.toMap(), &preset, &parseError)) {
-            setLastError(QStringLiteral("Invalid user preset at index %1: %2")
+            setLastError(localizedPresetText(QStringLiteral("error.invalidUserPresetAtIndexWithReason"))
                              .arg(i)
                              .arg(parseError));
             return false;
         }
 
         if (preset.id.startsWith(QStringLiteral("builtin:"))) {
-            setLastError(QStringLiteral("Built-in preset id cannot be used for user preset"));
+            setLastError(localizedPresetText(QStringLiteral("error.builtinPresetIdNotAllowed")));
             return false;
         }
 

@@ -5,16 +5,21 @@
 #include <QIcon>
 #include <QWindow>
 #include <QQuickWindow>
+#include <QStyleHints>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QDebug>
 #include <QTimer>
+#include <QUrl>
 #include <QtGlobal>
 #include <string>
 #include <gst/gst.h>
 
 #include "AudioEngine.h"
+#include "AudioConverterService.h"
+#include "BatchAudioConverterService.h"
 #include "WaveformProvider.h"
 #include "TrackModel.h"
 #include "WaveformItem.h"
@@ -24,8 +29,11 @@
 #include "SessionManager.h"
 #include "PlaylistExportService.h"
 #include "PlaylistProfilesManager.h"
+#include "YtDlpImportService.h"
 #include "EqualizerPresetManager.h"
+#include "BatchAudioConverterPresetManager.h"
 #include "AppSettingsManager.h"
+#include "GlobalKeyMonitor.h"
 #include "MprisService.h"
 #include "TrayManager.h"
 #include "XdgPortalFilePicker.h"
@@ -88,6 +96,34 @@ void applyWindowsAppIdentity()
     }
 }
 #endif
+
+QList<QUrl> startupUrlsFromArguments(const QStringList &arguments)
+{
+    QList<QUrl> urls;
+    urls.reserve(arguments.size());
+
+    for (const QString &argument : arguments) {
+        const QString trimmed = argument.trimmed();
+        if (trimmed.isEmpty()) {
+            continue;
+        }
+
+        const QUrl parsed(trimmed);
+        if (parsed.isValid() && !parsed.scheme().isEmpty()) {
+            urls.push_back(parsed);
+            continue;
+        }
+
+        const QFileInfo fileInfo(trimmed);
+        if (!fileInfo.exists()) {
+            continue;
+        }
+
+        urls.push_back(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    }
+
+    return urls;
+}
 } // namespace
 
 int main(int argc, char *argv[])
@@ -101,21 +137,25 @@ int main(int argc, char *argv[])
         app.setQuitOnLastWindowClosed(true);
         app.setApplicationName("WaveFlux");
         app.setApplicationDisplayName("WaveFlux");
-        app.setApplicationVersion("1.1.0");
+        app.setApplicationVersion("1.2.0");
         app.setOrganizationName("WaveFlux");
         app.setOrganizationDomain("waveflux.app");
         app.setWindowIcon(QIcon(QStringLiteral(":/WaveFlux/resources/icons/waveflux.ico")));
+        app.styleHints()->setShowShortcutsInContextMenus(false);
 
         QCommandLineParser parser;
         parser.setApplicationDescription(QStringLiteral("WaveFlux audio player"));
         parser.addHelpOption();
         parser.addVersionOption();
+        parser.addPositionalArgument(QStringLiteral("files"),
+                                     QStringLiteral("Audio files, playlists, or URLs to open."));
         const QCommandLineOption reversePlaybackOption(
             {QStringLiteral("enable-reverse-playback"), QStringLiteral("reverse-playback")},
             QStringLiteral("Enable experimental reverse playback for this session."));
         parser.addOption(reversePlaybackOption);
         parser.process(app);
         const bool reversePlaybackEnabledByCli = parser.isSet(reversePlaybackOption);
+        const QList<QUrl> startupUrls = startupUrlsFromArguments(parser.positionalArguments());
 
 #ifdef Q_OS_LINUX
         // Keep the Linux/KDE-specific style behavior local to Linux. On
@@ -133,10 +173,12 @@ int main(int argc, char *argv[])
 #endif
 
         // Register QML types
-        qmlRegisterType<WaveformItem>("WaveFlux", 1, 1, "WaveformItem");
+        qmlRegisterType<WaveformItem>("WaveFlux", 1, 2, "WaveformItem");
 
         // Create backend instances
         AudioEngine audioEngine;
+        AudioConverterService audioConverterService;
+        BatchAudioConverterService batchAudioConverterService;
         WaveformProvider waveformProvider;
         TrackModel trackModel;
         TagEditor tagEditor;
@@ -145,8 +187,11 @@ int main(int argc, char *argv[])
         SessionManager sessionManager;
         PlaylistExportService playlistExportService;
         PlaylistProfilesManager playlistProfilesManager;
+        YtDlpImportService ytDlpImportService;
         EqualizerPresetManager equalizerPresetManager;
+        BatchAudioConverterPresetManager batchAudioConverterPresetManager;
         AppSettingsManager appSettingsManager;
+        GlobalKeyMonitor globalKeyMonitor;
         DatabaseManager databaseManager;
         MigrationManager migrationManager;
         SmartCollectionsEngine smartCollectionsEngine;
@@ -159,8 +204,10 @@ int main(int argc, char *argv[])
 #endif
         PerformanceProfiler::setInstance(&performanceProfiler);
         performanceProfiler.setPlaylistTrackCount(trackModel.rowCount());
+        audioConverterService.initialize(&trackModel);
         sessionManager.initialize(&trackModel, &audioEngine, &playbackController);
         playlistExportService.initialize(&trackModel);
+        ytDlpImportService.setAppSettingsManager(&appSettingsManager);
 
         const auto applyShuffleSettings = [&]() {
             const bool deterministic = appSettingsManager.deterministicShuffleEnabled();
@@ -176,15 +223,47 @@ int main(int argc, char *argv[])
             playbackController.setRepeatableShuffle(repeatable);
         };
         applyShuffleSettings();
+        const auto applyPlaylistFolderAutoAddSetting = [&]() {
+            trackModel.setAutoAddTracksFromPlaylistFolderEnabled(
+                appSettingsManager.autoAddTracksFromPlaylistFolder());
+        };
+        applyPlaylistFolderAutoAddSetting();
         if (!reversePlaybackEnabledByCli && appSettingsManager.reversePlayback()) {
             appSettingsManager.setReversePlayback(false);
         }
-        audioEngine.setSpectrumEnabled(appSettingsManager.dynamicSpectrum());
+        const auto applyCapabilityScopedAudioSettings = [&]() {
+            audioEngine.setSpectrumEnabled(appSettingsManager.dynamicSpectrum()
+                                           && audioEngine.spectrumAvailable());
+            const QVariantMap capabilityReasons = audioEngine.playbackCapabilityReasons();
+            const QString profile = capabilityReasons.contains(QStringLiteral("audioQualityProfile"))
+                ? QStringLiteral("standard")
+                : appSettingsManager.audioQualityProfile();
+            audioEngine.setAudioQualityProfile(profile);
+        };
+        applyCapabilityScopedAudioSettings();
         audioEngine.setReversePlayback(reversePlaybackEnabledByCli);
-        audioEngine.setAudioQualityProfile(appSettingsManager.audioQualityProfile());
 
         if (!equalizerPresetManager.replaceUserPresets(appSettingsManager.equalizerUserPresets())) {
             qWarning() << "Failed to restore user EQ presets:" << equalizerPresetManager.lastError();
+        }
+        if (!batchAudioConverterPresetManager.replaceUserPresets(
+                appSettingsManager.batchAudioConverterUserPresets())) {
+            qWarning() << "Failed to restore batch converter presets:"
+                       << batchAudioConverterPresetManager.lastError();
+        }
+        if (!appSettingsManager.batchAudioConverterLastSettings().isEmpty()
+            && !batchAudioConverterService.applySettingsMap(
+                appSettingsManager.batchAudioConverterLastSettings())) {
+            qWarning() << "Failed to restore batch converter settings.";
+        }
+        if (!batchAudioConverterService.replaceFinishedJobHistory(
+                appSettingsManager.batchAudioConverterFinishedJobs())) {
+            qWarning() << "Failed to restore batch converter finished-job history.";
+        }
+        if (!appSettingsManager.batchAudioConverterDraft().isEmpty()
+            && !batchAudioConverterService.restoreDraftState(
+                appSettingsManager.batchAudioConverterDraft())) {
+            qWarning() << "Failed to restore batch converter draft queue.";
         }
 
         const auto equalizerGainsEqual = [](const QVariantList &a, const QVariantList &b) -> bool {
@@ -271,6 +350,10 @@ int main(int argc, char *argv[])
         applyLibraryStorageSettings();
 
         QObject::connect(&appSettingsManager,
+                         &AppSettingsManager::autoAddTracksFromPlaylistFolderChanged,
+                         &app,
+                         applyPlaylistFolderAutoAddSetting);
+        QObject::connect(&appSettingsManager,
                          &AppSettingsManager::deterministicShuffleEnabledChanged,
                          &app,
                          applyShuffleSettings);
@@ -285,14 +368,20 @@ int main(int argc, char *argv[])
         QObject::connect(&appSettingsManager,
                          &AppSettingsManager::dynamicSpectrumChanged,
                          &audioEngine,
-                         [&appSettingsManager, &audioEngine]() {
-                             audioEngine.setSpectrumEnabled(appSettingsManager.dynamicSpectrum());
+                         [&applyCapabilityScopedAudioSettings]() {
+                             applyCapabilityScopedAudioSettings();
                          });
         QObject::connect(&appSettingsManager,
                          &AppSettingsManager::audioQualityProfileChanged,
                          &audioEngine,
-                         [&appSettingsManager, &audioEngine]() {
-                             audioEngine.setAudioQualityProfile(appSettingsManager.audioQualityProfile());
+                         [&applyCapabilityScopedAudioSettings]() {
+                             applyCapabilityScopedAudioSettings();
+                         });
+        QObject::connect(&audioEngine,
+                         &AudioEngine::playbackCapabilitiesChanged,
+                         &audioEngine,
+                         [&applyCapabilityScopedAudioSettings]() {
+                             applyCapabilityScopedAudioSettings();
                          });
         QObject::connect(&appSettingsManager,
                          &AppSettingsManager::equalizerBandGainsChanged,
@@ -315,8 +404,53 @@ int main(int argc, char *argv[])
                                      appSettingsManager.equalizerUserPresets())) {
                                  qWarning() << "Failed to sync user EQ presets from settings:"
                                             << equalizerPresetManager.lastError();
+                                 }
+                         });
+        QObject::connect(&batchAudioConverterPresetManager,
+                         &BatchAudioConverterPresetManager::presetsChanged,
+                         &app,
+                         [&batchAudioConverterPresetManager, &appSettingsManager]() {
+                             appSettingsManager.setBatchAudioConverterUserPresets(
+                                 batchAudioConverterPresetManager.exportUserPresetsSnapshot());
+                         });
+        QObject::connect(&appSettingsManager,
+                         &AppSettingsManager::batchAudioConverterUserPresetsChanged,
+                         &app,
+                         [&batchAudioConverterPresetManager, &appSettingsManager]() {
+                             if (!batchAudioConverterPresetManager.replaceUserPresets(
+                                     appSettingsManager.batchAudioConverterUserPresets())) {
+                                 qWarning() << "Failed to sync batch converter presets from settings:"
+                                            << batchAudioConverterPresetManager.lastError();
                              }
                          });
+        QObject::connect(&batchAudioConverterService,
+                         &BatchAudioConverterService::settingsChanged,
+                         &app,
+                         [&batchAudioConverterService, &appSettingsManager]() {
+                             appSettingsManager.setBatchAudioConverterLastSettings(
+                                 batchAudioConverterService.settings());
+                         });
+        const auto persistBatchConverterState = [&batchAudioConverterService, &appSettingsManager]() {
+            appSettingsManager.setBatchAudioConverterDraft(batchAudioConverterService.exportDraftState());
+            appSettingsManager.setBatchAudioConverterFinishedJobs(
+                batchAudioConverterService.finishedJobHistory());
+        };
+        QObject::connect(&batchAudioConverterService,
+                         &BatchAudioConverterService::itemsChanged,
+                         &app,
+                         persistBatchConverterState);
+        QObject::connect(&batchAudioConverterService,
+                         &BatchAudioConverterService::settingsChanged,
+                         &app,
+                         persistBatchConverterState);
+        QObject::connect(&batchAudioConverterService,
+                         &BatchAudioConverterService::finalSummaryChanged,
+                         &app,
+                         persistBatchConverterState);
+        QObject::connect(&batchAudioConverterService,
+                         &BatchAudioConverterService::finishedJobHistoryChanged,
+                         &app,
+                         persistBatchConverterState);
         QObject::connect(&audioEngine,
                          &AudioEngine::equalizerBandGainsChanged,
                          &app,
@@ -342,6 +476,8 @@ int main(int argc, char *argv[])
 
         // Expose backend objects to QML
         engine.rootContext()->setContextProperty("audioEngine", &audioEngine);
+        engine.rootContext()->setContextProperty("audioConverterService", &audioConverterService);
+        engine.rootContext()->setContextProperty("batchAudioConverterService", &batchAudioConverterService);
         engine.rootContext()->setContextProperty("waveformProvider", &waveformProvider);
         engine.rootContext()->setContextProperty("trackModel", &trackModel);
         engine.rootContext()->setContextProperty("tagEditor", &tagEditor);
@@ -349,8 +485,12 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("playbackController", &playbackController);
         engine.rootContext()->setContextProperty("playlistExportService", &playlistExportService);
         engine.rootContext()->setContextProperty("playlistProfilesManager", &playlistProfilesManager);
+        engine.rootContext()->setContextProperty("ytDlpImportService", &ytDlpImportService);
         engine.rootContext()->setContextProperty("equalizerPresetManager", &equalizerPresetManager);
+        engine.rootContext()->setContextProperty("batchAudioConverterPresetManager",
+                                                 &batchAudioConverterPresetManager);
         engine.rootContext()->setContextProperty("appSettings", &appSettingsManager);
+        engine.rootContext()->setContextProperty("globalKeyMonitor", &globalKeyMonitor);
         engine.rootContext()->setContextProperty("trayManager", &trayManager);
         engine.rootContext()->setContextProperty("xdgPortalFilePicker", &xdgPortalFilePicker);
         engine.rootContext()->setContextProperty("performanceProfiler", &performanceProfiler);
@@ -372,6 +512,7 @@ int main(int argc, char *argv[])
             }
         }
         xdgPortalFilePicker.setMainWindow(mainWindow);
+        globalKeyMonitor.setMainWindow(mainWindow);
         performanceProfiler.attachWindow(qobject_cast<QQuickWindow *>(mainWindow));
         trayManager.initialize(mainWindow, &audioEngine, &playbackController, &appSettingsManager);
 #ifdef Q_OS_WIN
@@ -418,6 +559,14 @@ int main(int argc, char *argv[])
         });
 
         sessionManager.restoreSession();
+        if (!startupUrls.isEmpty()) {
+            const int firstAddedIndex = trackModel.rowCount();
+            trackModel.addUrls(startupUrls);
+            if (trackModel.rowCount() > firstAddedIndex) {
+                playbackController.requestPlayIndex(firstAddedIndex,
+                                                    QStringLiteral("main.startup_open_files"));
+            }
+        }
         QTimer::singleShot(300, &performanceProfiler, [&performanceProfiler]() {
             performanceProfiler.captureMemoryCheckpoint(QStringLiteral("session.restore_complete"));
         });
@@ -429,6 +578,8 @@ int main(int argc, char *argv[])
                          &app,
                          [&audioEngine,
                           &equalizerPresetManager,
+                          &batchAudioConverterPresetManager,
+                          &batchAudioConverterService,
                           &appSettingsManager,
                           resolvePresetIdByGains]() {
                              const QVariantList gains = audioEngine.equalizerBandGains();
@@ -438,6 +589,14 @@ int main(int argc, char *argv[])
                                  equalizerPresetManager.exportUserPresetsSnapshot());
                              appSettingsManager.setEqualizerActivePresetId(
                                  resolvePresetIdByGains(gains, appSettingsManager.equalizerActivePresetId()));
+                             appSettingsManager.setBatchAudioConverterLastSettings(
+                                 batchAudioConverterService.settings());
+                             appSettingsManager.setBatchAudioConverterUserPresets(
+                                 batchAudioConverterPresetManager.exportUserPresetsSnapshot());
+                             appSettingsManager.setBatchAudioConverterDraft(
+                                 batchAudioConverterService.exportDraftState());
+                             appSettingsManager.setBatchAudioConverterFinishedJobs(
+                                 batchAudioConverterService.finishedJobHistory());
                          });
 
         result = app.exec();

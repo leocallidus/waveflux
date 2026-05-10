@@ -32,7 +32,7 @@ public:
     /// Current version of the analysis algorithm.
     /// Bump this whenever the extraction logic in WaveformProvider changes
     /// in a way that produces different peak values for the same input.
-    static constexpr quint32 kAnalyzerVersion = 2;
+    static constexpr quint32 kAnalyzerVersion = 3;
 
     explicit PeaksCacheManager(QObject *parent = nullptr);
     ~PeaksCacheManager() override = default;

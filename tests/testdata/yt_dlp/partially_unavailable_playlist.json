@@ -1,0 +1,33 @@
+{
+  "_type": "playlist",
+  "id": "mixed123",
+  "title": "Mixed Availability",
+  "extractor_key": "YoutubeTab",
+  "entries": [
+    {
+      "id": "c1",
+      "title": "Playable Item",
+      "webpage_url": "https://www.youtube.com/watch?v=c1",
+      "availability": "public",
+      "playlist_index": 1
+    },
+    {
+      "id": "c2",
+      "title": "[Private video]",
+      "availability": "private",
+      "playlist_index": 2
+    },
+    null,
+    {
+      "id": "c4",
+      "title": "Nested Playlist Entry",
+      "playlist_index": 4,
+      "entries": [
+        {
+          "id": "nested1",
+          "title": "Nested child"
+        }
+      ]
+    }
+  ]
+}

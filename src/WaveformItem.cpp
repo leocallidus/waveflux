@@ -323,8 +323,8 @@ void WaveformItem::paint(QPainter *painter)
         // No waveform data
         painter->setPen(m_waveformColor.lighter(150));
         const QString label = m_loading
-            ? QStringLiteral("Waveform %1%").arg(qRound(m_generationProgress * 100.0))
-            : QStringLiteral("Drop audio file here");
+            ? m_loadingLabelTemplate.arg(qRound(m_generationProgress * 100.0))
+            : m_emptyStateText;
         painter->drawText(QRectF(0, 0, w, h), Qt::AlignCenter, label);
 
         if (m_loading) {
@@ -530,6 +530,28 @@ void WaveformItem::setGenerationProgress(double progress)
     const int newGenerationPixel = w > 0 ? trackPositionToPixel(m_generationProgress, w) : -1;
     requestRepaint(generationDirtyRect(oldGenerationPixel, newGenerationPixel));
     emit generationProgressChanged();
+}
+
+void WaveformItem::setLoadingLabelTemplate(const QString &text)
+{
+    if (m_loadingLabelTemplate == text) {
+        return;
+    }
+
+    m_loadingLabelTemplate = text;
+    requestRepaint();
+    emit loadingLabelTemplateChanged();
+}
+
+void WaveformItem::setEmptyStateText(const QString &text)
+{
+    if (m_emptyStateText == text) {
+        return;
+    }
+
+    m_emptyStateText = text;
+    requestRepaint();
+    emit emptyStateTextChanged();
 }
 
 void WaveformItem::setZoom(double zoom)

@@ -8,7 +8,6 @@
 #include <QCryptographicHash>
 #include <QDBusAbstractAdaptor>
 #include <QDBusConnectionInterface>
-#include <QDateTime>
 #include <QDebug>
 #include <QDBusMessage>
 #include <QFileInfo>
@@ -26,6 +25,29 @@ bool seekDiagEnabled()
 {
     static const bool enabled = qEnvironmentVariableIsSet("WAVEFLUX_SEEK_DIAG");
     return enabled;
+}
+
+qint64 resolveCurrentTrackDurationMs(const AudioEngine *audioEngine,
+                                     const TrackModel *trackModel,
+                                     const QString &filePath,
+                                     const QModelIndex &modelIndex)
+{
+    qint64 durationMs = 0;
+
+    if (trackModel && modelIndex.isValid()) {
+        durationMs = trackModel->data(modelIndex, TrackModel::DurationRole).toLongLong();
+    }
+
+    if (durationMs > 0 || !audioEngine) {
+        return qMax<qint64>(0, durationMs);
+    }
+
+    const QString loadedFilePath = audioEngine->currentFile().trimmed();
+    if (loadedFilePath.isEmpty() || (!filePath.isEmpty() && loadedFilePath != filePath)) {
+        return 0;
+    }
+
+    return qMax<qint64>(0, audioEngine->duration());
 }
 }
 
@@ -98,8 +120,8 @@ class MprisPlayerAdaptor : public QDBusAbstractAdaptor
     Q_PROPERTY(QString PlaybackStatus READ playbackStatus)
     Q_PROPERTY(QString LoopStatus READ loopStatus WRITE setLoopStatus)
     Q_PROPERTY(double Rate READ rate WRITE setRate)
-    Q_PROPERTY(double MinimumRate READ minimumRate CONSTANT)
-    Q_PROPERTY(double MaximumRate READ maximumRate CONSTANT)
+    Q_PROPERTY(double MinimumRate READ minimumRate)
+    Q_PROPERTY(double MaximumRate READ maximumRate)
     Q_PROPERTY(bool Shuffle READ shuffle WRITE setShuffle)
     Q_PROPERTY(QVariantMap Metadata READ metadata)
     Q_PROPERTY(double Volume READ volume WRITE setVolume)
@@ -123,8 +145,8 @@ public:
     void setLoopStatus(const QString &value) { m_service->setLoopStatus(value); }
     double rate() const { return m_service->rate(); }
     void setRate(double value) { m_service->setRate(value); }
-    double minimumRate() const { return 0.25; }
-    double maximumRate() const { return 2.0; }
+    double minimumRate() const { return m_service->minimumRate(); }
+    double maximumRate() const { return m_service->maximumRate(); }
     bool shuffle() const { return m_service->shuffle(); }
     void setShuffle(bool enabled) { m_service->setShuffle(enabled); }
     QVariantMap metadata() const { return m_service->metadata(); }
@@ -309,6 +331,16 @@ double MprisService::rate() const
     return m_audioEngine ? m_audioEngine->playbackRate() : 1.0;
 }
 
+double MprisService::minimumRate() const
+{
+    return (m_audioEngine && m_audioEngine->rateAvailable()) ? 0.25 : 1.0;
+}
+
+double MprisService::maximumRate() const
+{
+    return (m_audioEngine && m_audioEngine->rateAvailable()) ? 2.0 : 1.0;
+}
+
 bool MprisService::shuffle() const
 {
     return m_playbackController ? m_playbackController->shuffleEnabled() : false;
@@ -335,7 +367,9 @@ QVariantMap MprisService::metadata() const
     }
     const QString artist = m_trackModel->data(modelIndex, TrackModel::ArtistRole).toString();
     const QString album = m_trackModel->data(modelIndex, TrackModel::AlbumRole).toString();
-    const qint64 durationMs = m_trackModel->data(modelIndex, TrackModel::DurationRole).toLongLong();
+    const QString albumArt = m_trackModel->currentAlbumArt();
+    const qint64 durationMs =
+        resolveCurrentTrackDurationMs(m_audioEngine, m_trackModel, filePath, modelIndex);
 
     if (!title.isEmpty()) {
         map.insert(QStringLiteral("xesam:title"), title);
@@ -350,6 +384,9 @@ QVariantMap MprisService::metadata() const
     }
     if (!filePath.isEmpty()) {
         map.insert(QStringLiteral("xesam:url"), QUrl::fromLocalFile(filePath).toString());
+    }
+    if (!albumArt.isEmpty()) {
+        map.insert(QStringLiteral("mpris:artUrl"), albumArt);
     }
     if (durationMs > 0) {
         map.insert(QStringLiteral("mpris:length"), static_cast<qlonglong>(durationMs * kUsPerMs));
@@ -393,7 +430,7 @@ bool MprisService::canPause() const
 
 bool MprisService::canSeek() const
 {
-    return canPlay();
+    return canPlay() && m_audioEngine && m_audioEngine->seekAvailable();
 }
 
 bool MprisService::canControl() const
@@ -418,7 +455,7 @@ void MprisService::setLoopStatus(const QString &loopStatusValue)
 
 void MprisService::setRate(double rateValue)
 {
-    if (!m_audioEngine) {
+    if (!m_audioEngine || !m_audioEngine->rateAvailable()) {
         return;
     }
     m_audioEngine->setPlaybackRate(rateValue);
@@ -540,23 +577,7 @@ void MprisService::setPosition(const QDBusObjectPath &trackId, qlonglong positio
     const qint64 requestedMs = boundedPositionUs / kUsPerMs;
     const qint64 currentMs = qMax<qint64>(0, m_audioEngine->position());
     const qint64 durationMs = qMax<qint64>(0, m_audioEngine->duration());
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    const bool shortlyAfterTrackChange = (m_lastTrackChangeWallClockMs > 0)
-        && ((nowMs - m_lastTrackChangeWallClockMs) <= 5000);
     const qint64 deltaMs = qAbs(requestedMs - currentMs);
-
-    if (shortlyAfterTrackChange && deltaMs > 15000) {
-        if (seekDiagEnabled()) {
-            qInfo().noquote()
-                << "[SeekDiag][MPRIS] absolute seek ignored shortly after track change"
-                << "requestedMs=" << requestedMs
-                << "currentMs=" << currentMs
-                << "durationMs=" << durationMs
-                << "deltaMs=" << deltaMs
-                << "elapsedSinceTrackChangeMs=" << (nowMs - m_lastTrackChangeWallClockMs);
-        }
-        return;
-    }
 
     if (seekDiagEnabled()) {
         qInfo().noquote()
@@ -564,7 +585,6 @@ void MprisService::setPosition(const QDBusObjectPath &trackId, qlonglong positio
             << "requestedMs=" << requestedMs
             << "currentMs=" << currentMs
             << "durationMs=" << durationMs
-            << "shortlyAfterTrackChange=" << shortlyAfterTrackChange
             << "deltaMs=" << deltaMs;
     }
 
@@ -623,11 +643,21 @@ void MprisService::connectSignals()
         });
 
         connect(m_audioEngine, &AudioEngine::playbackRateChanged, this, [this]() {
-            emitPlayerPropertiesChanged({{QStringLiteral("Rate"), rate()}});
+            emitPlayerPropertiesChanged({{QStringLiteral("Rate"), rate()},
+                                         {QStringLiteral("MinimumRate"), minimumRate()},
+                                         {QStringLiteral("MaximumRate"), maximumRate()}});
+        });
+
+        connect(m_audioEngine, &AudioEngine::playbackCapabilitiesChanged, this, [this]() {
+            QVariantMap changed;
+            changed.insert(QStringLiteral("CanSeek"), canSeek());
+            changed.insert(QStringLiteral("Rate"), rate());
+            changed.insert(QStringLiteral("MinimumRate"), minimumRate());
+            changed.insert(QStringLiteral("MaximumRate"), maximumRate());
+            emitPlayerPropertiesChanged(changed);
         });
 
         connect(m_audioEngine, &AudioEngine::currentFileChanged, this, [this]() {
-            m_lastTrackChangeWallClockMs = QDateTime::currentMSecsSinceEpoch();
             QVariantMap changed;
             changed.insert(QStringLiteral("Metadata"), metadata());
             changed.insert(QStringLiteral("Position"), positionUs());
@@ -648,6 +678,10 @@ void MprisService::connectSignals()
     }
 
     if (m_trackModel) {
+        connect(m_trackModel, &TrackModel::currentTrackChanged, this, [this]() {
+            emitPlayerPropertiesChanged({{QStringLiteral("Metadata"), metadata()}});
+        });
+
         connect(m_trackModel, &TrackModel::currentIndexChanged, this, [this]() {
             QVariantMap changed;
             changed.insert(QStringLiteral("Metadata"), metadata());

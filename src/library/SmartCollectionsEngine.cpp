@@ -1,4 +1,5 @@
 #include "library/SmartCollectionsEngine.h"
+#include "AppSettingsManager.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -15,6 +16,11 @@
 #include <QVariant>
 
 namespace {
+QString localizedCollectionsText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
+
 enum class FieldKind {
     Text,
     Number,
@@ -270,7 +276,7 @@ QVariantMap SmartCollectionsEngine::getCollection(int id) const
         result = collectionRecordFromQuery(query);
         setLastError(QString());
     } else {
-        setLastError(QStringLiteral("Smart collection not found"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionNotFound")));
     }
     return result;
 }
@@ -283,7 +289,7 @@ int SmartCollectionsEngine::createCollection(const QString &name,
                                              bool pinned)
 {
     if (!m_enabled) {
-        setLastError(QStringLiteral("Smart collections engine is disabled"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionsDisabled")));
         return -1;
     }
     if (!ensureConnection()) {
@@ -292,7 +298,7 @@ int SmartCollectionsEngine::createCollection(const QString &name,
 
     const QString trimmedName = name.trimmed();
     if (trimmedName.isEmpty()) {
-        setLastError(QStringLiteral("Collection name is empty"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.collectionNameEmpty")));
         return -1;
     }
 
@@ -353,11 +359,11 @@ bool SmartCollectionsEngine::updateCollection(int id,
                                               bool pinned)
 {
     if (!m_enabled) {
-        setLastError(QStringLiteral("Smart collections engine is disabled"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionsDisabled")));
         return false;
     }
     if (id <= 0) {
-        setLastError(QStringLiteral("Invalid smart collection id"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.invalidSmartCollectionId")));
         return false;
     }
     if (!ensureConnection()) {
@@ -366,7 +372,7 @@ bool SmartCollectionsEngine::updateCollection(int id,
 
     const QString trimmedName = name.trimmed();
     if (trimmedName.isEmpty()) {
-        setLastError(QStringLiteral("Collection name is empty"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.collectionNameEmpty")));
         return false;
     }
 
@@ -417,7 +423,7 @@ bool SmartCollectionsEngine::updateCollection(int id,
     }
 
     if (query.numRowsAffected() <= 0) {
-        setLastError(QStringLiteral("Smart collection not found"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionNotFound")));
         return false;
     }
 
@@ -430,11 +436,11 @@ bool SmartCollectionsEngine::updateCollection(int id,
 bool SmartCollectionsEngine::deleteCollection(int id)
 {
     if (!m_enabled) {
-        setLastError(QStringLiteral("Smart collections engine is disabled"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionsDisabled")));
         return false;
     }
     if (id <= 0) {
-        setLastError(QStringLiteral("Invalid smart collection id"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.invalidSmartCollectionId")));
         return false;
     }
     if (!ensureConnection()) {
@@ -454,7 +460,7 @@ bool SmartCollectionsEngine::deleteCollection(int id)
     }
 
     if (query.numRowsAffected() <= 0) {
-        setLastError(QStringLiteral("Smart collection not found"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionNotFound")));
         return false;
     }
 
@@ -488,7 +494,7 @@ QVariantList SmartCollectionsEngine::resolveCollectionTracks(int id, int overrid
         return result;
     }
     if (!collectionQuery.next()) {
-        setLastError(QStringLiteral("Smart collection not found"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionNotFound")));
         return result;
     }
 
@@ -655,7 +661,7 @@ QVariantMap SmartCollectionsEngine::loadContextPlaybackProgress() const
 bool SmartCollectionsEngine::saveContextPlaybackProgress(const QVariantMap &payload)
 {
     if (!m_enabled) {
-        setLastError(QStringLiteral("Smart collections engine is disabled"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionsDisabled")));
         return false;
     }
     if (!ensureConnection()) {
@@ -773,7 +779,7 @@ bool SmartCollectionsEngine::saveContextPlaybackProgress(const QVariantMap &payl
     }
 
     if (!pruneContextPlaybackProgressTable(&db)) {
-        const QString error = m_lastError.isEmpty() ? QStringLiteral("Failed to prune context playback progress") : m_lastError;
+        const QString error = m_lastError.isEmpty() ? localizedCollectionsText(QStringLiteral("error.failedPruneContextPlaybackProgress")) : m_lastError;
         return rollbackWithError(error);
     }
 
@@ -799,7 +805,7 @@ QVariantMap SmartCollectionsEngine::normalizeProgressState(const QVariantMap &ra
 bool SmartCollectionsEngine::pruneContextPlaybackProgressTable(QSqlDatabase *db) const
 {
     if (!db || !db->isValid() || !db->isOpen()) {
-        setLastError(QStringLiteral("Database connection is not open"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.databaseConnectionNotOpen")));
         return false;
     }
 
@@ -839,11 +845,11 @@ bool SmartCollectionsEngine::pruneContextPlaybackProgressTable(QSqlDatabase *db)
 bool SmartCollectionsEngine::ensureConnection() const
 {
     if (!m_enabled) {
-        setLastError(QStringLiteral("Smart collections engine is disabled"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionsDisabled")));
         return false;
     }
     if (m_databasePath.isEmpty()) {
-        setLastError(QStringLiteral("Database path is empty"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.databasePathEmpty")));
         return false;
     }
 
@@ -945,7 +951,7 @@ bool SmartCollectionsEngine::ensureDefaultCollections()
 bool SmartCollectionsEngine::collectionsTableIsEmpty(bool *isEmptyOut) const
 {
     if (!isEmptyOut) {
-        setLastError(QStringLiteral("Invalid output pointer"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.invalidOutputPointer")));
         return false;
     }
     *isEmptyOut = true;
@@ -961,7 +967,7 @@ bool SmartCollectionsEngine::collectionsTableIsEmpty(bool *isEmptyOut) const
         return false;
     }
     if (!query.next()) {
-        setLastError(QStringLiteral("Failed to read smart_collections count"));
+        setLastError(localizedCollectionsText(QStringLiteral("error.failedReadSmartCollectionsCount")));
         return false;
     }
     *isEmptyOut = query.value(0).toLongLong() == 0;

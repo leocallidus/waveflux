@@ -1,11 +1,15 @@
 #include "AudioEngine.h"
+#include "AppSettingsManager.h"
 #include "TagLibPath.h"
+#include "playback/OpenMptPlaybackBackend.h"
+#include "playback/RemoteTrackerSourceCache.h"
 #include <QByteArray>
 #include <QDateTime>
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QMetaType>
 #include <QThread>
 #include <QTimer>
 #include <QVariantMap>
@@ -22,6 +26,8 @@
 
 namespace {
 constexpr guint kGstPlayFlagForceFilters = 0x00000800u;
+constexpr double kPi = 3.14159265358979323846;
+constexpr qint64 kOpenMptAboutToFinishLeadMs = 5000;
 
 bool seekDiagEnabled()
 {
@@ -54,51 +60,32 @@ QString localPathFromAudioSource(const QString &source)
     return {};
 }
 
+QString localizedErrorText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
+
 QString unavailablePlaybackSourceMessage(const QString &source)
 {
     const QString localPath = localPathFromAudioSource(source);
     const QString displayPath = localPath.isEmpty() ? source.trimmed() : localPath;
-    return QStringLiteral("File is unavailable: %1").arg(displayPath);
+    return localizedErrorText(QStringLiteral("error.fileUnavailable")).arg(displayPath);
 }
 
-QString extensionFromAudioSource(const QString &source)
+QString unsupportedMidiPlaybackMessage(const QString &source)
 {
     const QString localPath = localPathFromAudioSource(source);
     const QFileInfo info(localPath.isEmpty() ? source.trimmed() : localPath);
-    return info.suffix().trimmed().toLower();
+    const QString displayPath = localPath.isEmpty() ? source.trimmed() : info.fileName();
+    return localizedErrorText(QStringLiteral("error.midiUnsupported")).arg(displayPath);
 }
 
-bool isTrackerModuleExtension(const QString &extension)
+QString unsupportedTrackerModulePlaybackMessage(const QString &source)
 {
-    static const QStringList kTrackerModuleExtensions = {
-        QStringLiteral("669"),
-        QStringLiteral("amf"),
-        QStringLiteral("dbm"),
-        QStringLiteral("dmf"),
-        QStringLiteral("far"),
-        QStringLiteral("gdm"),
-        QStringLiteral("imf"),
-        QStringLiteral("it"),
-        QStringLiteral("med"),
-        QStringLiteral("mdl"),
-        QStringLiteral("mod"),
-        QStringLiteral("mt2"),
-        QStringLiteral("mtm"),
-        QStringLiteral("okt"),
-        QStringLiteral("psm"),
-        QStringLiteral("ptm"),
-        QStringLiteral("s3m"),
-        QStringLiteral("stm"),
-        QStringLiteral("ult"),
-        QStringLiteral("umx"),
-        QStringLiteral("xm")
-    };
-    return kTrackerModuleExtensions.contains(extension);
-}
-
-bool isTrackerModuleSource(const QString &source)
-{
-    return isTrackerModuleExtension(extensionFromAudioSource(source));
+    const QString localPath = localPathFromAudioSource(source);
+    const QFileInfo info(localPath.isEmpty() ? source.trimmed() : localPath);
+    const QString displayPath = localPath.isEmpty() ? source.trimmed() : info.fileName();
+    return localizedErrorText(QStringLiteral("error.trackerUnsupported")).arg(displayPath);
 }
 
 bool queryPipelineSeekability(GstElement *pipeline, bool *seekableOut)
@@ -133,10 +120,8 @@ bool queryPipelineSeekability(GstElement *pipeline, bool *seekableOut)
 
 QString unsupportedSeekMessageForSource(const QString &source)
 {
-    if (isTrackerModuleSource(source)) {
-        return QStringLiteral("Seeking is unavailable for tracker module files.");
-    }
-    return QStringLiteral("Seeking is unavailable for the current track.");
+    Q_UNUSED(source);
+    return localizedErrorText(QStringLiteral("error.seekUnavailable"));
 }
 
 bool validatePlaybackSourceAvailability(const QString &source, QString *errorMessage)
@@ -249,9 +234,197 @@ void setEnumPropertyIfAvailable(GstElement *element, const char *propertyName, c
 }
 } // namespace
 
+bool AudioEngine::trackerMetadataAvailable() const
+{
+    return !m_trackerType.isEmpty()
+           || !m_trackerMessage.isEmpty()
+           || m_trackerChannelCount > 0
+           || m_trackerPatternCount > 0
+           || m_trackerInstrumentCount > 0;
+}
+
+void AudioEngine::clearMetadata()
+{
+    m_title.clear();
+    m_artist.clear();
+    m_album.clear();
+    m_trackerType.clear();
+    m_trackerMessage.clear();
+    m_trackerChannelCount = 0;
+    m_trackerPatternCount = 0;
+    m_trackerInstrumentCount = 0;
+}
+
+void AudioEngine::applyOpenMptMetadata(const WaveFlux::PlaybackMetadata &metadata)
+{
+    m_title = metadata.title;
+    m_artist = metadata.artist;
+    m_album = metadata.album;
+    m_trackerType = metadata.trackerType;
+    m_trackerMessage = metadata.trackerMessage;
+    m_trackerChannelCount = qMax(0, metadata.channelCount);
+    m_trackerPatternCount = qMax(0, metadata.patternCount);
+    m_trackerInstrumentCount = qMax(0, metadata.instrumentCount);
+}
+
 AudioEngine::AudioEngine(QObject *parent)
     : QObject(parent)
 {
+    qRegisterMetaType<QVector<float>>("QVector<float>");
+
+    m_openMptBackend = std::make_unique<WaveFlux::OpenMptPlaybackBackend>();
+    m_openMptBackend->setParent(this);
+    m_remoteTrackerSourceCache = std::make_unique<WaveFlux::RemoteTrackerSourceCache>(this);
+    connect(m_openMptBackend.get(),
+            &WaveFlux::IPlaybackBackend::positionChanged,
+            this,
+            [this](qint64 positionMs) {
+                if (!usingOpenMptBackend()) {
+                    return;
+                }
+                const qint64 durationMs = duration();
+                const qint64 aboutToFinishPositionMs =
+                    qMax<qint64>(1, durationMs - kOpenMptAboutToFinishLeadMs);
+                if (!m_reversePlayback
+                    && m_state == PlayingState
+                    && durationMs > 0
+                    && positionMs > 0
+                    && positionMs >= aboutToFinishPositionMs
+                    && m_lastAboutToFinishTransitionId != m_currentTransitionId) {
+                    m_lastAboutToFinishTransitionId = m_currentTransitionId;
+                    traceTransition("audio_openmpt_about_to_finish_emitted",
+                                    m_lastAboutToFinishTransitionId,
+                                    {
+                                        {QStringLiteral("currentFile"), m_currentFile},
+                                        {QStringLiteral("positionMs"), positionMs},
+                                        {QStringLiteral("durationMs"), durationMs}
+                                    });
+                    emit aboutToFinish();
+                }
+                if (m_lastEmittedPositionMs == positionMs) {
+                    return;
+                }
+                m_lastEmittedPositionMs = positionMs;
+                emit positionChanged(positionMs);
+            });
+    connect(m_openMptBackend.get(),
+            &WaveFlux::IPlaybackBackend::durationChanged,
+            this,
+            [this](qint64 durationMs) {
+                if (!usingOpenMptBackend()) {
+                    return;
+                }
+                m_metadataFallbackDurationMs = qMax<qint64>(0, durationMs);
+                m_lastStableDurationMs = m_metadataFallbackDurationMs;
+                m_lastStableDurationUpdateMs = QDateTime::currentMSecsSinceEpoch();
+                emit durationChanged(m_metadataFallbackDurationMs);
+            });
+    connect(m_openMptBackend.get(),
+            &WaveFlux::IPlaybackBackend::stateChanged,
+            this,
+            [this](WaveFlux::PlaybackBackendState state) {
+                if (!usingOpenMptBackend()) {
+                    return;
+                }
+                if (state != WaveFlux::PlaybackBackendState::Playing) {
+                    resetSpectrumLevels();
+                }
+                setState(mapBackendStateToEngineState(state));
+            });
+    connect(m_openMptBackend.get(),
+            &WaveFlux::IPlaybackBackend::metadataChanged,
+            this,
+            [this](const WaveFlux::PlaybackMetadata &metadata) {
+                if (!usingOpenMptBackend()) {
+                    return;
+                }
+                applyOpenMptMetadata(metadata);
+                emit metadataChanged();
+            });
+    connect(m_openMptBackend.get(),
+            &WaveFlux::IPlaybackBackend::error,
+            this,
+            [this](const QString &message) {
+                if (!usingOpenMptBackend()) {
+                    return;
+                }
+                if (m_openMptBackend) {
+                    m_openMptBackend->setPcmTapEnabled(false);
+                }
+                resetSpectrumLevels();
+                emit error(message);
+            });
+    connect(m_openMptBackend.get(),
+            &WaveFlux::IPlaybackBackend::endOfStream,
+            this,
+            [this]() {
+                if (!usingOpenMptBackend()) {
+                    return;
+                }
+                m_lastEndOfStreamTransitionId = m_currentTransitionId;
+                traceTransition("audio_openmpt_eos_emitted", m_lastEndOfStreamTransitionId, {
+                    {QStringLiteral("currentFile"), m_currentFile}
+                });
+                emit endOfStream();
+            });
+    connect(m_openMptBackend.get(),
+            &WaveFlux::OpenMptPlaybackBackend::pcmFramesReady,
+            this,
+            &AudioEngine::handleOpenMptPcmSpectrum,
+            Qt::QueuedConnection);
+    connect(m_remoteTrackerSourceCache.get(),
+            &WaveFlux::RemoteTrackerSourceCache::progressChanged,
+            this,
+            [this](const QString &sourceUrl, qint64 bytesReceived, qint64 bytesTotal) {
+                if (sourceUrl != m_remoteTrackerPendingSource) {
+                    return;
+                }
+                const double percent =
+                    bytesTotal > 0 ? (100.0 * static_cast<double>(bytesReceived) / static_cast<double>(bytesTotal)) : -1.0;
+                const QString status =
+                    percent >= 0.0
+                    ? QStringLiteral("Caching tracker module... %1%").arg(qRound(percent))
+                    : QStringLiteral("Caching tracker module...");
+                updateRemoteTrackerDownloadState(true, bytesReceived, bytesTotal, status);
+            });
+    connect(m_remoteTrackerSourceCache.get(),
+            &WaveFlux::RemoteTrackerSourceCache::finished,
+            this,
+            [this](const QString &sourceUrl, const QString &localPath, const QString &) {
+                if (sourceUrl != m_remoteTrackerPendingSource) {
+                    return;
+                }
+                const quint64 transitionId = m_currentTransitionId;
+                updateRemoteTrackerDownloadState(false, 0, 0, QString());
+                m_remoteTrackerPendingSource.clear();
+                beginOpenMptLoad(sourceUrl, localPath, transitionId);
+            });
+    connect(m_remoteTrackerSourceCache.get(),
+            &WaveFlux::RemoteTrackerSourceCache::canceled,
+            this,
+            [this](const QString &sourceUrl) {
+                if (sourceUrl != m_remoteTrackerPendingSource) {
+                    return;
+                }
+                m_remoteTrackerPendingSource.clear();
+                updateRemoteTrackerDownloadState(false, 0, 0, QString());
+                m_isLoading = false;
+                setState(StoppedState);
+            });
+    connect(m_remoteTrackerSourceCache.get(),
+            &WaveFlux::RemoteTrackerSourceCache::failed,
+            this,
+            [this](const QString &sourceUrl, const QString &message) {
+                if (sourceUrl != m_remoteTrackerPendingSource) {
+                    return;
+                }
+                m_remoteTrackerPendingSource.clear();
+                updateRemoteTrackerDownloadState(false, 0, 0, QString());
+                m_isLoading = false;
+                setState(ErrorState);
+                emit error(message);
+            });
+
     if (kForceReliableEosTransitions) {
         m_gaplessBypassMode = true;
         m_gaplessBypassReason = QStringLiteral("forced_reliable_eos_transition");
@@ -331,6 +504,21 @@ AudioEngine::AudioEngine(QObject *parent)
         }
         const qint64 pendingSeek = m_coalescedSeekPositionMs;
         m_coalescedSeekPositionMs = -1;
+        if (usingOpenMptBackend()) {
+            if (!m_openMptBackend) {
+                return;
+            }
+            m_lastSeekWallClockMs = QDateTime::currentMSecsSinceEpoch();
+            m_lastSeekTargetMs = pendingSeek;
+            m_lastSeekSource = m_pendingSeekSource.trimmed();
+            if (m_lastSeekSource.isEmpty()) {
+                m_lastSeekSource = QStringLiteral("audio.openmpt_coalesced");
+            }
+            resetSpectrumLevels();
+            m_openMptBackend->seek(pendingSeek);
+            m_pendingSeekSource.clear();
+            return;
+        }
         performSeek(pendingSeek);
     });
 
@@ -348,6 +536,375 @@ AudioEngine::AudioEngine(QObject *parent)
 AudioEngine::~AudioEngine()
 {
     teardownPipeline();
+}
+
+bool AudioEngine::usingOpenMptBackend() const
+{
+    return m_currentBackendKind == WaveFlux::PlaybackBackendKind::OpenMpt
+        && m_openMptBackend != nullptr;
+}
+
+WaveFlux::PlaybackBackendCapabilities AudioEngine::gstreamerCapabilities() const
+{
+    return WaveFlux::PlaybackBackendCapabilities{
+        .seek = true,
+        .waveform = true,
+        .spectrum = (m_spectrumElement != nullptr),
+        .equalizer = m_equalizerAvailable,
+        .reverse = true,
+        .gapless = !m_gaplessBypassMode,
+        .rate = true,
+        .pitch = (m_pitchElement != nullptr),
+        .rateWithPitchChange = true,
+        .timeStretch = false,
+        .pitchShift = (m_pitchElement != nullptr),
+        .remoteSources = true
+    };
+}
+
+WaveFlux::PlaybackBackendCapabilities AudioEngine::currentBackendCapabilities() const
+{
+    if (usingOpenMptBackend()) {
+        WaveFlux::PlaybackBackendCapabilities capabilities = m_openMptBackend->capabilities();
+        capabilities.remoteSources = true;
+        return capabilities;
+    }
+
+    WaveFlux::PlaybackBackendCapabilities capabilities = gstreamerCapabilities();
+    if (WaveFlux::isSeekBlockedForSource(m_currentFile)) {
+        capabilities.seek = false;
+    }
+    return capabilities;
+}
+
+QVariantMap AudioEngine::playbackCapabilities() const
+{
+    const WaveFlux::PlaybackBackendCapabilities capabilities = currentBackendCapabilities();
+    return {
+        {QStringLiteral("seek"), capabilities.seek},
+        {QStringLiteral("waveform"), capabilities.waveform},
+        {QStringLiteral("spectrum"), capabilities.spectrum},
+        {QStringLiteral("equalizer"), capabilities.equalizer},
+        {QStringLiteral("reverse"), capabilities.reverse},
+        {QStringLiteral("gapless"), capabilities.gapless},
+        {QStringLiteral("rate"), capabilities.rate},
+        {QStringLiteral("pitch"), capabilities.pitch},
+        {QStringLiteral("rateWithPitchChange"), capabilities.rateWithPitchChange},
+        {QStringLiteral("timeStretch"), capabilities.timeStretch},
+        {QStringLiteral("pitchShift"), capabilities.pitchShift},
+        {QStringLiteral("remoteSources"), capabilities.remoteSources}
+    };
+}
+
+QVariantMap AudioEngine::playbackCapabilityReasons() const
+{
+    const WaveFlux::PlaybackBackendCapabilities capabilities = currentBackendCapabilities();
+    QVariantMap reasons;
+
+    if (!capabilities.spectrum) {
+        reasons.insert(QStringLiteral("spectrum"),
+                       QStringLiteral("settings.dynamicSpectrumUnavailableDescription"));
+    }
+
+    if (!capabilities.equalizer) {
+        reasons.insert(QStringLiteral("equalizer"),
+                       QStringLiteral("equalizer.unavailableDescription"));
+    }
+
+    if (!capabilities.reverse) {
+        reasons.insert(QStringLiteral("reverse"),
+                       QStringLiteral("settings.reversePlaybackUnavailableDescription"));
+    }
+
+    if (!capabilities.rate) {
+        reasons.insert(QStringLiteral("rate"),
+                       QStringLiteral("settings.speedUnavailableDescription"));
+    }
+
+    if (!capabilities.pitch) {
+        reasons.insert(QStringLiteral("pitch"),
+                       QStringLiteral("settings.pitchUnavailableDescription"));
+    }
+
+    if (usingOpenMptBackend()) {
+        reasons.insert(QStringLiteral("audioQualityProfile"),
+                       QStringLiteral("settings.audioQualityProfileUnavailableDescription"));
+    }
+
+    return reasons;
+}
+
+bool AudioEngine::seekAvailable() const
+{
+    return currentBackendCapabilities().seek;
+}
+
+bool AudioEngine::waveformAvailable() const
+{
+    return currentBackendCapabilities().waveform;
+}
+
+bool AudioEngine::spectrumAvailable() const
+{
+    return currentBackendCapabilities().spectrum;
+}
+
+bool AudioEngine::equalizerAvailable() const
+{
+    return effectiveEqualizerAvailable();
+}
+
+bool AudioEngine::reverseAvailable() const
+{
+    return currentBackendCapabilities().reverse;
+}
+
+bool AudioEngine::gaplessAvailable() const
+{
+    return currentBackendCapabilities().gapless;
+}
+
+bool AudioEngine::rateAvailable() const
+{
+    return currentBackendCapabilities().rate;
+}
+
+bool AudioEngine::pitchAvailable() const
+{
+    return currentBackendCapabilities().pitch;
+}
+
+bool AudioEngine::rateWithPitchChangeAvailable() const
+{
+    return currentBackendCapabilities().rateWithPitchChange;
+}
+
+bool AudioEngine::timeStretchAvailable() const
+{
+    return currentBackendCapabilities().timeStretch;
+}
+
+bool AudioEngine::pitchShiftAvailable() const
+{
+    return currentBackendCapabilities().pitchShift;
+}
+
+bool AudioEngine::remoteSourcesAvailable() const
+{
+    return currentBackendCapabilities().remoteSources;
+}
+
+bool AudioEngine::remoteTrackerDownloadActive() const
+{
+    return m_remoteTrackerDownloadActive;
+}
+
+double AudioEngine::remoteTrackerDownloadProgress() const
+{
+    return m_remoteTrackerDownloadProgress;
+}
+
+QString AudioEngine::remoteTrackerDownloadStatus() const
+{
+    return m_remoteTrackerDownloadStatus;
+}
+
+bool AudioEngine::effectiveEqualizerAvailable() const
+{
+    return currentBackendCapabilities().equalizer;
+}
+
+void AudioEngine::emitPlaybackCapabilitiesChanged()
+{
+    emit playbackCapabilitiesChanged();
+    emitEqualizerAvailabilityIfChanged();
+}
+
+void AudioEngine::emitEqualizerAvailabilityIfChanged()
+{
+    const bool available = effectiveEqualizerAvailable();
+    if (m_reportedEqualizerAvailable == available) {
+        return;
+    }
+
+    m_reportedEqualizerAvailable = available;
+    emit equalizerAvailableChanged();
+}
+
+void AudioEngine::updateRemoteTrackerDownloadState(bool active,
+                                                   qint64 bytesReceived,
+                                                   qint64 bytesTotal,
+                                                   const QString &status)
+{
+    double progress = 0.0;
+    if (active && bytesTotal > 0) {
+        progress = std::clamp(static_cast<double>(bytesReceived) / static_cast<double>(bytesTotal),
+                              0.0,
+                              1.0);
+    }
+
+    const bool changed = m_remoteTrackerDownloadActive != active
+        || !qFuzzyCompare(m_remoteTrackerDownloadProgress + 1.0, progress + 1.0)
+        || m_remoteTrackerDownloadStatus != status;
+    if (!changed) {
+        return;
+    }
+
+    m_remoteTrackerDownloadActive = active;
+    m_remoteTrackerDownloadProgress = progress;
+    m_remoteTrackerDownloadStatus = status;
+    emit remoteTrackerDownloadChanged();
+}
+
+void AudioEngine::cancelRemoteTrackerDownload()
+{
+    m_remoteTrackerPendingSource.clear();
+    updateRemoteTrackerDownloadState(false, 0, 0, QString());
+    if (m_remoteTrackerSourceCache && m_remoteTrackerSourceCache->isActive()) {
+        m_remoteTrackerSourceCache->cancel();
+    }
+}
+
+void AudioEngine::beginOpenMptLoad(const QString &displaySource,
+                                   const QString &backendSource,
+                                   quint64 resolvedTransitionId)
+{
+    QString availabilityError;
+    if (!validatePlaybackSourceAvailability(backendSource, &availabilityError)) {
+        qWarning() << availabilityError;
+        m_isLoading = false;
+        setState(ErrorState);
+        emit error(availabilityError);
+        return;
+    }
+
+    if (qEnvironmentVariableIsSet("WAVEFLUX_SKIP_PIPELINE_LOAD")) {
+        m_isLoading = true;
+        m_currentTransitionId = resolvedTransitionId;
+        m_currentFile = displaySource;
+        m_currentBackendKind = WaveFlux::PlaybackBackendKind::OpenMpt;
+        clearMetadata();
+        m_metadataFallbackDurationMs = probeMetadataDurationMs(backendSource);
+        m_lastEmittedPositionMs = -1;
+        resetSpectrumLevels();
+        disableOpenMptIncompatibleFeatures();
+        emitPlaybackCapabilitiesChanged();
+        emit currentFileChanged(m_currentFile);
+        emit metadataChanged();
+        return;
+    }
+
+    m_positionTimer->stop();
+    if (m_pipeline) {
+        gst_element_set_state(m_pipeline, GST_STATE_NULL);
+    }
+    if (m_bus) {
+        gst_bus_set_flushing(m_bus, TRUE);
+        gst_bus_set_flushing(m_bus, FALSE);
+    }
+
+    m_isLoading = true;
+    m_currentTransitionId = resolvedTransitionId;
+    m_currentFile = displaySource;
+    m_currentBackendKind = WaveFlux::PlaybackBackendKind::OpenMpt;
+    clearMetadata();
+    m_metadataFallbackDurationMs = 0;
+    m_lastEmittedPositionMs = -1;
+    resetSpectrumLevels();
+    disableOpenMptIncompatibleFeatures();
+    emitPlaybackCapabilitiesChanged();
+    emit currentFileChanged(m_currentFile);
+    emit metadataChanged();
+
+    if (seekDiagEnabled()) {
+        qInfo().noquote()
+            << "[SeekDiag][Audio] load file"
+            << "file=" << m_currentFile
+            << "backend=" << WaveFlux::playbackBackendKindName(m_currentBackendKind)
+            << "transitionId=" << m_currentTransitionId
+            << "resolvedBackendSource=" << backendSource;
+    }
+
+    m_openMptBackend->setVolume(m_volume);
+    m_openMptBackend->setPlaybackRate(m_playbackRate);
+    m_openMptBackend->setPitchSemitones(m_pitchSemitones);
+    m_openMptBackend->setReversePlayback(m_reversePlayback);
+    m_openMptBackend->load(backendSource);
+    m_isLoading = false;
+    if (m_openMptBackend->state() == WaveFlux::PlaybackBackendState::Error) {
+        return;
+    }
+    applyOpenMptEqualizerBands(m_equalizerBandGains);
+    m_equalizerAppliedBandGains = m_equalizerBandGains;
+    m_openMptBackend->setPcmTapEnabled(m_spectrumEnabled);
+    m_openMptBackend->play();
+}
+
+void AudioEngine::disableOpenMptIncompatibleFeatures()
+{
+    const WaveFlux::PlaybackBackendCapabilities trackerCapabilities =
+        m_openMptBackend ? m_openMptBackend->capabilities() : WaveFlux::PlaybackBackendCapabilities{};
+
+    if (m_reversePlayback) {
+        if (!trackerCapabilities.reverse) {
+            m_reversePlayback = false;
+            emit reversePlaybackChanged(false);
+        } else {
+            if (!qFuzzyCompare(m_playbackRate, 1.0)) {
+                m_playbackRate = 1.0;
+                emit playbackRateChanged(m_playbackRate);
+            }
+            if (m_pitchSemitones != 0) {
+                m_pitchSemitones = 0;
+                emit pitchSemitonesChanged(m_pitchSemitones);
+            }
+        }
+    }
+
+    if (!trackerCapabilities.rate && !qFuzzyCompare(m_playbackRate, 1.0)) {
+        m_playbackRate = 1.0;
+        emit playbackRateChanged(m_playbackRate);
+    }
+
+    if (!trackerCapabilities.pitch && m_pitchSemitones != 0) {
+        m_pitchSemitones = 0;
+        emit pitchSemitonesChanged(m_pitchSemitones);
+    }
+
+    if (m_audioQualityProfile != QStringLiteral("standard")) {
+        m_audioQualityProfile = QStringLiteral("standard");
+        emit audioQualityProfileChanged(m_audioQualityProfile);
+    }
+
+    m_pendingRateApplication = false;
+    m_pendingReverseStart = false;
+    m_equalizerApplyTimer.stop();
+    m_equalizerRampTimer.stop();
+    m_equalizerPendingApplyAllowRamp = false;
+    m_equalizerRampCurrentStep = 0;
+    m_equalizerRampTotalSteps = 0;
+    m_equalizerAppliedBandGains = m_equalizerBandGains;
+    emitEqualizerAvailabilityIfChanged();
+}
+
+AudioEngine::PlaybackState AudioEngine::mapBackendStateToEngineState(WaveFlux::PlaybackBackendState state)
+{
+    switch (state) {
+    case WaveFlux::PlaybackBackendState::Stopped:
+        return StoppedState;
+    case WaveFlux::PlaybackBackendState::Playing:
+        return PlayingState;
+    case WaveFlux::PlaybackBackendState::Paused:
+        return PausedState;
+    case WaveFlux::PlaybackBackendState::Ready:
+        return ReadyState;
+    case WaveFlux::PlaybackBackendState::Ended:
+        return EndedState;
+    case WaveFlux::PlaybackBackendState::Error:
+        return ErrorState;
+    }
+
+    return ErrorState;
 }
 
 void AudioEngine::setupPipeline()
@@ -372,7 +929,7 @@ void AudioEngine::setupPipeline()
     
     if (!m_pipeline) {
         qCritical() << "Failed to create GStreamer playbin element";
-        emit error("Failed to initialize audio engine");
+        emit error(localizedErrorText(QStringLiteral("error.failedInitializeAudioEngine")));
         return;
     }
 
@@ -558,7 +1115,7 @@ void AudioEngine::setupPipeline()
         } else {
             m_equalizerAppliedBandGains = m_equalizerBandGains;
         }
-        emit equalizerAvailableChanged();
+        emitPlaybackCapabilitiesChanged();
     } else if (m_equalizerAvailable) {
         m_equalizerAppliedBandGains = m_equalizerBandGains;
     }
@@ -580,6 +1137,7 @@ void AudioEngine::setupPipeline()
     } else {
         qWarning() << "Failed to create spectrum element, dynamic analyzer disabled";
     }
+    emitPlaybackCapabilitiesChanged();
     
     // Set initial volume
     if (GST_IS_STREAM_VOLUME(m_pipeline)) {
@@ -650,6 +1208,19 @@ void AudioEngine::teardownPipeline()
 
 void AudioEngine::play()
 {
+    if (m_remoteTrackerDownloadActive) {
+        return;
+    }
+
+    if (usingOpenMptBackend()) {
+        m_positionTimer->stop();
+        if (m_openMptBackend) {
+            m_openMptBackend->setPcmTapEnabled(m_spectrumEnabled);
+        }
+        m_openMptBackend->play();
+        return;
+    }
+
     if (!m_pipeline) return;
 
     GstState currentState = GST_STATE_NULL;
@@ -690,7 +1261,7 @@ void AudioEngine::play()
     GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         qWarning() << "Failed to start playback";
-        emit error("Failed to start playback");
+        emit error(localizedErrorText(QStringLiteral("error.failedStartPlayback")));
         setState(ErrorState);
         return;
     }
@@ -701,6 +1272,20 @@ void AudioEngine::play()
 
 void AudioEngine::pause()
 {
+    if (m_remoteTrackerDownloadActive) {
+        return;
+    }
+
+    if (usingOpenMptBackend()) {
+        m_positionTimer->stop();
+        if (m_openMptBackend) {
+            m_openMptBackend->setPcmTapEnabled(false);
+        }
+        m_openMptBackend->pause();
+        resetSpectrumLevels();
+        return;
+    }
+
     if (!m_pipeline) return;
     
     gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
@@ -710,6 +1295,44 @@ void AudioEngine::pause()
 
 void AudioEngine::stop()
 {
+    cancelRemoteTrackerDownload();
+
+    if (usingOpenMptBackend()) {
+        m_nextFile.clear();
+        m_nextFileTransitionId = 0;
+        m_gaplessPendingFile.clear();
+        m_gaplessPendingTransitionId = 0;
+        m_gaplessPendingSinceWallClockMs = 0;
+        m_trackTimelineOffsetMs = 0;
+        m_recentGaplessStreamStartMs = 0;
+        m_gaplessProgressWatchStartedMs = 0;
+        m_gaplessProgressWatchStartPositionMs = 0;
+        m_gaplessProgressRecoveryApplied = false;
+        m_gaplessProgressReloadIssued = false;
+        m_gaplessRecalibrationResyncAttempts = 0;
+        m_metadataFallbackDurationMs = 0;
+        m_lastStableDurationMs = 0;
+        m_lastStableDurationUpdateMs = 0;
+        m_gaplessEosDeferralTimer.stop();
+        m_pendingRateApplication = false;
+        m_pendingReverseStart = false;
+        m_seekCoalesceTimer.stop();
+        m_equalizerApplyTimer.stop();
+        m_equalizerRampTimer.stop();
+        m_coalescedSeekPositionMs = -1;
+        m_deferredSeekPositionMs = -1;
+        m_lastSeekWallClockMs = 0;
+        m_lastSeekTargetMs = -1;
+        m_lastSeekSource.clear();
+        m_pendingSeekSource.clear();
+        ++m_callbackSerial;
+        m_positionTimer->stop();
+        m_openMptBackend->setPcmTapEnabled(false);
+        m_openMptBackend->stop();
+        resetSpectrumLevels();
+        return;
+    }
+
     if (!m_pipeline) return;
     
     m_nextFile.clear();
@@ -749,6 +1372,64 @@ void AudioEngine::stop()
     resetSpectrumLevels();
 }
 
+void AudioEngine::unload()
+{
+    const bool hadCurrentFile = !m_currentFile.isEmpty();
+    const bool hadMetadata = !m_title.isEmpty()
+        || !m_artist.isEmpty()
+        || !m_album.isEmpty()
+        || !m_trackerType.isEmpty()
+        || !m_trackerMessage.isEmpty()
+        || m_trackerChannelCount > 0
+        || m_trackerPatternCount > 0
+        || m_trackerInstrumentCount > 0;
+    const bool backendChanged = m_currentBackendKind != WaveFlux::PlaybackBackendKind::GStreamer;
+    const bool hadDuration = m_metadataFallbackDurationMs > 0 || m_lastStableDurationMs > 0;
+
+    stop();
+
+    m_isLoading = false;
+    m_currentFile.clear();
+    m_nextFile.clear();
+    m_transitionIdCounter = 0;
+    m_currentTransitionId = 0;
+    m_nextFileTransitionId = 0;
+    m_gaplessPendingTransitionId = 0;
+    m_lastAboutToFinishTransitionId = 0;
+    m_lastEndOfStreamTransitionId = 0;
+    m_gaplessPendingFile.clear();
+    m_gaplessPendingSinceWallClockMs = 0;
+    m_trackTimelineOffsetMs = 0;
+    m_recentGaplessStreamStartMs = 0;
+    m_gaplessProgressWatchStartedMs = 0;
+    m_gaplessProgressWatchStartPositionMs = 0;
+    m_gaplessProgressRecoveryApplied = false;
+    m_gaplessProgressReloadIssued = false;
+    m_gaplessRecalibrationResyncAttempts = 0;
+    m_gaplessBypassMode = false;
+    m_gaplessBypassReason.clear();
+    m_metadataFallbackDurationMs = 0;
+    m_lastStableDurationMs = 0;
+    m_lastStableDurationUpdateMs = 0;
+    m_pendingRateApplication = false;
+    m_pendingReverseStart = false;
+    m_currentBackendKind = WaveFlux::PlaybackBackendKind::GStreamer;
+    clearMetadata();
+    resetSpectrumLevels();
+    setState(StoppedState);
+    emitPlaybackCapabilitiesChanged();
+
+    if (hadCurrentFile) {
+        emit currentFileChanged(QString());
+    }
+    if (hadMetadata) {
+        emit metadataChanged();
+    }
+    if (hadDuration) {
+        emit durationChanged(0);
+    }
+}
+
 void AudioEngine::togglePlayPause()
 {
     if (m_state == PlayingState) {
@@ -765,6 +1446,43 @@ void AudioEngine::seek(qint64 position)
 
 void AudioEngine::seekWithSource(qint64 position, const QString &source)
 {
+    if (WaveFlux::isSeekBlockedForSource(m_currentFile)) {
+        emit error(unsupportedSeekMessageForSource(m_currentFile));
+        return;
+    }
+
+    if (usingOpenMptBackend()) {
+        QString seekSource = source.trimmed();
+        if (seekSource.isEmpty()) {
+            seekSource = QStringLiteral("direct");
+        }
+        m_pendingSeekSource = seekSource;
+        m_pendingReverseStart = false;
+        m_pendingRateApplication = false;
+
+        qint64 targetMs = qMax<qint64>(0, position);
+        const qint64 durationMs = duration();
+        if (durationMs > 0) {
+            const qint64 safeMaxMs = qMax<qint64>(0, durationMs - kSeekSafeEndMarginMs);
+            targetMs = qMin(targetMs, safeMaxMs);
+        }
+
+        if (seekDiagEnabled()) {
+            qInfo().noquote()
+                << "[SeekDiag][Audio] openmpt seek queued"
+                << "source=" << seekSource
+                << "file=" << m_currentFile
+                << "requestedMs=" << position
+                << "targetMs=" << targetMs
+                << "durationMs=" << durationMs
+                << "previousPendingMs=" << m_coalescedSeekPositionMs;
+        }
+
+        m_coalescedSeekPositionMs = targetMs;
+        m_seekCoalesceTimer.start(kOpenMptSeekCoalesceIntervalMs);
+        return;
+    }
+
     if (!m_pipeline) return;
 
     QString seekSource = source.trimmed();
@@ -788,21 +1506,6 @@ void AudioEngine::seekWithSource(qint64 position, const QString &source)
     GstState currentState = GST_STATE_NULL;
     GstState pendingState = GST_STATE_VOID_PENDING;
     gst_element_get_state(m_pipeline, &currentState, &pendingState, 0);
-    if (isTrackerModuleSource(m_currentFile)) {
-        const QString errorMessage = unsupportedSeekMessageForSource(m_currentFile);
-        if (seekDiagEnabled()) {
-            qWarning().noquote()
-                << "[SeekDiag][Audio] seek blocked for tracker module"
-                << "source=" << seekSource
-                << "file=" << m_currentFile
-                << "requestedMs=" << requestedMs
-                << "targetMs=" << targetMs
-                << "durationMs=" << durationMs;
-        }
-        emit error(errorMessage);
-        m_pendingSeekSource.clear();
-        return;
-    }
     // A pending PLAYING transition from READY is still not seek-ready.
     // We only seek once the pipeline is actually PAUSED/PLAYING.
     const bool seekReady =
@@ -876,6 +1579,21 @@ void AudioEngine::seekWithSource(qint64 position, const QString &source)
     m_coalescedSeekPositionMs = targetMs;
 }
 
+QVariantMap AudioEngine::trackerDiagnosticsSnapshot() const
+{
+    if (!usingOpenMptBackend() || !m_openMptBackend) {
+        return {};
+    }
+
+    QVariantMap snapshot = m_openMptBackend->diagnosticsExportSnapshot();
+    snapshot.insert(QStringLiteral("audioEngine"), QVariantMap{
+        {QStringLiteral("currentFile"), m_currentFile},
+        {QStringLiteral("currentTransitionId"), QVariant::fromValue<qulonglong>(m_currentTransitionId)},
+        {QStringLiteral("state"), static_cast<int>(m_state)}
+    });
+    return snapshot;
+}
+
 void AudioEngine::applyDeferredSeekIfNeeded()
 {
     if (!m_pipeline || m_deferredSeekPositionMs < 0) {
@@ -946,21 +1664,6 @@ void AudioEngine::performSeek(qint64 positionMs)
                 << "gstPendingState=" << gst_element_state_get_name(pendingState)
                 << "engineState=" << static_cast<int>(m_state);
         }
-        return;
-    }
-
-    if (isTrackerModuleSource(m_currentFile)) {
-        const QString errorMessage = unsupportedSeekMessageForSource(m_currentFile);
-        if (seekDiagEnabled()) {
-            qWarning().noquote()
-                << "[SeekDiag][Audio] performSeek blocked for tracker module"
-                << "source=" << seekSource
-                << "file=" << m_currentFile
-                << "targetMs=" << positionMs;
-        }
-        emit error(errorMessage);
-        m_lastSeekSource = seekSource;
-        m_pendingSeekSource.clear();
         return;
     }
 
@@ -1208,6 +1911,10 @@ void AudioEngine::setVolume(double volume)
             g_object_set(m_pipeline, "volume", m_volume, nullptr);
         }
     }
+
+    if (m_openMptBackend) {
+        m_openMptBackend->setVolume(m_volume);
+    }
     
     if (changed) {
         emit volumeChanged(m_volume);
@@ -1217,6 +1924,21 @@ void AudioEngine::setVolume(double volume)
 void AudioEngine::setPlaybackRate(double rate)
 {
     const double clampedRate = qBound(0.25, rate, 2.0);
+    if (!rateAvailable() && !qFuzzyCompare(clampedRate, 1.0)) {
+        return;
+    }
+
+    if (usingOpenMptBackend() && m_reversePlayback && !qFuzzyCompare(clampedRate, 1.0)) {
+        if (!qFuzzyCompare(m_playbackRate, 1.0)) {
+            m_playbackRate = 1.0;
+            emit playbackRateChanged(m_playbackRate);
+            if (m_openMptBackend) {
+                m_openMptBackend->setPlaybackRate(m_playbackRate);
+            }
+        }
+        return;
+    }
+
     const bool changed = !qFuzzyCompare(m_playbackRate, clampedRate);
     m_playbackRate = clampedRate;
 
@@ -1225,6 +1947,14 @@ void AudioEngine::setPlaybackRate(double rate)
     }
 
     if (!changed) {
+        return;
+    }
+
+    if (usingOpenMptBackend()) {
+        if (m_openMptBackend) {
+            m_openMptBackend->setPlaybackRate(m_playbackRate);
+        }
+        m_pendingRateApplication = false;
         return;
     }
 
@@ -1241,12 +1971,41 @@ void AudioEngine::setPlaybackRate(double rate)
 
 void AudioEngine::setReversePlayback(bool enabled)
 {
+    if (!reverseAvailable() && enabled) {
+        return;
+    }
+
     if (m_reversePlayback == enabled) {
         return;
     }
 
     m_reversePlayback = enabled;
     emit reversePlaybackChanged(m_reversePlayback);
+
+    if (usingOpenMptBackend()) {
+        if (m_reversePlayback) {
+            if (!qFuzzyCompare(m_playbackRate, 1.0)) {
+                m_playbackRate = 1.0;
+                emit playbackRateChanged(m_playbackRate);
+                if (m_openMptBackend) {
+                    m_openMptBackend->setPlaybackRate(m_playbackRate);
+                }
+            }
+            if (m_pitchSemitones != 0) {
+                m_pitchSemitones = 0;
+                emit pitchSemitonesChanged(m_pitchSemitones);
+                if (m_openMptBackend) {
+                    m_openMptBackend->setPitchSemitones(m_pitchSemitones);
+                }
+            }
+        }
+        if (m_openMptBackend) {
+            m_openMptBackend->setReversePlayback(m_reversePlayback);
+        }
+        m_pendingReverseStart = false;
+        m_pendingRateApplication = false;
+        return;
+    }
 
     if (!m_pipeline) {
         return;
@@ -1314,12 +2073,21 @@ QString AudioEngine::normalizeAudioQualityProfile(const QString &profile)
 void AudioEngine::setAudioQualityProfile(const QString &profile)
 {
     const QString normalized = normalizeAudioQualityProfile(profile);
+    if (usingOpenMptBackend() && normalized != QStringLiteral("standard")) {
+        return;
+    }
+
     if (m_audioQualityProfile == normalized) {
         return;
     }
 
     m_audioQualityProfile = normalized;
     emit audioQualityProfileChanged(m_audioQualityProfile);
+
+    if (usingOpenMptBackend()) {
+        return;
+    }
+
     applyAudioQualityProfileToPipeline();
 }
 
@@ -1434,13 +2202,35 @@ void AudioEngine::applyAudioQualityProfileToPipeline()
 void AudioEngine::setPitchSemitones(int semitones)
 {
     const int clamped = qBound(-6, semitones, 6);
+    if (!pitchAvailable() && clamped != 0) {
+        return;
+    }
+
+    if (usingOpenMptBackend() && m_reversePlayback && clamped != 0) {
+        if (m_pitchSemitones != 0) {
+            m_pitchSemitones = 0;
+            emit pitchSemitonesChanged(m_pitchSemitones);
+            if (m_openMptBackend) {
+                m_openMptBackend->setPitchSemitones(m_pitchSemitones);
+            }
+        }
+        return;
+    }
+
     if (m_pitchSemitones == clamped) {
         return;
     }
     
     m_pitchSemitones = clamped;
     emit pitchSemitonesChanged(m_pitchSemitones);
-    
+
+    if (usingOpenMptBackend()) {
+        if (m_openMptBackend) {
+            m_openMptBackend->setPitchSemitones(m_pitchSemitones);
+        }
+        return;
+    }
+
     if (m_pitchElement) {
         // Convert semitones to pitch ratio: 2^(semitones/12)
         const double pitchRatio = std::pow(2.0, m_pitchSemitones / 12.0);
@@ -1450,11 +2240,25 @@ void AudioEngine::setPitchSemitones(int semitones)
 
 void AudioEngine::setSpectrumEnabled(bool enabled)
 {
+    if (!spectrumAvailable() && enabled) {
+        resetSpectrumLevels();
+        return;
+    }
+
     if (m_spectrumEnabled == enabled) {
         return;
     }
 
     m_spectrumEnabled = enabled;
+
+    if (usingOpenMptBackend()) {
+        if (m_openMptBackend) {
+            m_openMptBackend->setPcmTapEnabled(m_spectrumEnabled);
+        }
+        resetSpectrumLevels();
+        return;
+    }
+
     if (m_spectrumElement) {
         g_object_set(m_spectrumElement, "post-messages", m_spectrumEnabled, nullptr);
     }
@@ -1470,6 +2274,10 @@ void AudioEngine::setEqualizerBandGain(int bandIndex, double gainDb)
         return;
     }
 
+    if (!equalizerAvailable()) {
+        return;
+    }
+
     const double clampedGain = qBound(-24.0, gainDb, 12.0);
     const double previousGain = m_equalizerBandGains.at(bandIndex).toDouble();
     if (std::abs(previousGain - clampedGain) < 0.01) {
@@ -1478,6 +2286,11 @@ void AudioEngine::setEqualizerBandGain(int bandIndex, double gainDb)
 
     m_equalizerBandGains[bandIndex] = clampedGain;
     emit equalizerBandGainsChanged();
+
+    if (usingOpenMptBackend()) {
+        queueEqualizerApply(false, false);
+        return;
+    }
 
     if (!m_equalizerElement) {
         m_equalizerAppliedBandGains = m_equalizerBandGains;
@@ -1490,6 +2303,10 @@ void AudioEngine::setEqualizerBandGain(int bandIndex, double gainDb)
 
 void AudioEngine::setEqualizerBandGains(const QVariantList &gainsDb)
 {
+    if (!equalizerAvailable()) {
+        return;
+    }
+
     bool changed = false;
     for (int i = 0; i < m_equalizerBandGains.size(); ++i) {
         const double source = (i < gainsDb.size()) ? gainsDb.at(i).toDouble() : 0.0;
@@ -1508,6 +2325,11 @@ void AudioEngine::setEqualizerBandGains(const QVariantList &gainsDb)
     }
 
     emit equalizerBandGainsChanged();
+
+    if (usingOpenMptBackend()) {
+        queueEqualizerApply(true, true);
+        return;
+    }
 
     if (!m_equalizerElement) {
         m_equalizerAppliedBandGains = m_equalizerBandGains;
@@ -1530,6 +2352,10 @@ void AudioEngine::resetEqualizerBands()
 
 void AudioEngine::applyPlaybackRateToPipeline()
 {
+    if (usingOpenMptBackend()) {
+        return;
+    }
+
     if (!m_pipeline || m_state == StoppedState) {
         return;
     }
@@ -1653,7 +2479,7 @@ void AudioEngine::applyPlaybackRateToPipeline()
     }
 
     if (!ok) {
-        const QString message = QStringLiteral("Failed to set playback rate to %1x (effective %2x)")
+        const QString message = localizedErrorText(QStringLiteral("error.failedSetPlaybackRate"))
                                     .arg(m_playbackRate, 0, 'f', 2)
                                     .arg(effectiveRate, 0, 'f', 2);
         qWarning() << message;
@@ -1686,9 +2512,30 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
 {
     if (filePath.isEmpty()) return;
 
+    if (WaveFlux::isMidiSource(filePath)) {
+        const QString message = unsupportedMidiPlaybackMessage(filePath);
+        qWarning() << message;
+        emit error(message);
+        return;
+    }
+
+    if (WaveFlux::isUnsupportedTrackerModuleSource(filePath)) {
+        const QString message = unsupportedTrackerModulePlaybackMessage(filePath);
+        qWarning() << message;
+        emit error(message);
+        return;
+    }
+
     const quint64 resolvedTransitionId = resolveTransitionId(transitionId);
+    const bool remoteTrackerSource = WaveFlux::isRemoteTrackerModuleSource(filePath);
+    const WaveFlux::PlaybackBackendKind preferredBackend =
+        remoteTrackerSource
+        ? WaveFlux::PlaybackBackendKind::OpenMpt
+        : WaveFlux::preferredPlaybackBackendForSource(filePath);
     traceTransition("audio_load_file_request", resolvedTransitionId, {
         {QStringLiteral("filePath"), filePath},
+        {QStringLiteral("backend"),
+         WaveFlux::playbackBackendKindName(preferredBackend)},
         {QStringLiteral("requestedTransitionId"),
          static_cast<qulonglong>(transitionId)}
     });
@@ -1721,6 +2568,35 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     m_lastSeekSource.clear();
     m_pendingSeekSource.clear();
     m_lastTrackSwitchWallClockMs = QDateTime::currentMSecsSinceEpoch();
+    cancelRemoteTrackerDownload();
+
+    if (m_openMptBackend) {
+        m_openMptBackend->stop();
+    }
+
+    if (remoteTrackerSource) {
+        if (m_pipeline) {
+            gst_element_set_state(m_pipeline, GST_STATE_NULL);
+        }
+
+        m_isLoading = true;
+        m_currentTransitionId = resolvedTransitionId;
+        m_currentFile = filePath;
+        m_currentBackendKind = WaveFlux::PlaybackBackendKind::OpenMpt;
+        clearMetadata();
+        m_metadataFallbackDurationMs = 0;
+        m_lastEmittedPositionMs = -1;
+        resetSpectrumLevels();
+        disableOpenMptIncompatibleFeatures();
+        emitPlaybackCapabilitiesChanged();
+        emit currentFileChanged(m_currentFile);
+        emit metadataChanged();
+
+        m_remoteTrackerPendingSource = filePath;
+        updateRemoteTrackerDownloadState(true, 0, -1, QStringLiteral("Caching tracker module..."));
+        m_remoteTrackerSourceCache->materialize(QUrl(filePath));
+        return;
+    }
 
     QString availabilityError;
     if (!validatePlaybackSourceAvailability(filePath, &availabilityError)) {
@@ -1729,22 +2605,32 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
         return;
     }
 
+    if (preferredBackend == WaveFlux::PlaybackBackendKind::OpenMpt) {
+        beginOpenMptLoad(filePath, filePath, resolvedTransitionId);
+        return;
+    }
+
+    if (m_openMptBackend) {
+        m_openMptBackend->clearPreloadedNext();
+    }
+
     if (qEnvironmentVariableIsSet("WAVEFLUX_SKIP_PIPELINE_LOAD")) {
         m_isLoading = true;
         m_currentTransitionId = resolvedTransitionId;
         m_currentFile = filePath;
-        m_title.clear();
-        m_artist.clear();
-        m_album.clear();
+        m_currentBackendKind = preferredBackend;
+        clearMetadata();
         m_metadataFallbackDurationMs = probeMetadataDurationMs(m_currentFile);
         m_lastEmittedPositionMs = -1;
         resetSpectrumLevels();
+        emitPlaybackCapabilitiesChanged();
+        emit metadataChanged();
         return;
     }
 
     const QString uri = buildPlaybackUri(filePath);
     if (uri.isEmpty()) {
-        const QString message = QStringLiteral("Failed to resolve playback URI for: %1").arg(filePath);
+        const QString message = localizedErrorText(QStringLiteral("error.failedResolvePlaybackUri")).arg(filePath);
         qWarning() << message;
         emit error(message);
         return;
@@ -1764,17 +2650,18 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     m_isLoading = true;
     m_currentTransitionId = resolvedTransitionId;
     m_currentFile = filePath;
-    m_title.clear();
-    m_artist.clear();
-    m_album.clear();
+    m_currentBackendKind = preferredBackend;
+    clearMetadata();
     m_metadataFallbackDurationMs = probeMetadataDurationMs(m_currentFile);
     m_lastEmittedPositionMs = -1;
     resetSpectrumLevels();
+    emitPlaybackCapabilitiesChanged();
 
     if (seekDiagEnabled()) {
         qInfo().noquote()
             << "[SeekDiag][Audio] load file"
             << "file=" << m_currentFile
+            << "backend=" << WaveFlux::playbackBackendKindName(m_currentBackendKind)
             << "transitionId=" << m_currentTransitionId;
     }
 
@@ -1824,8 +2711,34 @@ void AudioEngine::setNextFileWithTransition(const QString &filePath, quint64 tra
         return;
     }
 
+    if (!gaplessAvailable()) {
+        m_nextFile.clear();
+        m_nextFileTransitionId = 0;
+        traceTransition("audio_gapless_unavailable", m_currentTransitionId, {
+            {QStringLiteral("filePath"), filePath},
+            {QStringLiteral("backend"),
+             WaveFlux::playbackBackendKindName(m_currentBackendKind)},
+            {QStringLiteral("requestedTransitionId"),
+             static_cast<qulonglong>(transitionId)}
+        });
+        return;
+    }
+
     m_nextFile = filePath;
     m_nextFileTransitionId = resolveTransitionId(transitionId);
+    if (usingOpenMptBackend()) {
+        const bool preloaded = m_openMptBackend && m_openMptBackend->preloadNext(filePath);
+        traceTransition(preloaded ? "audio_openmpt_next_file_preloaded"
+                                  : "audio_openmpt_next_file_preload_failed",
+                        m_nextFileTransitionId,
+                        {
+                            {QStringLiteral("filePath"), filePath},
+                            {QStringLiteral("requestedTransitionId"),
+                             static_cast<qulonglong>(transitionId)}
+                        });
+        return;
+    }
+
     traceTransition("audio_set_next_file", m_nextFileTransitionId, {
         {QStringLiteral("filePath"), filePath},
         {QStringLiteral("requestedTransitionId"),
@@ -1844,6 +2757,10 @@ void AudioEngine::setNextFileWithTransition(const QString &filePath, quint64 tra
 
 qint64 AudioEngine::position() const
 {
+    if (usingOpenMptBackend()) {
+        return m_openMptBackend ? m_openMptBackend->position() : 0;
+    }
+
     if (!m_pipeline) {
         return 0;
     }
@@ -1936,6 +2853,10 @@ qint64 AudioEngine::stabilizeDurationValue(qint64 rawDurationMs, qint64 nowMs) c
 
 qint64 AudioEngine::duration() const
 {
+    if (usingOpenMptBackend()) {
+        return m_openMptBackend ? m_openMptBackend->duration() : qMax<qint64>(0, m_lastStableDurationMs);
+    }
+
     if (!m_pipeline) {
         return qMax<qint64>(0, m_lastStableDurationMs);
     }
@@ -1952,6 +2873,10 @@ void AudioEngine::scheduleDeferredDurationRefresh(quint64 transitionId,
                                                   const QString &expectedFilePath,
                                                   int remainingAttempts)
 {
+    if (usingOpenMptBackend()) {
+        return;
+    }
+
     if (remainingAttempts <= 0) {
         return;
     }
@@ -1975,6 +2900,10 @@ void AudioEngine::scheduleDeferredDurationRefresh(quint64 transitionId,
 
 void AudioEngine::updatePosition()
 {
+    if (usingOpenMptBackend()) {
+        return;
+    }
+
     if (!m_pipeline) {
         return;
     }
@@ -2695,8 +3624,148 @@ void AudioEngine::handleSpectrumMessage(const GstStructure *structure)
     emit spectrumLevelsChanged();
 }
 
+void AudioEngine::handleOpenMptPcmSpectrum(QVector<float> monoSamples, int sampleRate)
+{
+    if (!m_spectrumEnabled
+        || !usingOpenMptBackend()
+        || m_state != PlayingState
+        || sampleRate <= 0
+        || monoSamples.size() < 128) {
+        return;
+    }
+
+    int windowSize = 1;
+    const int maxWindowSize = qMin(1024, monoSamples.size());
+    while (windowSize * 2 <= maxWindowSize) {
+        windowSize *= 2;
+    }
+    if (windowSize < 128) {
+        return;
+    }
+
+    const int analysisCount = qMax(1, m_spectrumAnalysisBandCount);
+    QVector<double> magnitudesDb;
+    magnitudesDb.reserve(analysisCount);
+
+    const int startSample = monoSamples.size() - windowSize;
+    const int nyquistBin = qMax(1, windowSize / 2);
+    double windowSum = 0.0;
+    QVector<double> windowed;
+    windowed.reserve(windowSize);
+    for (int i = 0; i < windowSize; ++i) {
+        const double window = 0.5 - 0.5 * std::cos((2.0 * kPi * i) / qMax(1, windowSize - 1));
+        windowSum += window;
+        windowed.push_back(static_cast<double>(monoSamples.at(startSample + i)) * window);
+    }
+    windowSum = qMax(windowSum, 1.0);
+
+    for (int band = 0; band < analysisCount; ++band) {
+        const double bandT = analysisCount > 1
+            ? static_cast<double>(band) / static_cast<double>(analysisCount - 1)
+            : 0.0;
+        const int dftBin = qBound(1,
+                                  static_cast<int>(std::lround(1.0 + bandT * (nyquistBin - 1))),
+                                  nyquistBin);
+        const double angularStep = (2.0 * kPi * dftBin) / static_cast<double>(windowSize);
+        double real = 0.0;
+        double imag = 0.0;
+        for (int i = 0; i < windowSize; ++i) {
+            const double phase = angularStep * i;
+            const double sample = windowed.at(i);
+            real += sample * std::cos(phase);
+            imag -= sample * std::sin(phase);
+        }
+
+        const double magnitude = (2.0 * std::sqrt(real * real + imag * imag)) / windowSum;
+        magnitudesDb.push_back(20.0 * std::log10(qMax(magnitude, 1e-6)));
+    }
+
+    const int displayCount = qMax(1, m_spectrumDisplayBandCount);
+    QVariantList levels;
+    levels.reserve(displayCount);
+    bool hasMeaningfulChange = false;
+    constexpr double updateEpsilon = 0.0025;
+    constexpr double minDb = -90.0;
+    constexpr double displayCurveExponent = 2.15;
+
+    auto edgeForBand = [analysisCount, displayCount, displayCurveExponent](int bandIndex) {
+        const double t = qBound(0.0, static_cast<double>(bandIndex) / displayCount, 1.0);
+        return qBound(
+            0,
+            static_cast<int>(std::floor(std::pow(t, displayCurveExponent) * qMax(0, analysisCount - 1))),
+            qMax(0, analysisCount - 1));
+    };
+
+    for (int i = 0; i < displayCount; ++i) {
+        const int start = edgeForBand(i);
+        const int end = qMax(start, edgeForBand(i + 1));
+
+        double maxDb = minDb;
+        double energySum = 0.0;
+        int samples = 0;
+        for (int bin = start; bin <= end && bin < magnitudesDb.size(); ++bin) {
+            const double db = qMax(minDb, magnitudesDb.at(bin));
+            maxDb = qMax(maxDb, db);
+            energySum += std::pow(10.0, db / 20.0);
+            ++samples;
+        }
+
+        double representativeDb = minDb;
+        if (samples > 0) {
+            const double averageEnergy = energySum / samples;
+            representativeDb = 20.0 * std::log10(qMax(averageEnergy, 1e-6));
+            representativeDb = qMax(representativeDb, maxDb - 8.0);
+        }
+
+        const double highBandCompensationDb = static_cast<double>(i) * 1.65;
+        const double shapedDb = qMin(0.0, representativeDb + highBandCompensationDb);
+        double normalized = qBound(0.0, (shapedDb - minDb) / std::abs(minDb), 1.0);
+        normalized = std::pow(normalized, 0.82);
+
+        const double previous = (i < m_spectrumLevels.size()) ? m_spectrumLevels.at(i).toDouble() : 0.0;
+        const double alpha = (normalized > previous) ? 0.72 : 0.16;
+        const double smoothed = previous + alpha * (normalized - previous);
+        hasMeaningfulChange = hasMeaningfulChange || (std::abs(smoothed - previous) > updateEpsilon);
+        levels.push_back(smoothed);
+    }
+
+    if (!hasMeaningfulChange) {
+        return;
+    }
+
+    m_spectrumLevels = levels;
+    emit spectrumLevelsChanged();
+}
+
 void AudioEngine::applyEqualizerBandSettings()
 {
+    if (usingOpenMptBackend()) {
+        if (m_equalizerAppliedBandGains.size() != m_equalizerBandGains.size()) {
+            m_equalizerAppliedBandGains = m_equalizerBandGains;
+        }
+
+        double maxDeltaDb = 0.0;
+        for (int i = 0; i < m_equalizerBandGains.size(); ++i) {
+            const double current = m_equalizerAppliedBandGains.at(i).toDouble();
+            const double target = m_equalizerBandGains.at(i).toDouble();
+            maxDeltaDb = qMax(maxDeltaDb, std::abs(target - current));
+        }
+
+        const bool allowRamp = m_equalizerPendingApplyAllowRamp;
+        m_equalizerPendingApplyAllowRamp = false;
+
+        if (allowRamp && maxDeltaDb >= kEqualizerRampThresholdDb) {
+            startEqualizerRamp(m_equalizerBandGains);
+            return;
+        }
+
+        m_equalizerRampTimer.stop();
+        m_equalizerRampCurrentStep = 0;
+        m_equalizerRampTotalSteps = 0;
+        applyEqualizerBandValues(m_equalizerBandGains);
+        return;
+    }
+
     if (!m_equalizerElement) {
         m_equalizerAppliedBandGains = m_equalizerBandGains;
         m_equalizerPendingApplyAllowRamp = false;
@@ -2735,6 +3804,17 @@ void AudioEngine::queueEqualizerApply(bool allowRamp, bool immediate)
 {
     m_equalizerPendingApplyAllowRamp = m_equalizerPendingApplyAllowRamp || allowRamp;
 
+    if (usingOpenMptBackend()) {
+        if (immediate) {
+            m_equalizerApplyTimer.stop();
+            applyEqualizerBandSettings();
+            return;
+        }
+
+        m_equalizerApplyTimer.start(kEqualizerApplyCoalesceMs);
+        return;
+    }
+
     if (!m_equalizerElement) {
         m_equalizerPendingApplyAllowRamp = false;
         m_equalizerApplyTimer.stop();
@@ -2754,6 +3834,12 @@ void AudioEngine::queueEqualizerApply(bool allowRamp, bool immediate)
 
 void AudioEngine::applyEqualizerBandValues(const QVariantList &gainsDb)
 {
+    if (usingOpenMptBackend()) {
+        applyOpenMptEqualizerBands(gainsDb);
+        m_equalizerAppliedBandGains = gainsDb;
+        return;
+    }
+
     if (!m_equalizerElement) {
         return;
     }
@@ -2768,9 +3854,32 @@ void AudioEngine::applyEqualizerBandValues(const QVariantList &gainsDb)
     m_equalizerAppliedBandGains = gainsDb;
 }
 
+void AudioEngine::applyOpenMptEqualizerBands(const QVariantList &gainsDb)
+{
+    if (!m_openMptBackend) {
+        return;
+    }
+
+    const int count = qMin(m_equalizerBandCount, gainsDb.size());
+    std::vector<double> frequenciesHz;
+    std::vector<double> gains;
+    frequenciesHz.reserve(static_cast<std::size_t>(count));
+    gains.reserve(static_cast<std::size_t>(count));
+
+    for (int i = 0; i < count; ++i) {
+        const double frequencyHz = (i < m_equalizerBandFrequencies.size())
+            ? m_equalizerBandFrequencies.at(i).toDouble()
+            : 0.0;
+        frequenciesHz.push_back(frequencyHz);
+        gains.push_back(qBound(-24.0, gainsDb.at(i).toDouble(), 12.0));
+    }
+
+    m_openMptBackend->setEqualizerBands(frequenciesHz, gains);
+}
+
 void AudioEngine::startEqualizerRamp(const QVariantList &targetGainsDb)
 {
-    if (!m_equalizerElement) {
+    if (!usingOpenMptBackend() && !m_equalizerElement) {
         return;
     }
 
@@ -2798,7 +3907,7 @@ void AudioEngine::startEqualizerRamp(const QVariantList &targetGainsDb)
 
 void AudioEngine::processEqualizerRampStep()
 {
-    if (!m_equalizerElement || m_equalizerRampTotalSteps <= 0) {
+    if ((!usingOpenMptBackend() && !m_equalizerElement) || m_equalizerRampTotalSteps <= 0) {
         m_equalizerRampTimer.stop();
         m_equalizerRampCurrentStep = 0;
         m_equalizerRampTotalSteps = 0;

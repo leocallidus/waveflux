@@ -36,6 +36,7 @@ Item {
     property var sharedSortBaselineKeys: []
     property bool suppressSortReapplyOnModelReset: false
     property bool suppressSortStatePersistence: false
+    property real pendingRestoredContentY: -1
     // full: title+artist+album+duration+bitrate
     // reduced: title+artist+duration
     // minimal: title+duration
@@ -54,6 +55,8 @@ Item {
         return "auto"
     }
     signal editTagsRequested(string filePath)
+    signal audioConverterRequested(int trackIndex, string filePath)
+    signal batchAudioConverterRequested(var filePaths)
     signal editTagsSelectionRequested(var filePaths)
     signal exportSelectionRequested(var filePaths)
 
@@ -64,6 +67,11 @@ Item {
         if (searchQuery.length === 0) {
             searchDebounceTimer.stop()
             debouncedSearchQuery = ""
+            return
+        }
+        if (!appSettings.automaticPlaylistSearch) {
+            searchDebounceTimer.stop()
+            debouncedSearchQuery = searchQuery
             return
         }
         searchDebounceTimer.interval = searchDebounceIntervalMs()
@@ -524,6 +532,30 @@ Item {
         return { "tracks": restored, "currentIndex": restoredCurrentIndex }
     }
 
+    function exportTrackListViewState() {
+        return {
+            "contentY": Math.max(0, Number(playlistView.contentY || 0))
+        }
+    }
+
+    function restoreTrackListViewState(state) {
+        const contentY = Math.max(0, Number(state && state.contentY !== undefined ? state.contentY : 0))
+        pendingRestoredContentY = contentY
+        applyPendingTrackListViewState()
+    }
+
+    function applyPendingTrackListViewState() {
+        if (pendingRestoredContentY < 0) {
+            return
+        }
+        if (playlistView.height <= 0) {
+            return
+        }
+        const maxContentY = Math.max(0, playlistView.contentHeight - playlistView.height)
+        playlistView.contentY = Math.max(0, Math.min(maxContentY, pendingRestoredContentY))
+        pendingRestoredContentY = -1
+    }
+
     function cycleIndexSort() {
         const nextState = (indexSortState + 1) % 3
         if (nextState === 0) {
@@ -623,6 +655,16 @@ Item {
             if (!root.fastLocateCurrentTrack()) {
                 playlistView.positionViewAtIndex(current, ListView.Center)
             }
+        })
+    }
+
+    function locateIndex(index) {
+        const safeIndex = Number(index)
+        if (!Number.isFinite(safeIndex) || safeIndex < 0) {
+            return
+        }
+        Qt.callLater(function() {
+            playlistView.positionViewAtIndex(Math.floor(safeIndex), ListView.Center)
         })
     }
 
@@ -1287,6 +1329,8 @@ Item {
             clip: true
             spacing: 0
             model: trackModel
+            onContentHeightChanged: root.applyPendingTrackListViewState()
+            onHeightChanged: root.applyPendingTrackListViewState()
 
             ScrollBar.vertical: ScrollBar {
                 id: playlistScrollBar
@@ -1661,6 +1705,20 @@ Item {
             }
         }
 
+        AccentMenuItem {
+            text: root.tr("playlist.audioConverter")
+            icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            enabled: contextMenu.trackIndex >= 0
+                     && contextMenu.trackIsLocalFile
+                     && (!trackModel.isCueTrack || !trackModel.isCueTrack(contextMenu.trackIndex))
+            onTriggered: {
+                if (contextMenu.trackIsLocalFile) {
+                    root.audioConverterRequested(contextMenu.trackIndex, contextMenu.trackFilePath)
+                }
+            }
+        }
+
         AccentMenuSeparator {}
 
         AccentMenuItem {
@@ -1669,6 +1727,14 @@ Item {
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             enabled: root.selectedCount > 0 && root.hasOnlyLocalSelection()
             onTriggered: root.editTagsSelectionRequested(root.selectedFilePathsSnapshot())
+        }
+
+        AccentMenuItem {
+            text: root.tr("playlist.audioConverterSelected")
+            icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            enabled: root.selectedCount > 1 && root.hasOnlyLocalSelection()
+            onTriggered: root.batchAudioConverterRequested(root.selectedFilePathsSnapshot())
         }
 
         AccentMenuItem {

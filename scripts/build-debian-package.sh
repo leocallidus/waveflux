@@ -30,8 +30,10 @@ Install them with:
   sudo apt install -y \
     build-essential cmake ninja-build pkgconf \
     qt6-base-dev qt6-declarative-dev \
+    qt6-multimedia-dev \
     extra-cmake-modules libkirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    libopenmpt-dev \
     libtag-dev
 
 Or run with --skip-build after preparing build-debian/pkgroot.
@@ -51,7 +53,7 @@ VERSION_OVERRIDE=""
 DEB_RELEASE="1"
 ARCH_OVERRIDE=""
 MAINTAINER="WaveFlux Maintainers <noreply@example.com>"
-DEFAULT_DEPENDS="libqt6core6 | libqt6core6t64, libqt6gui6, libqt6qml6, libqt6quick6, libqt6sql6, libqt6widgets6, libqt6dbus6, libqt6network6, libqt6opengl6, libqt6concurrent6 | libqt6core6 | libqt6core6t64, libqt6quickcontrols2-6, libkirigami6, libkirigamiplatform6, libkf6coreaddons6, libkf6i18n6, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libtag2 | libtag1v5 | libtag1-dev, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-dialogs, qml6-module-org-kde-kirigami"
+DEFAULT_DEPENDS="libqt6core6 | libqt6core6t64, libqt6gui6, libqt6multimedia6, libqt6qml6, libqt6quick6, libqt6sql6, libqt6widgets6, libqt6dbus6, libqt6network6, libqt6opengl6, libqt6concurrent6 | libqt6core6 | libqt6core6t64, libqt6quickcontrols2-6, libkirigami6, libkirigamiplatform6, libkf6coreaddons6, libkf6i18n6, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libopenmpt0 | libopenmpt0t64 | libopenmpt-dev, libtag2 | libtag1v5 | libtag1-dev, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-dialogs, qml6-module-org-kde-kirigami"
 DEPENDS_OVERRIDE=""
 SKIP_BUILD=0
 NO_CLEAN=0
@@ -136,12 +138,14 @@ if [[ "${SKIP_BUILD}" -eq 0 && -x /usr/bin/dpkg-query ]]; then
         pkgconf
         qt6-base-dev
         qt6-declarative-dev
+        qt6-multimedia-dev
         extra-cmake-modules
         libkirigami-dev
         libkf6coreaddons-dev
         libkf6i18n-dev
         libgstreamer1.0-dev
         libgstreamer-plugins-base1.0-dev
+        libopenmpt-dev
         libtag-dev
     )
 

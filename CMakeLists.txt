@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
-project(waveflux VERSION 1.1.0 LANGUAGES CXX)
+project(waveflux VERSION 1.2.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
+include(CheckCXXSourceCompiles)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,9 +23,11 @@ option(WAVEFLUX_ENABLE_DBUS_INTEGRATION
 # Find Qt6 packages
 find_package(Qt6 6.5 REQUIRED COMPONENTS
     Core
+    Network
     Quick
     Qml
     Gui
+    Multimedia
     Sql
     Concurrent
     Widgets
@@ -75,10 +78,51 @@ pkg_check_modules(GSTREAMER_AUDIO REQUIRED gstreamer-audio-1.0)
 # Find TagLib
 pkg_check_modules(TAGLIB REQUIRED taglib)
 
+# Find libopenmpt
+pkg_check_modules(OPENMPT libopenmpt)
+if(NOT OPENMPT_FOUND)
+    message(FATAL_ERROR
+        "libopenmpt development package was not found. "
+        "Install libopenmpt and its pkg-config metadata before configuring WaveFlux.")
+endif()
+
+set(CMAKE_REQUIRED_INCLUDES ${OPENMPT_INCLUDE_DIRS})
+set(CMAKE_REQUIRED_LIBRARIES ${OPENMPT_LINK_LIBRARIES})
+check_cxx_source_compiles([=[
+    #include <libopenmpt/libopenmpt.hpp>
+    #include <sstream>
+    #include <string>
+
+    int main()
+    {
+        std::istringstream stream(std::string(), std::ios::binary);
+        try {
+            openmpt::module module(stream);
+        } catch (...) {
+        }
+        return 0;
+    }
+]=] WAVEFLUX_CAN_INSTANTIATE_OPENMPT_MODULE)
+unset(CMAKE_REQUIRED_INCLUDES)
+unset(CMAKE_REQUIRED_LIBRARIES)
+
+if(NOT WAVEFLUX_CAN_INSTANTIATE_OPENMPT_MODULE)
+    message(FATAL_ERROR
+        "libopenmpt was found, but a compile/link probe for openmpt::module failed. "
+        "Check that headers and linker flags from pkg-config are usable on this system.")
+endif()
+
 # Source files
 set(SOURCES
     src/main.cpp
     src/AudioEngine.cpp
+    src/AudioConverterService.cpp
+    src/BatchAudioConverterService.cpp
+    src/playback/OpenMptPlaybackBackend.cpp
+    src/playback/TrackerPcmEngine.cpp
+    src/playback/OpenMptWaveformRenderer.cpp
+    src/playback/RemoteTrackerSourceCache.cpp
+    src/playback/PlaybackBackendRouting.cpp
     src/WaveformProvider.cpp
     src/TrackModel.cpp
     src/XspfPlaylistParser.cpp
@@ -90,8 +134,11 @@ set(SOURCES
     src/SessionManager.cpp
     src/PlaylistExportService.cpp
     src/PlaylistProfilesManager.cpp
+    src/YtDlpImportService.cpp
     src/EqualizerPresetManager.cpp
+    src/BatchAudioConverterPresetManager.cpp
     src/AppSettingsManager.cpp
+    src/GlobalKeyMonitor.cpp
     src/TrayManager.cpp
     src/PeaksCacheManager.cpp
     src/PerformanceProfiler.cpp
@@ -123,6 +170,14 @@ endif()
 
 set(HEADERS
     src/AudioEngine.h
+    src/AudioConverterService.h
+    src/BatchAudioConverterService.h
+    src/playback/IPlaybackBackend.h
+    src/playback/OpenMptPlaybackBackend.h
+    src/playback/TrackerPcmEngine.h
+    src/playback/OpenMptWaveformRenderer.h
+    src/playback/RemoteTrackerSourceCache.h
+    src/playback/PlaybackBackendRouting.h
     src/WaveformProvider.h
     src/PeaksCacheManager.h
     src/TrackModel.h
@@ -135,8 +190,11 @@ set(HEADERS
     src/SessionManager.h
     src/PlaylistExportService.h
     src/PlaylistProfilesManager.h
+    src/YtDlpImportService.h
     src/EqualizerPresetManager.h
+    src/BatchAudioConverterPresetManager.h
     src/AppSettingsManager.h
+    src/GlobalKeyMonitor.h
     src/MprisService.h
     src/TrayManager.h
     src/XdgPortalFilePicker.h
@@ -174,7 +232,7 @@ file(GLOB WAVEFLUX_ICON_RESOURCES
 
 qt_add_qml_module(waveflux
     URI WaveFlux
-    VERSION 1.1
+    VERSION 1.2
     QML_FILES
         qml/Main.qml
         qml/CompactSkin.qml
@@ -186,6 +244,7 @@ qt_add_qml_module(waveflux
         qml/components/SettingSliderRow.qml
         qml/components/SettingComboRow.qml
         qml/components/SettingHintText.qml
+        qml/components/Button.qml
         qml/components/AccentSlider.qml
         qml/components/AccentSwitch.qml
         qml/components/AccentCheckBox.qml
@@ -198,11 +257,15 @@ qt_add_qml_module(waveflux
         qml/components/AccentMenuItem.qml
         qml/components/AccentMenuSeparator.qml
         qml/components/AccentColorDialog.qml
+        qml/components/AccentProgressBar.qml
         qml/WaveformView.qml
         qml/PlayerControls.qml
         qml/PlaylistView.qml
         qml/TagEditorDialog.qml
         qml/BulkTagEditorDialog.qml
+        qml/AudioConverterDialog.qml
+        qml/BatchAudioConverterDialog.qml
+        qml/YtDlpImportDialog.qml
         qml/components/AboutDialog.qml
         qml/components/KeyboardShortcutsDialog.qml
         qml/SettingsDialog.qml
@@ -221,14 +284,17 @@ target_include_directories(waveflux PRIVATE
     ${GSTREAMER_APP_INCLUDE_DIRS}
     ${GSTREAMER_AUDIO_INCLUDE_DIRS}
     ${TAGLIB_INCLUDE_DIRS}
+    ${OPENMPT_INCLUDE_DIRS}
 )
 
 # Link libraries
 target_link_libraries(waveflux PRIVATE
     Qt6::Core
+    Qt6::Network
     Qt6::Quick
     Qt6::Qml
     Qt6::Gui
+    Qt6::Multimedia
     Qt6::Sql
     Qt6::Concurrent
     Qt6::Widgets
@@ -240,6 +306,7 @@ target_link_libraries(waveflux PRIVATE
     ${GSTREAMER_APP_LIBRARIES}
     ${GSTREAMER_AUDIO_LIBRARIES}
     ${TAGLIB_LIBRARIES}
+    ${OPENMPT_LIBRARIES}
 )
 
 if(WAVEFLUX_ENABLE_DBUS_INTEGRATION)

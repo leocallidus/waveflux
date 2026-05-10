@@ -41,6 +41,14 @@ Dialog {
         return appSettings.translate(key)
     }
 
+    function capabilityReason(feature) {
+        if (!audioEngine || !audioEngine.playbackCapabilityReasons) {
+            return ""
+        }
+        const key = String(audioEngine.playbackCapabilityReasons[feature] || "")
+        return key.length > 0 ? root.tr(key) : ""
+    }
+
     function formatFrequency(hz) {
         if (!hz || hz <= 0) {
             return "-"
@@ -951,6 +959,9 @@ Dialog {
 
                     Label {
                         text: root.tr("equalizer.unavailableDescription")
+                              + (root.capabilityReason("equalizer").length > 0
+                                 ? "\n\n" + root.capabilityReason("equalizer")
+                                 : "")
                         color: themeManager.textSecondaryColor
                         font.family: themeManager.fontFamily
                         wrapMode: Text.WordWrap

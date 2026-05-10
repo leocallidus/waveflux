@@ -1,4 +1,6 @@
 #include "XdgPortalFilePicker.h"
+#include "AppSettingsManager.h"
+#include "playback/PlaybackBackendRouting.h"
 
 #include <QDBusArgument>
 #include <QDBusConnection>
@@ -12,6 +14,8 @@
 #include <QDBusReply>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
@@ -37,6 +41,25 @@ using PortalFileFilterList = QList<PortalFileFilter>;
 Q_DECLARE_METATYPE(PortalFileFilterRule)
 Q_DECLARE_METATYPE(PortalFileFilterRuleList)
 Q_DECLARE_METATYPE(PortalFileFilter)
+
+bool copyTextToClipboardImpl(const QString &text)
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard) {
+        return false;
+    }
+    clipboard->setText(text);
+    return clipboard->text() == text;
+}
+
+QString readTextFromClipboardImpl()
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard) {
+        return QString();
+    }
+    return clipboard->text();
+}
 Q_DECLARE_METATYPE(PortalFileFilterList)
 
 QDBusArgument &operator<<(QDBusArgument &argument, const PortalFileFilterRule &rule)
@@ -81,6 +104,11 @@ constexpr auto kFileManagerPath = "/org/freedesktop/FileManager1";
 constexpr auto kFileManagerInterface = "org.freedesktop.FileManager1";
 constexpr quint32 kFilterTypeGlobPattern = 0;
 
+QString localizedPickerText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
+
 void registerPortalFileFilterMetaTypes()
 {
     static const bool registered = [] {
@@ -122,16 +150,35 @@ PortalFileFilterList buildOpenAudioFileFilters(const QString &audioFilterLabel,
         : allFilesFilterLabel.trimmed();
 
     PortalFileFilterList filters;
-    filters.push_back(buildPortalFilter(audioLabel, {
+    QStringList audioPatterns = {
         QStringLiteral("*.mp3"), QStringLiteral("*.ogg"), QStringLiteral("*.mp4"), QStringLiteral("*.wma"),
         QStringLiteral("*.flac"), QStringLiteral("*.ape"), QStringLiteral("*.wav"), QStringLiteral("*.wv"),
         QStringLiteral("*.tta"), QStringLiteral("*.mpc"), QStringLiteral("*.spx"), QStringLiteral("*.opus"),
+        QStringLiteral("*.webm"),
         QStringLiteral("*.m4a"), QStringLiteral("*.aac"), QStringLiteral("*.aiff"), QStringLiteral("*.alac"),
-        QStringLiteral("*.xm"), QStringLiteral("*.s3m"), QStringLiteral("*.it"), QStringLiteral("*.mod"),
         QStringLiteral("*.cue")
-    }));
+    };
+    audioPatterns.append(WaveFlux::trackerModuleGlobPatterns());
+
+    filters.push_back(buildPortalFilter(audioLabel, audioPatterns));
     filters.push_back(buildPortalFilter(xspfLabel, {QStringLiteral("*.xspf")}));
     filters.push_back(buildPortalFilter(allFilesLabel, {QStringLiteral("*")}));
+    return filters;
+}
+
+PortalFileFilterList buildExecutableFileFilters()
+{
+    PortalFileFilterList filters;
+#ifdef Q_OS_WIN
+    filters.push_back(buildPortalFilter(QStringLiteral("Executable files"),
+                                        {QStringLiteral("*.exe"),
+                                         QStringLiteral("*.cmd"),
+                                         QStringLiteral("*.bat"),
+                                         QStringLiteral("*.com")}));
+#else
+    filters.push_back(buildPortalFilter(QStringLiteral("Executable files"), {QStringLiteral("*")}));
+#endif
+    filters.push_back(buildPortalFilter(QStringLiteral("All files"), {QStringLiteral("*")}));
     return filters;
 }
 } // namespace
@@ -218,6 +265,23 @@ void XdgPortalFilePicker::openImageFile(const QString &title)
     startRequest(RequestKind::OpenImageFile, QStringLiteral("OpenFile"), title, options);
 }
 
+void XdgPortalFilePicker::openExecutableFile(const QString &title)
+{
+    registerPortalFileFilterMetaTypes();
+
+    QVariantMap options;
+    options.insert(QStringLiteral("handle_token"), createHandleToken(QStringLiteral("executable_open")));
+    options.insert(QStringLiteral("multiple"), false);
+    options.insert(QStringLiteral("modal"), true);
+    const PortalFileFilterList filters = buildExecutableFileFilters();
+    options.insert(QStringLiteral("filters"), QVariant::fromValue(filters));
+    if (!filters.isEmpty()) {
+        options.insert(QStringLiteral("current_filter"), QVariant::fromValue(filters.constFirst()));
+    }
+
+    startRequest(RequestKind::OpenExecutableFile, QStringLiteral("OpenFile"), title, options);
+}
+
 bool XdgPortalFilePicker::openInFileManager(const QString &filePath)
 {
     const auto fail = [this](const QString &message) {
@@ -227,21 +291,21 @@ bool XdgPortalFilePicker::openInFileManager(const QString &filePath)
     };
 
     if (filePath.trimmed().isEmpty()) {
-        return fail(QStringLiteral("Cannot open file manager: empty file path."));
+        return fail(localizedPickerText(QStringLiteral("error.openFileManagerEmptyPath")));
     }
 
     QString localPath = filePath;
     const QUrl inputUrl(filePath);
     if (inputUrl.isValid() && !inputUrl.scheme().isEmpty()) {
         if (!inputUrl.isLocalFile()) {
-            return fail(QStringLiteral("Cannot open file manager: only local files are supported."));
+            return fail(localizedPickerText(QStringLiteral("error.openFileManagerLocalOnly")));
         }
         localPath = inputUrl.toLocalFile();
     }
 
     QFileInfo fileInfo(localPath);
     if (!fileInfo.exists()) {
-        return fail(QStringLiteral("Cannot open file manager: file not found."));
+        return fail(localizedPickerText(QStringLiteral("error.openFileManagerFileNotFound")));
     }
 
     const QString normalizedPath = fileInfo.canonicalFilePath().isEmpty()
@@ -272,7 +336,7 @@ bool XdgPortalFilePicker::openInFileManager(const QString &filePath)
         return true;
     }
 
-    return fail(QStringLiteral("Cannot open file manager for the selected file."));
+    return fail(localizedPickerText(QStringLiteral("error.openFileManagerSelectedFile")));
 }
 
 bool XdgPortalFilePicker::moveFileToTrash(const QString &filePath)
@@ -284,21 +348,21 @@ bool XdgPortalFilePicker::moveFileToTrash(const QString &filePath)
     };
 
     if (filePath.trimmed().isEmpty()) {
-        return fail(QStringLiteral("Cannot move file to Trash: empty file path."));
+        return fail(localizedPickerText(QStringLiteral("error.openFileManagerEmptyPath")));
     }
 
     QString localPath = filePath;
     const QUrl inputUrl(filePath);
     if (inputUrl.isValid() && !inputUrl.scheme().isEmpty()) {
         if (!inputUrl.isLocalFile()) {
-            return fail(QStringLiteral("Cannot move file to Trash: only local files are supported."));
+            return fail(localizedPickerText(QStringLiteral("error.moveToTrashLocalOnly")));
         }
         localPath = inputUrl.toLocalFile();
     }
 
     QFileInfo fileInfo(localPath);
     if (!fileInfo.exists()) {
-        return fail(QStringLiteral("Cannot move file to Trash: file not found."));
+        return fail(localizedPickerText(QStringLiteral("error.moveToTrashFileNotFound")));
     }
 
     const QString normalizedPath = fileInfo.canonicalFilePath().isEmpty()
@@ -310,7 +374,7 @@ bool XdgPortalFilePicker::moveFileToTrash(const QString &filePath)
         return true;
     }
 
-    return fail(QStringLiteral("Cannot move file to Trash. Check permissions and Trash support for this disk."));
+    return fail(localizedPickerText(QStringLiteral("error.moveToTrashFailed")));
 }
 
 bool XdgPortalFilePicker::openExternalUrl(const QString &url)
@@ -323,12 +387,12 @@ bool XdgPortalFilePicker::openExternalUrl(const QString &url)
 
     const QString trimmed = url.trimmed();
     if (trimmed.isEmpty()) {
-        return fail(QStringLiteral("Cannot open URL: empty value."));
+        return fail(localizedPickerText(QStringLiteral("error.openUrlInvalid")));
     }
 
     const QUrl parsed = QUrl::fromUserInput(trimmed);
     if (!parsed.isValid() || parsed.scheme().isEmpty()) {
-        return fail(QStringLiteral("Cannot open URL: invalid URL."));
+        return fail(localizedPickerText(QStringLiteral("error.openUrlInvalid")));
     }
 
 #if defined(Q_OS_LINUX)
@@ -341,7 +405,17 @@ bool XdgPortalFilePicker::openExternalUrl(const QString &url)
         return true;
     }
 
-    return fail(QStringLiteral("Cannot open URL in the default browser."));
+    return fail(localizedPickerText(QStringLiteral("error.openUrlDefaultBrowser")));
+}
+
+bool XdgPortalFilePicker::copyTextToClipboard(const QString &text) const
+{
+    return copyTextToClipboardImpl(text);
+}
+
+QString XdgPortalFilePicker::readTextFromClipboard() const
+{
+    return readTextFromClipboardImpl();
 }
 
 void XdgPortalFilePicker::startRequest(RequestKind kind,
@@ -350,7 +424,7 @@ void XdgPortalFilePicker::startRequest(RequestKind kind,
                                        QVariantMap options)
 {
     if (m_activeKind != RequestKind::None) {
-        setLastError(QStringLiteral("A file picker request is already in progress."));
+        setLastError(localizedPickerText(QStringLiteral("error.filePickerRequestInProgress")));
         emit pickerFailed(m_lastError);
         return;
     }
@@ -361,7 +435,7 @@ void XdgPortalFilePicker::startRequest(RequestKind kind,
                           QDBusConnection::sessionBus(),
                           this);
     if (!portal.isValid()) {
-        setLastError(QStringLiteral("XDG portal is unavailable: %1")
+        setLastError(localizedPickerText(QStringLiteral("error.xdgPortalUnavailable"))
                          .arg(portal.lastError().message()));
         emit pickerFailed(m_lastError);
         return;
@@ -381,7 +455,7 @@ void XdgPortalFilePicker::onPortalRequestHandleReady(QDBusPendingCallWatcher *wa
     watcher->deleteLater();
 
     if (reply.isError()) {
-        setLastError(QStringLiteral("Failed to open XDG portal file picker: %1")
+        setLastError(localizedPickerText(QStringLiteral("error.failedOpenXdgPortalFilePicker"))
                          .arg(reply.error().message()));
         emit pickerFailed(m_lastError);
         finishRequest();
@@ -390,7 +464,7 @@ void XdgPortalFilePicker::onPortalRequestHandleReady(QDBusPendingCallWatcher *wa
 
     m_activeRequestPath = reply.value().path();
     if (m_activeRequestPath.isEmpty()) {
-        setLastError(QStringLiteral("XDG portal returned an invalid request handle."));
+        setLastError(localizedPickerText(QStringLiteral("error.xdgPortalInvalidRequestHandle")));
         emit pickerFailed(m_lastError);
         finishRequest();
         return;
@@ -405,7 +479,7 @@ void XdgPortalFilePicker::onPortalRequestHandleReady(QDBusPendingCallWatcher *wa
         SLOT(onPortalResponse(uint,QVariantMap)));
 
     if (!connected) {
-        setLastError(QStringLiteral("Failed to subscribe to XDG portal response."));
+        setLastError(localizedPickerText(QStringLiteral("error.failedSubscribeXdgPortalResponse")));
         emit pickerFailed(m_lastError);
         finishRequest();
     }
@@ -431,7 +505,7 @@ void XdgPortalFilePicker::onPortalResponse(uint response, const QVariantMap &res
     if (response != 0) {
         // 1 = cancelled by user, 2 = other error. Keep silent for cancel.
         if (response == 2) {
-            setLastError(QStringLiteral("XDG portal file picker returned an error."));
+            setLastError(localizedPickerText(QStringLiteral("error.xdgPortalFilePickerReturnedError")));
             emit pickerFailed(m_lastError);
         }
         return;
@@ -460,6 +534,9 @@ void XdgPortalFilePicker::onPortalResponse(uint response, const QVariantMap &res
         break;
     case RequestKind::OpenImageFile:
         emit imageFileSelected(urls.constFirst().toUrl());
+        break;
+    case RequestKind::OpenExecutableFile:
+        emit executableFileSelected(urls.constFirst().toUrl());
         break;
     case RequestKind::None:
         break;

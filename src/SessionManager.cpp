@@ -444,13 +444,15 @@ void SessionManager::connectSignals()
     connect(m_playbackController, &PlaybackController::shuffleEnabledChanged, this, &SessionManager::scheduleSave);
 }
 
-void SessionManager::restorePlaybackPosition(qint64 positionMs, bool shouldBePlaying)
+void SessionManager::restorePlaybackPosition(qint64 positionMs,
+                                             bool shouldBePlaying,
+                                             int remainingAttempts)
 {
     if (!m_audioEngine) {
         return;
     }
 
-    QTimer::singleShot(250, this, [this, positionMs, shouldBePlaying]() {
+    QTimer::singleShot(kRestorePositionRetryDelayMs, this, [this, positionMs, shouldBePlaying, remainingAttempts]() {
         if (!m_audioEngine) {
             return;
         }
@@ -463,12 +465,17 @@ void SessionManager::restorePlaybackPosition(qint64 positionMs, bool shouldBePla
                 targetPositionMs = 0;
             }
         } else {
-            // Duration is unknown at this point; skip restore seek to avoid
-            // jumping to stale/corrupted offsets from old sessions.
+            // Some backends publish duration after the first state transition.
+            // Retry briefly instead of silently dropping a valid saved position.
+            if (targetPositionMs > 0 && remainingAttempts > 1) {
+                restorePlaybackPosition(positionMs, shouldBePlaying, remainingAttempts - 1);
+                return;
+            }
             targetPositionMs = 0;
         }
 
-        if (targetPositionMs > 0) {
+        const bool explicitRestoreSeek = positionMs > 0 || targetPositionMs > 0;
+        if (explicitRestoreSeek) {
             m_audioEngine->seekWithSource(targetPositionMs,
                                           QStringLiteral("session.restore_playback_position"));
         }

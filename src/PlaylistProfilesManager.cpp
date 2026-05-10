@@ -1,4 +1,5 @@
 #include "PlaylistProfilesManager.h"
+#include "AppSettingsManager.h"
 
 #include <QDir>
 #include <QFile>
@@ -14,6 +15,11 @@
 
 namespace {
 constexpr int kMaxPlaylistCount = 200;
+
+QString localizedPlaylistProfileText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
 }
 
 PlaylistProfilesManager::PlaylistProfilesManager(QObject *parent)
@@ -51,7 +57,7 @@ int PlaylistProfilesManager::savePlaylist(const QString &name,
 
     const QString trimmedName = name.trimmed();
     if (trimmedName.isEmpty()) {
-        setLastError(QStringLiteral("Playlist name is empty"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNameEmpty")));
         return -1;
     }
 
@@ -62,7 +68,7 @@ int PlaylistProfilesManager::savePlaylist(const QString &name,
     int profileIndex = findProfileIndexByName(trimmedName);
     if (profileIndex < 0) {
         if (m_profiles.size() >= kMaxPlaylistCount) {
-            setLastError(QStringLiteral("Playlist storage limit reached"));
+            setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistStorageLimitReached")));
             return -1;
         }
         PlaylistProfile profile;
@@ -88,7 +94,7 @@ int PlaylistProfilesManager::savePlaylist(const QString &name,
 
     const int savedIndex = findProfileIndexByName(trimmedName);
     if (savedIndex < 0) {
-        setLastError(QStringLiteral("Failed to locate saved playlist"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedLocateSavedPlaylist")));
         return -1;
     }
     const int playlistId = m_profiles.at(savedIndex).id;
@@ -106,7 +112,7 @@ QVariantMap PlaylistProfilesManager::loadPlaylist(int playlistId) const
 
     const int profileIndex = findProfileIndexById(playlistId);
     if (profileIndex < 0) {
-        setLastError(QStringLiteral("Playlist not found"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNotFound")));
         return result;
     }
 
@@ -131,19 +137,19 @@ bool PlaylistProfilesManager::updatePlaylist(int playlistId,
 
     const QString trimmedName = name.trimmed();
     if (trimmedName.isEmpty()) {
-        setLastError(QStringLiteral("Playlist name is empty"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNameEmpty")));
         return false;
     }
 
     const int profileIndex = findProfileIndexById(playlistId);
     if (profileIndex < 0) {
-        setLastError(QStringLiteral("Playlist not found"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNotFound")));
         return false;
     }
 
     const int duplicateIndex = findProfileIndexByName(trimmedName);
     if (duplicateIndex >= 0 && duplicateIndex != profileIndex) {
-        setLastError(QStringLiteral("Playlist with this name already exists"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNameAlreadyExists")));
         return false;
     }
 
@@ -174,19 +180,19 @@ bool PlaylistProfilesManager::renamePlaylist(int playlistId, const QString &newN
 
     const QString trimmedName = newName.trimmed();
     if (trimmedName.isEmpty()) {
-        setLastError(QStringLiteral("Playlist name is empty"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNameEmpty")));
         return false;
     }
 
     const int profileIndex = findProfileIndexById(playlistId);
     if (profileIndex < 0) {
-        setLastError(QStringLiteral("Playlist not found"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNotFound")));
         return false;
     }
 
     const int duplicateIndex = findProfileIndexByName(trimmedName);
     if (duplicateIndex >= 0 && duplicateIndex != profileIndex) {
-        setLastError(QStringLiteral("Playlist with this name already exists"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNameAlreadyExists")));
         return false;
     }
 
@@ -212,11 +218,11 @@ int PlaylistProfilesManager::duplicatePlaylist(int playlistId, const QString &ne
 
     const int sourceIndex = findProfileIndexById(playlistId);
     if (sourceIndex < 0) {
-        setLastError(QStringLiteral("Playlist not found"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNotFound")));
         return -1;
     }
     if (m_profiles.size() >= kMaxPlaylistCount) {
-        setLastError(QStringLiteral("Playlist storage limit reached"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistStorageLimitReached")));
         return -1;
     }
 
@@ -248,7 +254,7 @@ int PlaylistProfilesManager::duplicatePlaylist(int playlistId, const QString &ne
 
     const int duplicatedIndex = findProfileIndexByName(uniqueName);
     if (duplicatedIndex < 0) {
-        setLastError(QStringLiteral("Failed to locate duplicated playlist"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedLocateDuplicatedPlaylist")));
         return -1;
     }
 
@@ -265,7 +271,7 @@ bool PlaylistProfilesManager::deletePlaylist(int playlistId)
 
     const int profileIndex = findProfileIndexById(playlistId);
     if (profileIndex < 0) {
-        setLastError(QStringLiteral("Playlist not found"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.playlistNotFound")));
         return false;
     }
 
@@ -299,7 +305,7 @@ bool PlaylistProfilesManager::loadFromDisk() const
         return true;
     }
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        setLastError(QStringLiteral("Failed to open playlists storage"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedOpenPlaylistsStorage")));
         return false;
     }
 
@@ -308,7 +314,7 @@ bool PlaylistProfilesManager::loadFromDisk() const
     file.close();
 
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        setLastError(QStringLiteral("Failed to parse playlists storage"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedParsePlaylistsStorage")));
         return false;
     }
 
@@ -405,14 +411,14 @@ bool PlaylistProfilesManager::persistToDisk() const
 
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        setLastError(QStringLiteral("Failed to open playlists storage for writing"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedOpenPlaylistsStorageWriting")));
         return false;
     }
 
     const QJsonDocument document(root);
     file.write(document.toJson(QJsonDocument::Indented));
     if (!file.commit()) {
-        setLastError(QStringLiteral("Failed to persist playlists storage"));
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedPersistPlaylistsStorage")));
         return false;
     }
 

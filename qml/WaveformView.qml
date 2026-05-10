@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import WaveFlux 1.1
+import WaveFlux 1.2
 
 Item {
     id: root
@@ -25,6 +25,11 @@ Item {
                                                && !root.cueOverlaySuppressedByDensity
                                                && cueSegments.length > 0
                                                && audioEngine.duration > 0
+    readonly property string zoomText: root.tr("waveform.zoomBadgeZoom").arg(waveformItem.zoom.toFixed(1))
+    readonly property string quickText: root.tr("waveform.zoomBadgeQuick").arg(waveformItem.zoom.toFixed(1))
+    readonly property string quickScrubText: root.tr("waveform.zoomBadgeQuickScrub").arg(waveformItem.zoom.toFixed(1))
+    readonly property string fineSeekHintText: root.tr("waveform.zoomBadgeFineSeekHint")
+    readonly property string panHintText: root.tr("waveform.zoomBadgePanHint")
     readonly property real safeProgress: audioEngine.duration > 0
                                         ? audioEngine.position / audioEngine.duration
                                         : 0
@@ -60,6 +65,8 @@ Item {
         progress: root.safeProgress
         loading: waveformProvider.loading
         generationProgress: waveformProvider.progress
+        loadingLabelTemplate: root.tr("waveform.loadingPlaceholder")
+        emptyStateText: root.waveformPlaceholderText()
         
         waveformColor: themeManager.waveformColor
         progressColor: themeManager.progressColor
@@ -70,6 +77,25 @@ Item {
                 audioEngine.seekWithSource(position * audioEngine.duration, "qml.waveform_seek")
             }
         }
+    }
+
+    function tr(key) {
+        const _translationRevision = appSettings.translationRevision
+        return appSettings.translate(key)
+    }
+
+    function waveformPlaceholderText() {
+        const state = String(waveformProvider ? waveformProvider.placeholderState || "" : "")
+        if (state === "unsupported") {
+            return root.tr("waveform.unsupportedPlaceholder")
+        }
+        if (state === "failed") {
+            return root.tr("waveform.failedPlaceholder")
+        }
+        if (state === "empty") {
+            return root.tr("waveform.silentPlaceholder")
+        }
+        return root.tr("waveform.emptyPlaceholder")
     }
 
     Item {
@@ -220,11 +246,11 @@ Item {
             font.family: themeManager.monoFontFamily
             text: root.tinyMode
                   ? (waveformItem.quickScrubActive
-                     ? "Quick x" + waveformItem.zoom.toFixed(1)
-                     : "Zoom x" + waveformItem.zoom.toFixed(1))
+                     ? root.quickText
+                     : root.zoomText)
                   : (waveformItem.quickScrubActive
-                     ? "Quick scrub x" + waveformItem.zoom.toFixed(1)
-                     : "Zoom x" + waveformItem.zoom.toFixed(1) + "  Shift-drag: fine seek  RMB-drag: pan (inertia)")
+                     ? root.quickScrubText
+                     : root.zoomText + "  " + root.fineSeekHintText + "  " + root.panHintText)
         }
     }
     

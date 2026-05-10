@@ -29,7 +29,9 @@ private:
     QString sessionFilePath() const;
     bool canPersist() const;
     void connectSignals();
-    void restorePlaybackPosition(qint64 positionMs, bool shouldBePlaying);
+    void restorePlaybackPosition(qint64 positionMs,
+                                 bool shouldBePlaying,
+                                 int remainingAttempts = kRestorePositionMaxAttempts);
 
     TrackModel *m_trackModel = nullptr;
     AudioEngine *m_audioEngine = nullptr;
@@ -43,6 +45,8 @@ private:
     static constexpr int kDebounceMs = 800;
     static constexpr qint64 kPositionSaveStepMs = 5000;
     static constexpr qint64 kRestoreNearEndGuardMs = 2500;
+    static constexpr int kRestorePositionRetryDelayMs = 250;
+    static constexpr int kRestorePositionMaxAttempts = 8;
     static constexpr qint64 kPositionHardCapMs = 12LL * 60LL * 60LL * 1000LL;
 };
 

@@ -1,0 +1,11 @@
+{
+  "id": "vid123",
+  "title": "Single Track",
+  "extractor": "youtube",
+  "extractor_key": "Youtube",
+  "webpage_url": "https://www.youtube.com/watch?v=vid123",
+  "original_url": "https://youtu.be/vid123",
+  "duration": 123,
+  "thumbnail": "https://img.example.test/vid123.jpg",
+  "availability": "public"
+}

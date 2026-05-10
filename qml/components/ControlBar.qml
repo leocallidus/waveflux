@@ -87,6 +87,43 @@ Rectangle {
     border.width: root.frameVisible ? 1 : 0
     border.color: root.panelBorderColor
 
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: visible ? 4 : 0
+        color: Qt.rgba(themeManager.primaryColor.r,
+                       themeManager.primaryColor.g,
+                       themeManager.primaryColor.b,
+                       0.12)
+        visible: audioEngine && audioEngine.remoteTrackerDownloadActive
+        z: 2
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: parent.width * Math.max(0, Math.min(1, audioEngine.remoteTrackerDownloadProgress))
+            color: themeManager.primaryColor
+            visible: audioEngine.remoteTrackerDownloadProgress > 0
+        }
+    }
+
+    Label {
+        anchors.right: parent.right
+        anchors.rightMargin: 10
+        anchors.top: parent.top
+        anchors.topMargin: 6
+        visible: audioEngine && audioEngine.remoteTrackerDownloadActive
+        z: 2
+        text: audioEngine ? audioEngine.remoteTrackerDownloadStatus : ""
+        color: themeManager.textSecondaryColor
+        font.pixelSize: 11
+        elide: Text.ElideRight
+        width: Math.min(260, parent.width * 0.35)
+        horizontalAlignment: Text.AlignRight
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 16
@@ -270,6 +307,8 @@ Rectangle {
                              ? "qrc:/WaveFlux/resources/icons/equalizer-dark.svg"
                              : "qrc:/WaveFlux/resources/icons/equalizer-light.svg"
                 display: AbstractButton.IconOnly
+                enabled: audioEngine && audioEngine.equalizerAvailable
+                opacity: enabled ? 1.0 : 0.45
                 onClicked: root.equalizerRequested()
                 ToolTip.text: (audioEngine && audioEngine.equalizerAvailable)
                               ? tr("player.equalizer")
@@ -351,7 +390,7 @@ Rectangle {
 
         // Speed control section
         RowLayout {
-            visible: root.showSpeedPitchInline
+            visible: root.showSpeedPitchInline && audioEngine && audioEngine.rateAvailable
             spacing: 4
 
             Item {
@@ -414,7 +453,7 @@ Rectangle {
 
         // Pitch (tone) control section
         RowLayout {
-            visible: root.showSpeedPitchInline
+            visible: root.showSpeedPitchInline && audioEngine && audioEngine.pitchAvailable
             spacing: 4
 
             Item {
@@ -536,10 +575,12 @@ Rectangle {
 
         MenuSeparator {
             visible: appSettings.showSpeedPitchControls
+                     && audioEngine
+                     && (audioEngine.rateAvailable || audioEngine.pitchAvailable)
         }
 
         MenuItem {
-            visible: appSettings.showSpeedPitchControls
+            visible: appSettings.showSpeedPitchControls && audioEngine && audioEngine.rateAvailable
             text: root.tr("player.resetSpeed")
             enabled: audioEngine && Math.abs(audioEngine.playbackRate - 1.0) > 0.001
             onTriggered: {
@@ -550,7 +591,7 @@ Rectangle {
         }
 
         MenuItem {
-            visible: appSettings.showSpeedPitchControls
+            visible: appSettings.showSpeedPitchControls && audioEngine && audioEngine.pitchAvailable
             text: root.tr("player.resetPitch")
             enabled: audioEngine && audioEngine.pitchSemitones !== 0
             onTriggered: {

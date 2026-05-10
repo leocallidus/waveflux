@@ -1,6 +1,10 @@
 #include "XdgPortalFilePicker.h"
+#include "AppSettingsManager.h"
+#include "playback/PlaybackBackendRouting.h"
 
 #include <QDesktopServices>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -64,11 +68,21 @@ QString buildAudioFilter(const QString &audioFilterLabel,
         ? QStringLiteral("All files")
         : allFilesFilterLabel.trimmed();
 
+    QStringList audioPatterns = {
+        QStringLiteral("*.mp3"), QStringLiteral("*.ogg"), QStringLiteral("*.mp4"), QStringLiteral("*.wma"),
+        QStringLiteral("*.flac"), QStringLiteral("*.ape"), QStringLiteral("*.wav"), QStringLiteral("*.wv"),
+        QStringLiteral("*.tta"), QStringLiteral("*.mpc"), QStringLiteral("*.spx"), QStringLiteral("*.opus"),
+        QStringLiteral("*.webm"),
+        QStringLiteral("*.m4a"), QStringLiteral("*.aac"), QStringLiteral("*.aiff"), QStringLiteral("*.alac"),
+        QStringLiteral("*.cue")
+    };
+    audioPatterns.append(WaveFlux::trackerModuleGlobPatterns());
+
     return QStringLiteral(
-               "%1 (*.mp3 *.ogg *.mp4 *.wma *.flac *.ape *.wav *.wv *.tta *.mpc *.spx *.opus *.m4a *.aac *.aiff *.alac *.xm *.s3m *.it *.mod *.cue);;"
-               "%2 (*.xspf);;"
-               "%3 (*)")
-        .arg(audioLabel, xspfLabel, allFilesLabel);
+               "%1 (%2);;"
+               "%3 (*.xspf);;"
+               "%4 (*)")
+        .arg(audioLabel, audioPatterns.join(QLatin1Char(' ')), xspfLabel, allFilesLabel);
 }
 
 QString ensureSuffixForSelectedFilter(QString path, const QString &selectedFilter)
@@ -186,6 +200,26 @@ void XdgPortalFilePicker::openImageFile(const QString &title)
     }
 }
 
+void XdgPortalFilePicker::openExecutableFile(const QString &title)
+{
+#ifdef Q_OS_WIN
+    const QString filter = QStringLiteral("Executable files (*.exe *.cmd *.bat *.com);;All files (*)");
+#else
+    const QString filter = QStringLiteral("Executable files (*);;All files (*)");
+#endif
+    const QString path = QFileDialog::getOpenFileName(nullptr, title, QString(), filter);
+    if (!path.isEmpty()) {
+        emit executableFileSelected(QUrl::fromLocalFile(path));
+    }
+}
+
+namespace {
+QString localizedNativePickerText(const QString &key)
+{
+    return AppSettingsManager::translateForCurrentLanguage(key);
+}
+}
+
 bool XdgPortalFilePicker::openInFileManager(const QString &filePath)
 {
     const auto fail = [this](const QString &message) {
@@ -196,12 +230,12 @@ bool XdgPortalFilePicker::openInFileManager(const QString &filePath)
 
     const QString localPath = normalizeLocalPath(filePath);
     if (localPath.isEmpty()) {
-        return fail(QStringLiteral("Cannot open file manager: only local files are supported."));
+        return fail(localizedNativePickerText(QStringLiteral("error.openFileManagerLocalOnly")));
     }
 
     QFileInfo fileInfo(localPath);
     if (!fileInfo.exists()) {
-        return fail(QStringLiteral("Cannot open file manager: file not found."));
+        return fail(localizedNativePickerText(QStringLiteral("error.openFileManagerFileNotFound")));
     }
 
 #if defined(Q_OS_WIN)
@@ -221,7 +255,7 @@ bool XdgPortalFilePicker::openInFileManager(const QString &filePath)
         return true;
     }
 
-    return fail(QStringLiteral("Cannot open file manager for the selected file."));
+    return fail(localizedNativePickerText(QStringLiteral("error.openFileManagerSelectedFile")));
 }
 
 bool XdgPortalFilePicker::moveFileToTrash(const QString &filePath)
@@ -234,12 +268,12 @@ bool XdgPortalFilePicker::moveFileToTrash(const QString &filePath)
 
     const QString localPath = normalizeLocalPath(filePath);
     if (localPath.isEmpty()) {
-        return fail(QStringLiteral("Cannot move file to Trash: only local files are supported."));
+        return fail(localizedNativePickerText(QStringLiteral("error.moveToTrashLocalOnly")));
     }
 
     QFileInfo fileInfo(localPath);
     if (!fileInfo.exists()) {
-        return fail(QStringLiteral("Cannot move file to Trash: file not found."));
+        return fail(localizedNativePickerText(QStringLiteral("error.moveToTrashFileNotFound")));
     }
 
     QString pathInTrash;
@@ -247,7 +281,7 @@ bool XdgPortalFilePicker::moveFileToTrash(const QString &filePath)
         return true;
     }
 
-    return fail(QStringLiteral("Cannot move file to Trash. Check permissions and Trash support for this disk."));
+    return fail(localizedNativePickerText(QStringLiteral("error.moveToTrashFailed")));
 }
 
 bool XdgPortalFilePicker::openExternalUrl(const QString &url)
@@ -260,14 +294,33 @@ bool XdgPortalFilePicker::openExternalUrl(const QString &url)
 
     const QUrl parsed = QUrl::fromUserInput(url.trimmed());
     if (!parsed.isValid() || parsed.scheme().isEmpty()) {
-        return fail(QStringLiteral("Cannot open URL: invalid URL."));
+        return fail(localizedNativePickerText(QStringLiteral("error.openUrlInvalid")));
     }
 
     if (QDesktopServices::openUrl(parsed)) {
         return true;
     }
 
-    return fail(QStringLiteral("Cannot open URL in the default browser."));
+    return fail(localizedNativePickerText(QStringLiteral("error.openUrlDefaultBrowser")));
+}
+
+bool XdgPortalFilePicker::copyTextToClipboard(const QString &text) const
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard) {
+        return false;
+    }
+    clipboard->setText(text);
+    return clipboard->text() == text;
+}
+
+QString XdgPortalFilePicker::readTextFromClipboard() const
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard) {
+        return QString();
+    }
+    return clipboard->text();
 }
 
 void XdgPortalFilePicker::onPortalRequestHandleReady(QDBusPendingCallWatcher *watcher)

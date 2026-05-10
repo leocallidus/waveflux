@@ -13,6 +13,11 @@ Rectangle {
     property int bitDepth: 0
     property int bpm: 0
     property string albumArt: ""
+    property string trackerType: ""
+    property string trackerMessage: ""
+    property int trackerChannelCount: 0
+    property int trackerPatternCount: 0
+    property int trackerInstrumentCount: 0
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -31,7 +36,18 @@ Rectangle {
         const levels = audioEngine ? audioEngine.spectrumLevels : null
         return (levels && levels.length > 0) ? levels : root.zeroLevels
     }
-    readonly property var spectrumLevels: appSettings.dynamicSpectrum ? root.dynamicLevels : root.staticLevels
+    readonly property var spectrumLevels: (appSettings.dynamicSpectrum && audioEngine && audioEngine.spectrumAvailable)
+                                          ? root.dynamicLevels
+                                          : root.staticLevels
+    readonly property bool hasTrackerInfo: root.trackerType.length > 0
+                                           || root.trackerMessage.length > 0
+                                           || root.trackerChannelCount > 0
+                                           || root.trackerPatternCount > 0
+                                           || root.trackerInstrumentCount > 0
+    readonly property bool isTrackerModule: {
+        const safeFormat = (root.format || "").trim().toUpperCase()
+        return root.hasTrackerInfo || ["669", "MOD", "XM", "S3M", "IT"].indexOf(safeFormat) >= 0
+    }
 
     function formatSampleRate(rate) {
         if (!rate || rate <= 0) return root.tr("sidebar.unknown")
@@ -56,86 +72,66 @@ Rectangle {
     border.width: 1
     border.color: themeManager.borderColor
 
-    ColumnLayout {
+    ScrollView {
         anchors.fill: parent
-        spacing: 0
+        clip: true
+
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
         Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(160, root.height * 0.25)
-            Layout.minimumHeight: 100
+            width: parent.width
+            implicitHeight: detailsColumn.implicitHeight + 28
 
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: Kirigami.Units.smallSpacing
-                spacing: 8
+                id: detailsColumn
+                x: 14
+                y: 14
+                width: Math.max(0, parent.width - 28)
+                spacing: 14
 
-                Label {
-                    text: root.tr("sidebar.spectrumAnalyzer")
-                    color: themeManager.textMutedColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: 10
-                    font.bold: true
-                    font.letterSpacing: 1.8
-                }
-
-                Item {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    spacing: 8
 
-                    Row {
-                        anchors.fill: parent
-                        spacing: 4
+                    Label {
+                        text: root.tr("sidebar.spectrumAnalyzer")
+                        color: themeManager.textMutedColor
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1.8
+                    }
 
-                        Repeater {
-                            model: root.spectrumLevels.length
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 88
 
-                            Rectangle {
-                                required property int index
-                                readonly property real levelValue: root.spectrumLevels[index]
-                                width: Math.max(2, (parent.width - (root.spectrumLevels.length - 1) * 4) / root.spectrumLevels.length)
-                                height: Math.max(4, parent.height * levelValue)
-                                anchors.bottom: parent.bottom
-                                radius: 1
-                                color: Qt.rgba(
-                                    themeManager.primaryColor.r,
-                                    themeManager.primaryColor.g,
-                                    themeManager.primaryColor.b,
-                                    0.16 + 0.84 * levelValue
-                                )
+                        Row {
+                            anchors.fill: parent
+                            spacing: 4
 
+                            Repeater {
+                                model: root.spectrumLevels.length
+
+                                Rectangle {
+                                    required property int index
+                                    readonly property real levelValue: root.spectrumLevels[index]
+                                    width: Math.max(2, (parent.width - (root.spectrumLevels.length - 1) * 4) / root.spectrumLevels.length)
+                                    height: Math.max(4, parent.height * levelValue)
+                                    anchors.bottom: parent.bottom
+                                    radius: 1
+                                    color: Qt.rgba(
+                                        themeManager.primaryColor.r,
+                                        themeManager.primaryColor.g,
+                                        themeManager.primaryColor.b,
+                                        0.16 + 0.84 * levelValue
+                                    )
+
+                                }
                             }
                         }
                     }
                 }
-            }
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                color: themeManager.borderColor
-            }
-        }
-
-        ScrollView {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-            Item {
-                width: parent.width
-                implicitHeight: detailsColumn.implicitHeight + 28
-
-                ColumnLayout {
-                    id: detailsColumn
-                    x: 14
-                    y: 14
-                    width: Math.max(0, parent.width - 28)
-                    spacing: 14
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -195,6 +191,7 @@ Rectangle {
                         }
 
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.tr("sidebar.sampleRate")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
@@ -203,6 +200,7 @@ Rectangle {
                             Layout.preferredWidth: root.specLabelWidth
                         }
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.formatSampleRate(root.sampleRate)
                             color: themeManager.primaryColor
                             font.bold: true
@@ -214,6 +212,7 @@ Rectangle {
                         }
 
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.tr("sidebar.bitrate")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
@@ -222,6 +221,7 @@ Rectangle {
                             Layout.preferredWidth: root.specLabelWidth
                         }
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.formatBitrateValue(root.bitrate)
                             color: themeManager.primaryColor
                             font.bold: true
@@ -233,6 +233,7 @@ Rectangle {
                         }
 
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.tr("sidebar.bitDepth")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
@@ -241,6 +242,7 @@ Rectangle {
                             Layout.preferredWidth: root.specLabelWidth
                         }
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.bitDepth > 0 ? root.bitDepth + root.tr("sidebar.bitPcm") : root.tr("sidebar.unknown")
                             color: root.bitDepth > 16 ? themeManager.primaryColor : themeManager.textColor
                             font.bold: root.bitDepth > 16
@@ -252,6 +254,7 @@ Rectangle {
                         }
 
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.tr("sidebar.bpm")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
@@ -260,6 +263,7 @@ Rectangle {
                             Layout.preferredWidth: root.specLabelWidth
                         }
                         Label {
+                            visible: !root.isTrackerModule
                             text: root.bpm > 0 ? String(root.bpm) : root.tr("sidebar.unknown")
                             color: root.bpm > 0 ? themeManager.primaryColor : themeManager.textColor
                             font.bold: root.bpm > 0
@@ -270,6 +274,124 @@ Rectangle {
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: 11
                         }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: root.hasTrackerInfo
+
+                    Label {
+                        text: root.tr("sidebar.trackerModule")
+                        color: themeManager.textMutedColor
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1.8
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 4
+
+                        Label {
+                            visible: root.trackerType.length > 0
+                            text: root.tr("sidebar.trackerType")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
+                        Label {
+                            visible: root.trackerType.length > 0
+                            text: root.trackerType
+                            color: themeManager.textColor
+                            horizontalAlignment: Text.AlignRight
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                        }
+
+                        Label {
+                            visible: root.trackerChannelCount > 0
+                            text: root.tr("sidebar.trackerChannels")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
+                        Label {
+                            visible: root.trackerChannelCount > 0
+                            text: String(root.trackerChannelCount)
+                            color: themeManager.primaryColor
+                            font.bold: true
+                            horizontalAlignment: Text.AlignRight
+                            Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                        }
+
+                        Label {
+                            visible: root.trackerPatternCount > 0
+                            text: root.tr("sidebar.trackerPatterns")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
+                        Label {
+                            visible: root.trackerPatternCount > 0
+                            text: String(root.trackerPatternCount)
+                            color: themeManager.primaryColor
+                            font.bold: true
+                            horizontalAlignment: Text.AlignRight
+                            Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                        }
+
+                        Label {
+                            visible: root.trackerInstrumentCount > 0
+                            text: root.tr("sidebar.trackerInstruments")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                            Layout.minimumWidth: root.specLabelWidth
+                            Layout.preferredWidth: root.specLabelWidth
+                        }
+                        Label {
+                            visible: root.trackerInstrumentCount > 0
+                            text: String(root.trackerInstrumentCount)
+                            color: themeManager.primaryColor
+                            font.bold: true
+                            horizontalAlignment: Text.AlignRight
+                            Layout.fillWidth: true
+                            wrapMode: Text.NoWrap
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: root.trackerMessage.length > 0
+                        text: root.trackerMessage
+                        color: themeManager.textSecondaryColor
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 4
+                        elide: Text.ElideRight
                     }
                 }
 
@@ -322,7 +444,6 @@ Rectangle {
                     }
                 }
             }
-        }
         }
     }
 }

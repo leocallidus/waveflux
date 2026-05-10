@@ -1,0 +1,26 @@
+{
+  "_type": "playlist",
+  "id": "pl123",
+  "title": "Playlist Preview",
+  "extractor": "youtube:tab",
+  "extractor_key": "YoutubeTab",
+  "webpage_url": "https://www.youtube.com/playlist?list=pl123",
+  "entries": [
+    {
+      "id": "a1",
+      "title": "Track A",
+      "webpage_url": "https://www.youtube.com/watch?v=a1",
+      "duration": 61,
+      "playlist_index": 2,
+      "availability": "public"
+    },
+    {
+      "id": "a2",
+      "title": "Track B",
+      "webpage_url": "https://www.youtube.com/watch?v=a2",
+      "duration": 72,
+      "playlist_index": 5,
+      "availability": "public"
+    }
+  ]
+}

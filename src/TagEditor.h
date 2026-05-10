@@ -23,6 +23,7 @@ class TagEditor : public QObject
     Q_PROPERTY(int year READ year WRITE setYear NOTIFY yearChanged)
     Q_PROPERTY(int trackNumber READ trackNumber WRITE setTrackNumber NOTIFY trackNumberChanged)
     Q_PROPERTY(QString coverImagePath READ coverImagePath WRITE setCoverImagePath NOTIFY coverImagePathChanged)
+    Q_PROPERTY(QString coverPreviewSource READ coverPreviewSource NOTIFY coverPreviewSourceChanged)
     Q_PROPERTY(bool removeCover READ removeCover WRITE setRemoveCover NOTIFY removeCoverChanged)
     Q_PROPERTY(bool hasChanges READ hasChanges NOTIFY hasChangesChanged)
     
@@ -52,6 +53,7 @@ public:
 
     QString coverImagePath() const { return m_coverImagePath; }
     void setCoverImagePath(const QString &coverImagePath);
+    QString coverPreviewSource() const { return m_coverPreviewSource; }
 
     bool removeCover() const { return m_removeCover; }
     void setRemoveCover(bool removeCover);
@@ -87,6 +89,7 @@ signals:
     void yearChanged();
     void trackNumberChanged();
     void coverImagePathChanged();
+    void coverPreviewSourceChanged();
     void removeCoverChanged();
     void hasChangesChanged();
     void saveSucceeded();
@@ -103,6 +106,7 @@ private:
     int m_year = 0;
     int m_trackNumber = 0;
     QString m_coverImagePath;
+    QString m_coverPreviewSource;
     bool m_removeCover = false;
     bool m_hasChanges = false;
     
@@ -114,6 +118,7 @@ private:
     int m_originalYear = 0;
     int m_originalTrackNumber = 0;
     QString m_originalCoverImagePath;
+    QString m_originalCoverPreviewSource;
     bool m_originalRemoveCover = false;
 };
 

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "components"
 
 Dialog {
     id: root
@@ -177,40 +178,86 @@ Dialog {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
 
-                            Button {
-                                text: root.tr("tagEditor.coverSelect")
-                                onClicked: {
-                                    if (!tagEditor.supportsCoverEditing()) {
-                                        root.showError(tagEditor.coverEditingUnsupportedMessage())
-                                        return
-                                    }
-                                    xdgPortalFilePicker.openImageFile(root.tr("tagEditor.coverPickerTitle"))
+                            Rectangle {
+                                Layout.preferredWidth: 96
+                                Layout.preferredHeight: 96
+                                Layout.alignment: Qt.AlignTop
+                                radius: 6
+                                color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                                               Kirigami.Theme.backgroundColor.g,
+                                               Kirigami.Theme.backgroundColor.b,
+                                               0.6)
+                                border.width: 1
+                                border.color: Kirigami.Theme.disabledTextColor
+                                clip: true
+
+                                Image {
+                                    id: coverPreviewImage
+                                    anchors.fill: parent
+                                    anchors.margins: 3
+                                    source: tagEditor.coverPreviewSource
+                                    sourceSize.width: 192
+                                    sourceSize.height: 192
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    visible: !tagEditor.removeCover
+                                             && tagEditor.coverPreviewSource
+                                             && tagEditor.coverPreviewSource.length > 0
+                                }
+
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "\u266A"
+                                    opacity: 0.42
+                                    font.pixelSize: 28
+                                    visible: !coverPreviewImage.visible
                                 }
                             }
 
-                            Button {
-                                text: root.tr("tagEditor.coverClear")
-                                onClicked: {
-                                    if (!tagEditor.supportsCoverEditing()) {
-                                        root.showError(tagEditor.coverEditingUnsupportedMessage())
-                                        return
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    Button {
+                                        text: root.tr("tagEditor.coverSelect")
+                                        onClicked: {
+                                            if (!tagEditor.supportsCoverEditing()) {
+                                                root.showError(tagEditor.coverEditingUnsupportedMessage())
+                                                return
+                                            }
+                                            xdgPortalFilePicker.openImageFile(root.tr("tagEditor.coverPickerTitle"))
+                                        }
                                     }
-                                    tagEditor.clearCover()
-                                    errorLabel.visible = false
+
+                                    Button {
+                                        text: root.tr("tagEditor.coverClear")
+                                        onClicked: {
+                                            if (!tagEditor.supportsCoverEditing()) {
+                                                root.showError(tagEditor.coverEditingUnsupportedMessage())
+                                                return
+                                            }
+                                            tagEditor.clearCover()
+                                            errorLabel.visible = false
+                                        }
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    elide: Text.ElideMiddle
+                                    opacity: 0.72
+                                    text: tagEditor.removeCover
+                                        ? root.tr("tagEditor.coverRemovePending")
+                                        : (tagEditor.coverImagePath && tagEditor.coverImagePath.length > 0
+                                           ? root.tr("tagEditor.coverSelected") + root.fileNameFromPath(tagEditor.coverImagePath)
+                                           : root.tr("tagEditor.coverKeep"))
                                 }
                             }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            elide: Text.ElideMiddle
-                            opacity: 0.72
-                            text: tagEditor.removeCover
-                                ? root.tr("tagEditor.coverRemovePending")
-                                : (tagEditor.coverImagePath && tagEditor.coverImagePath.length > 0
-                                   ? root.tr("tagEditor.coverSelected") + root.fileNameFromPath(tagEditor.coverImagePath)
-                                   : root.tr("tagEditor.coverKeep"))
                         }
                     }
                 }
@@ -242,20 +289,31 @@ Dialog {
             border.width: 1
             border.color: Kirigami.Theme.disabledTextColor
 
-            DialogButtonBox {
+            RowLayout {
                 id: footerBox
                 anchors.fill: parent
                 anchors.margins: Kirigami.Units.smallSpacing
-                standardButtons: DialogButtonBox.Save | DialogButtonBox.Cancel
+                spacing: Kirigami.Units.smallSpacing
 
-                onAccepted: {
-                    errorLabel.visible = false
-                    tagEditor.saveTags()
+                Item {
+                    Layout.fillWidth: true
                 }
 
-                onRejected: {
-                    tagEditor.revertChanges()
-                    root.close()
+                Button {
+                    text: root.tr("playlists.save")
+                    highlighted: true
+                    onClicked: {
+                        errorLabel.visible = false
+                        tagEditor.saveTags()
+                    }
+                }
+
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: {
+                        tagEditor.revertChanges()
+                        root.close()
+                    }
                 }
             }
         }
@@ -267,7 +325,7 @@ Dialog {
         modal: true
         focus: true
         title: root.tr("main.playbackError")
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.NoButton
         anchors.centerIn: parent
         width: Math.min(420, root.width - 24)
 
@@ -276,6 +334,32 @@ Dialog {
             text: ""
             wrapMode: Text.WordWrap
             width: errorDialog.availableWidth
+        }
+
+        footer: Rectangle {
+            implicitHeight: errorFooter.implicitHeight + Kirigami.Units.largeSpacing
+            color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                           Kirigami.Theme.backgroundColor.g,
+                           Kirigami.Theme.backgroundColor.b,
+                           0.92)
+            border.width: 1
+            border.color: Kirigami.Theme.disabledTextColor
+
+            RowLayout {
+                id: errorFooter
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    text: "OK"
+                    highlighted: true
+                    onClicked: errorDialog.close()
+                }
+            }
         }
     }
 

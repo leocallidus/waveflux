@@ -22,6 +22,14 @@ Dialog {
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
 
+    function capabilityReason(feature) {
+        if (!audioEngine || !audioEngine.playbackCapabilityReasons) {
+            return ""
+        }
+        const key = String(audioEngine.playbackCapabilityReasons[feature] || "")
+        return key.length > 0 ? root.tr(key) : ""
+    }
+
     width: root.parent
            ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
            : preferredDialogWidth
@@ -69,6 +77,9 @@ Dialog {
     property string activeSectionId: "appearance"
     property string lastNormalSectionId: "appearance"
     property string settingsSearchQuery: ""
+    property var ytDlpInspection: ({})
+    property var ffmpegInspection: ({})
+    property string pendingExecutablePickerTool: ""
     readonly property string normalizedSettingsSearchQuery: String(settingsSearchQuery || "").trim().toLowerCase()
     readonly property bool hasSearchQuery: normalizedSettingsSearchQuery.length > 0
     readonly property string contentMode: hasSearchQuery ? searchResultsMode : normalSectionsMode
@@ -99,7 +110,12 @@ Dialog {
             icon: "",
             searchTermKeys: [
                 "settings.trayEnabled",
-                "settings.confirmTrashDeletion"
+                "settings.confirmTrashDeletion",
+                "settings.automaticPlaylistSearch",
+                "settings.autoAddTracksFromPlaylistFolder",
+                "settings.ytDlpExecutablePath",
+                "settings.ffmpegExecutablePath",
+                "settings.importRuntimeVersionPolicy"
             ]
         },
         "audio": {
@@ -333,10 +349,42 @@ Dialog {
         }
         appSettings.trayEnabled = false
         appSettings.confirmTrashDeletion = true
+        appSettings.automaticPlaylistSearch = false
+        appSettings.autoAddTracksFromPlaylistFolder = true
+        appSettings.ytDlpExecutablePath = ""
+        appSettings.ffmpegExecutablePath = ""
         resetAudioSettings()
         resetWaveformSettings()
         themeManager.resetToDefault()
         settingsSearchQuery = ""
+        refreshImportToolInspections()
+    }
+
+    function refreshImportToolInspections() {
+        ytDlpInspection = appSettings.inspectYtDlpExecutable()
+        ffmpegInspection = appSettings.inspectFfmpegExecutable()
+    }
+
+    function commitExecutablePath(tool, value) {
+        const normalized = String(value || "").trim()
+        if (tool === "yt-dlp") {
+            appSettings.ytDlpExecutablePath = normalized
+            ytDlpInspection = appSettings.inspectYtDlpExecutable()
+            return appSettings.ytDlpExecutablePath
+        }
+        appSettings.ffmpegExecutablePath = normalized
+        ffmpegInspection = appSettings.inspectFfmpegExecutable()
+        return appSettings.ffmpegExecutablePath
+    }
+
+    function browseExecutablePath(tool) {
+        pendingExecutablePickerTool = String(tool || "")
+        if (pendingExecutablePickerTool.length === 0) {
+            return
+        }
+        xdgPortalFilePicker.openExecutableFile(
+            root.tr("settings.pickExecutableTitle").arg(pendingExecutablePickerTool)
+        )
     }
 
     function localizedBoolean(value) {
@@ -517,6 +565,20 @@ Dialog {
             appendResetChange(changes, root.tr("settings.confirmTrashDeletion"),
                               appSettings.confirmTrashDeletion, true,
                               localizedBoolean(appSettings.confirmTrashDeletion), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.automaticPlaylistSearch"),
+                              appSettings.automaticPlaylistSearch, false,
+                              localizedBoolean(appSettings.automaticPlaylistSearch), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.autoAddTracksFromPlaylistFolder"),
+                              appSettings.autoAddTracksFromPlaylistFolder, true,
+                              localizedBoolean(appSettings.autoAddTracksFromPlaylistFolder), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.ytDlpExecutablePath"),
+                              appSettings.ytDlpExecutablePath, "",
+                              appSettings.ytDlpExecutablePath || root.tr("settings.valueSystemDefault"),
+                              root.tr("settings.valueSystemDefault"))
+            appendResetChange(changes, root.tr("settings.ffmpegExecutablePath"),
+                              appSettings.ffmpegExecutablePath, "",
+                              appSettings.ffmpegExecutablePath || root.tr("settings.valueSystemDefault"),
+                              root.tr("settings.valueSystemDefault"))
             const audioChanges = buildAudioResetChanges()
             for (let i = 0; i < audioChanges.length; ++i) {
                 changes.push(audioChanges[i])
@@ -711,6 +773,8 @@ Dialog {
         case "system":
             return (trayEnabledRow && trayEnabledRow.visible)
                     || (confirmTrashDeletionRow && confirmTrashDeletionRow.visible)
+                    || (automaticPlaylistSearchRow && automaticPlaylistSearchRow.visible)
+                    || (autoAddTracksFromPlaylistFolderRow && autoAddTracksFromPlaylistFolderRow.visible)
         case "audio":
             return (pitchRow && pitchRow.visible)
                     || (speedRow && speedRow.visible)
@@ -912,6 +976,7 @@ Dialog {
 
     onOpened: Qt.callLater(function() {
         applyInitialNavigation()
+        refreshImportToolInspections()
         if (settingsSearchField) {
             settingsSearchField.forceActiveFocus(Qt.TabFocusReason)
         }
@@ -1367,6 +1432,233 @@ Dialog {
                         searchQuery: root.settingsSearchQuery
                         forceVisible: confirmTrashDeletionRow.visible
                     }
+
+                    SettingToggleRow {
+                        id: automaticPlaylistSearchRow
+                        title: root.tr("settings.automaticPlaylistSearch")
+                        checked: appSettings.automaticPlaylistSearch
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.automaticPlaylistSearchDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.automaticPlaylistSearch = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.automaticPlaylistSearchDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: automaticPlaylistSearchRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: autoAddTracksFromPlaylistFolderRow
+                        title: root.tr("settings.autoAddTracksFromPlaylistFolder")
+                        checked: appSettings.autoAddTracksFromPlaylistFolder
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.autoAddTracksFromPlaylistFolderDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.autoAddTracksFromPlaylistFolder = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.autoAddTracksFromPlaylistFolderDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: autoAddTracksFromPlaylistFolderRow.visible
+                    }
+
+                    RowLayout {
+                        id: ytDlpPathRow
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: 38
+                        spacing: 10
+                        visible: root.matchesAny([root.tr("settings.ytDlpExecutablePath"),
+                                                  root.tr("settings.ytDlpExecutablePathDescription"),
+                                                  ytDlpInspection.message || "",
+                                                  ytDlpInspection.version || "",
+                                                  ytDlpInspection.resolvedPath || "",
+                                                  appSettings.ytDlpLastValidatedPath || ""])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.highlightedSearchText(root.tr("settings.ytDlpExecutablePath"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
+
+                        TextField {
+                            id: ytDlpPathField
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 220
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            text: appSettings.ytDlpExecutablePath
+                            placeholderText: "yt-dlp"
+                            activeFocusOnTab: true
+                            Accessible.name: root.tr("settings.ytDlpExecutablePath")
+                            font.family: themeManager.monoFontFamily
+                            onEditingFinished: text = root.commitExecutablePath("yt-dlp", text)
+                            onAccepted: text = root.commitExecutablePath("yt-dlp", text)
+
+                            Connections {
+                                target: appSettings
+                                function onYtDlpExecutablePathChanged() {
+                                    if (!ytDlpPathField.activeFocus) {
+                                        ytDlpPathField.text = appSettings.ytDlpExecutablePath
+                                    }
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: root.tr("settings.browse")
+                            implicitHeight: root.minimumInteractiveHeight
+                            onClicked: root.browseExecutablePath("yt-dlp")
+                        }
+
+                        Button {
+                            text: root.tr("settings.reset")
+                            implicitHeight: root.minimumInteractiveHeight
+                            onClicked: {
+                                ytDlpPathField.text = ""
+                                root.commitExecutablePath("yt-dlp", "")
+                            }
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.ytDlpExecutablePathDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ytDlpPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: ytDlpInspection.message || ""
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ytDlpPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: (ytDlpInspection.resolvedPath || "").length > 0
+                              ? root.tr("settings.externalToolResolvedPath") + ": " + ytDlpInspection.resolvedPath
+                              : ""
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ytDlpPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: (ytDlpInspection.version || "").length > 0
+                              ? root.tr("settings.externalToolVersion") + ": " + ytDlpInspection.version
+                              : ((appSettings.ytDlpLastValidatedPath || "").length > 0
+                                 ? root.tr("settings.externalToolLastValidatedPath") + ": " + appSettings.ytDlpLastValidatedPath
+                                 : "")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ytDlpPathRow.visible
+                    }
+
+                    RowLayout {
+                        id: ffmpegPathRow
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: 38
+                        spacing: 10
+                        visible: root.matchesAny([root.tr("settings.ffmpegExecutablePath"),
+                                                  root.tr("settings.ffmpegExecutablePathDescription"),
+                                                  ffmpegInspection.message || "",
+                                                  ffmpegInspection.version || "",
+                                                  ffmpegInspection.resolvedPath || "",
+                                                  appSettings.ffmpegLastValidatedPath || "",
+                                                  root.tr("settings.importRuntimeVersionPolicyDescription")])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.highlightedSearchText(root.tr("settings.ffmpegExecutablePath"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
+
+                        TextField {
+                            id: ffmpegPathField
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 220
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            text: appSettings.ffmpegExecutablePath
+                            placeholderText: "ffmpeg"
+                            activeFocusOnTab: true
+                            Accessible.name: root.tr("settings.ffmpegExecutablePath")
+                            font.family: themeManager.monoFontFamily
+                            onEditingFinished: text = root.commitExecutablePath("ffmpeg", text)
+                            onAccepted: text = root.commitExecutablePath("ffmpeg", text)
+
+                            Connections {
+                                target: appSettings
+                                function onFfmpegExecutablePathChanged() {
+                                    if (!ffmpegPathField.activeFocus) {
+                                        ffmpegPathField.text = appSettings.ffmpegExecutablePath
+                                    }
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: root.tr("settings.browse")
+                            implicitHeight: root.minimumInteractiveHeight
+                            onClicked: root.browseExecutablePath("ffmpeg")
+                        }
+
+                        Button {
+                            text: root.tr("settings.reset")
+                            implicitHeight: root.minimumInteractiveHeight
+                            onClicked: {
+                                ffmpegPathField.text = ""
+                                root.commitExecutablePath("ffmpeg", "")
+                            }
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.ffmpegExecutablePathDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ffmpegPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: ffmpegInspection.message || ""
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ffmpegPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: (ffmpegInspection.resolvedPath || "").length > 0
+                              ? root.tr("settings.externalToolResolvedPath") + ": " + ffmpegInspection.resolvedPath
+                              : ""
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ffmpegPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: (ffmpegInspection.version || "").length > 0
+                              ? root.tr("settings.externalToolVersion") + ": " + ffmpegInspection.version
+                              : ((appSettings.ffmpegLastValidatedPath || "").length > 0
+                                 ? root.tr("settings.externalToolLastValidatedPath") + ": " + appSettings.ffmpegLastValidatedPath
+                                 : "")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ffmpegPathRow.visible
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.importRuntimeVersionPolicyDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: ffmpegPathRow.visible
+                    }
             }
 
             SettingsSectionPage {
@@ -1412,6 +1704,7 @@ Dialog {
                             to: 6
                             stepSize: 1
                             value: audioEngine ? audioEngine.pitchSemitones : 0
+                            enabled: audioEngine && audioEngine.pitchAvailable
                             activeFocusOnTab: true
                             Accessible.name: root.tr("settings.pitch")
                             onMoved: {
@@ -1433,10 +1726,20 @@ Dialog {
                             activeFocusOnTab: true
                             Accessible.name: root.tr("settings.resetPitch")
                             implicitHeight: root.minimumInteractiveHeight
+                            enabled: audioEngine && audioEngine.pitchAvailable
                             onClicked: if (audioEngine) audioEngine.pitchSemitones = 0
                             ToolTip.text: root.tr("settings.resetPitch")
                             ToolTip.visible: hovered
                         }
+                    }
+
+                    SettingHintText {
+                        text: root.capabilityReason("pitch")
+                        searchQuery: root.settingsSearchQuery
+                        searchableText: root.tr("settings.pitch") + " "
+                                        + root.capabilityReason("pitch")
+                        forceVisible: root.capabilityReason("pitch").length > 0
+                        visible: root.capabilityReason("pitch").length > 0
                     }
 
                     RowLayout {
@@ -1467,6 +1770,7 @@ Dialog {
                             to: 2.0
                             stepSize: 0.05
                             value: audioEngine ? audioEngine.playbackRate : 1.0
+                            enabled: audioEngine && audioEngine.rateAvailable
                             activeFocusOnTab: true
                             Accessible.name: root.tr("settings.speed")
                             onMoved: {
@@ -1488,10 +1792,20 @@ Dialog {
                             activeFocusOnTab: true
                             Accessible.name: root.tr("settings.resetSpeed")
                             implicitHeight: root.minimumInteractiveHeight
+                            enabled: audioEngine && audioEngine.rateAvailable
                             onClicked: if (audioEngine) audioEngine.playbackRate = 1.0
                             ToolTip.text: root.tr("settings.resetSpeed")
                             ToolTip.visible: hovered
                         }
+                    }
+
+                    SettingHintText {
+                        text: root.capabilityReason("rate")
+                        searchQuery: root.settingsSearchQuery
+                        searchableText: root.tr("settings.speed") + " "
+                                        + root.capabilityReason("rate")
+                        forceVisible: root.capabilityReason("rate").length > 0
+                        visible: root.capabilityReason("rate").length > 0
                     }
 
                     SettingToggleRow {
@@ -1512,9 +1826,20 @@ Dialog {
                         forceVisible: showSpeedPitchRow.visible
                     }
 
+                    SettingHintText {
+                        text: root.capabilityReason("reverse")
+                        searchQuery: root.settingsSearchQuery
+                        searchableText: root.tr("settings.reversePlayback") + " "
+                                        + root.tr("settings.reversePlaybackDescription") + " "
+                                        + root.capabilityReason("reverse")
+                        forceVisible: root.capabilityReason("reverse").length > 0
+                        visible: root.capabilityReason("reverse").length > 0
+                    }
+
                     SettingComboRow {
                         id: audioQualityProfileRow
                         title: root.tr("settings.audioQualityProfile")
+                        enabled: root.capabilityReason("audioQualityProfile").length === 0
                         searchQuery: root.settingsSearchQuery
                         extraSearchText: root.tr("settings.audioQualityProfileDescription")
                                          + " " + root.tr("settings.audioQualityStandard")
@@ -1559,15 +1884,27 @@ Dialog {
                         forceVisible: audioQualityProfileRow.visible
                     }
 
+                    SettingHintText {
+                        text: root.capabilityReason("audioQualityProfile")
+                        searchQuery: root.settingsSearchQuery
+                        searchableText: root.tr("settings.audioQualityProfile") + " "
+                                        + root.capabilityReason("audioQualityProfile")
+                        forceVisible: root.capabilityReason("audioQualityProfile").length > 0
+                        visible: root.capabilityReason("audioQualityProfile").length > 0
+                    }
+
                     SettingToggleRow {
                         id: dynamicSpectrumRow
                         title: root.tr("settings.dynamicSpectrum")
                         checked: appSettings.dynamicSpectrum
+                        enabled: root.capabilityReason("spectrum").length === 0
                         searchQuery: root.settingsSearchQuery
                         extraSearchText: root.tr("settings.dynamicSpectrumDescription")
 
                         onToggled: function(checked) {
-                            appSettings.dynamicSpectrum = checked
+                            if (root.capabilityReason("spectrum").length === 0) {
+                                appSettings.dynamicSpectrum = checked
+                            }
                         }
                     }
 
@@ -1575,6 +1912,15 @@ Dialog {
                         text: root.tr("settings.dynamicSpectrumDescription")
                         searchQuery: root.settingsSearchQuery
                         forceVisible: dynamicSpectrumRow.visible
+                    }
+
+                    SettingHintText {
+                        text: root.capabilityReason("spectrum")
+                        searchQuery: root.settingsSearchQuery
+                        searchableText: root.tr("settings.dynamicSpectrum") + " "
+                                        + root.capabilityReason("spectrum")
+                        forceVisible: root.capabilityReason("spectrum").length > 0
+                        visible: root.capabilityReason("spectrum").length > 0
                     }
 
                     SettingToggleRow {
@@ -2300,5 +2646,29 @@ Dialog {
         title: root.tr("dialogs.chooseAccentColor")
         selectedColor: themeManager.accentColor
         onAccepted: themeManager.accentColor = selectedColor
+    }
+
+    Connections {
+        target: xdgPortalFilePicker
+
+        function onExecutableFileSelected(fileUrl) {
+            if (!root.visible || !fileUrl || root.pendingExecutablePickerTool.length === 0) {
+                return
+            }
+
+            const tool = root.pendingExecutablePickerTool
+            root.pendingExecutablePickerTool = ""
+            const localPath = fileUrl.toLocalFile ? fileUrl.toLocalFile() : ""
+            if (localPath.length === 0) {
+                return
+            }
+
+            const normalizedPath = root.commitExecutablePath(tool, localPath)
+            if (tool === "yt-dlp") {
+                ytDlpPathField.text = normalizedPath
+            } else if (tool === "ffmpeg") {
+                ffmpegPathField.text = normalizedPath
+            }
+        }
     }
 }

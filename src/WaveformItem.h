@@ -36,6 +36,8 @@ class WaveformItem : public QQuickPaintedItem
     Q_PROPERTY(QColor backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY backgroundColorChanged)
     Q_PROPERTY(bool loading READ isLoading WRITE setLoading NOTIFY loadingChanged)
     Q_PROPERTY(double generationProgress READ generationProgress WRITE setGenerationProgress NOTIFY generationProgressChanged)
+    Q_PROPERTY(QString loadingLabelTemplate READ loadingLabelTemplate WRITE setLoadingLabelTemplate NOTIFY loadingLabelTemplateChanged)
+    Q_PROPERTY(QString emptyStateText READ emptyStateText WRITE setEmptyStateText NOTIFY emptyStateTextChanged)
     Q_PROPERTY(double zoom READ zoom WRITE setZoom NOTIFY zoomChanged)
     Q_PROPERTY(double viewCenter READ viewCenter WRITE setViewCenter NOTIFY viewCenterChanged)
     Q_PROPERTY(bool quickScrubEnabled READ quickScrubEnabled WRITE setQuickScrubEnabled NOTIFY quickScrubEnabledChanged)
@@ -72,6 +74,12 @@ public:
     double generationProgress() const { return m_generationProgress; }
     void setGenerationProgress(double progress);
 
+    QString loadingLabelTemplate() const { return m_loadingLabelTemplate; }
+    void setLoadingLabelTemplate(const QString &text);
+
+    QString emptyStateText() const { return m_emptyStateText; }
+    void setEmptyStateText(const QString &text);
+
     double zoom() const { return m_zoom; }
     void setZoom(double zoom);
 
@@ -100,6 +108,8 @@ signals:
     void backgroundColorChanged();
     void loadingChanged();
     void generationProgressChanged();
+    void loadingLabelTemplateChanged();
+    void emptyStateTextChanged();
     void zoomChanged();
     void viewCenterChanged();
     void quickScrubEnabledChanged();
@@ -170,6 +180,8 @@ private:
     double m_progress = 0.0;
     double m_generationProgress = 0.0;
     bool m_loading = false;
+    QString m_loadingLabelTemplate = QStringLiteral("Waveform %1%");
+    QString m_emptyStateText = QStringLiteral("Drop audio file here");
     double m_zoom = 1.0;
     double m_viewCenter = 0.5;
     bool m_quickScrubEnabled = true;

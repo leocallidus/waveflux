@@ -136,6 +136,7 @@ options=('!debug')
 depends=(
   'qt6-base'
   'qt6-declarative'
+  'qt6-multimedia'
   'kirigami'
   'kcoreaddons'
   'ki18n'
@@ -143,6 +144,7 @@ depends=(
   'gst-plugins-base'
   'gst-plugins-good'
   'gst-plugins-bad'
+  'libopenmpt'
   'taglib'
 )
 makedepends=(

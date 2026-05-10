@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "generatedBy": "tests/testdata/tracker/generate_tracker_fixtures.py",
+  "license": "CC0-1.0",
+  "source": "Generated synthetic tracker fixtures for WaveFlux regression tests; no third-party samples.",
+  "fixtures": [
+    {
+      "file": "tiny.mod",
+      "format": "mod",
+      "role": "format",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WaveFlux MOD Tiny",
+      "expectedDurationMs": 7680,
+      "expectedChannels": 4,
+      "expectedPatterns": 1,
+      "stress": false
+    },
+    {
+      "file": "tiny.xm",
+      "format": "xm",
+      "role": "format",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WaveFlux XM Tiny",
+      "expectedDurationMs": 7680,
+      "expectedChannels": 2,
+      "expectedPatterns": 1,
+      "stress": false
+    },
+    {
+      "file": "tiny.s3m",
+      "format": "s3m",
+      "role": "format",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WaveFlux S3M Tiny",
+      "expectedDurationMs": 7680,
+      "expectedChannels": 32,
+      "expectedPatterns": 1,
+      "stress": false
+    },
+    {
+      "file": "tiny.it",
+      "format": "it",
+      "role": "format",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WaveFlux IT Tiny",
+      "expectedDurationMs": 7680,
+      "expectedChannels": 1,
+      "expectedPatterns": 1,
+      "stress": false
+    },
+    {
+      "file": "tiny.669",
+      "format": "669",
+      "role": "format",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WaveFlux 669 Tiny",
+      "expectedDurationMs": 12303,
+      "expectedChannels": 8,
+      "expectedPatterns": 1,
+      "stress": false
+    },
+    {
+      "file": "stress-short-silent.mod",
+      "format": "mod",
+      "role": "very-short-silent",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WF Short Silent",
+      "expectedDurationMs": 7680,
+      "expectedChannels": 4,
+      "expectedPatterns": 1,
+      "stress": true
+    },
+    {
+      "file": "stress-long-loopish.mod",
+      "format": "mod",
+      "role": "long-looping-like",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WF Long Loopish",
+      "expectedDurationMs": 61439,
+      "expectedChannels": 4,
+      "expectedPatterns": 1,
+      "stress": true
+    },
+    {
+      "file": "stress-rapid-seek.mod",
+      "format": "mod",
+      "role": "rapid-seek",
+      "license": "CC0-1.0",
+      "source": "generated",
+      "expectedTitle": "WF Seek Stress",
+      "expectedDurationMs": 7680,
+      "expectedChannels": 4,
+      "expectedPatterns": 1,
+      "stress": true
+    }
+  ]
+}

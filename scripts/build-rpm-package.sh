@@ -30,8 +30,10 @@ Install them with:
   sudo dnf install -y \
     cmake gcc-c++ ninja-build pkgconf-pkg-config rpm-build \
     qt6-qtbase-devel qt6-qtdeclarative-devel \
+    qt6-qtmultimedia-devel \
     kf6-kirigami-devel kf6-kcoreaddons-devel kf6-ki18n-devel \
     gstreamer1-devel gstreamer1-plugins-base-devel \
+    libopenmpt-devel \
     taglib-devel
 EOF
 }
@@ -157,11 +159,13 @@ if [[ "${SKIP_BUILD_DEPS_CHECK}" -eq 0 ]]; then
         rpm-build
         qt6-qtbase-devel
         qt6-qtdeclarative-devel
+        qt6-qtmultimedia-devel
         kf6-kirigami-devel
         kf6-kcoreaddons-devel
         kf6-ki18n-devel
         gstreamer1-devel
         gstreamer1-plugins-base-devel
+        libopenmpt-devel
         taglib-devel
     )
 

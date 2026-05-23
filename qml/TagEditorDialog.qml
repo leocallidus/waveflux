@@ -39,7 +39,7 @@ Dialog {
         errorDialog.open()
     }
 
-    title: root.tr("tagEditor.title")
+    title: ""
     modal: true
     focus: true
     padding: 0
@@ -69,6 +69,27 @@ Dialog {
     contentItem: ColumnLayout {
         anchors.fill: parent
         spacing: 0
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 42
+            color: Kirigami.Theme.backgroundColor
+            border.width: 1
+            border.color: Kirigami.Theme.disabledTextColor
+
+            Label {
+                anchors.fill: parent
+                anchors.leftMargin: Kirigami.Units.largeSpacing
+                anchors.rightMargin: Kirigami.Units.largeSpacing
+                text: root.tr("tagEditor.title")
+                color: Kirigami.Theme.textColor
+                font.bold: true
+                font.pixelSize: 14
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignLeft
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
 
         ScrollView {
             Layout.fillWidth: true
@@ -162,6 +183,20 @@ Dialog {
                         to: 999
                         value: tagEditor.trackNumber
                         onValueChanged: tagEditor.trackNumber = value
+                        editable: true
+                        Layout.fillWidth: true
+                    }
+
+                    Label {
+                        text: root.tr("tagEditor.bpm")
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    SpinBox {
+                        id: bpmField
+                        from: 0
+                        to: 999
+                        value: tagEditor.bpm
+                        onValueChanged: tagEditor.bpm = value
                         editable: true
                         Layout.fillWidth: true
                     }

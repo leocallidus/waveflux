@@ -40,7 +40,8 @@ Dialog {
                  albumCheck.checked ||
                  genreCheck.checked ||
                  yearCheck.checked ||
-                 trackCheck.checked)
+                 trackCheck.checked ||
+                 bpmCheck.checked)
     }
 
     function fitDialogSize(preferredSize, minimumPreferred, availableSize) {
@@ -69,12 +70,14 @@ Dialog {
         genreCheck.checked = false
         yearCheck.checked = false
         trackCheck.checked = false
+        bpmCheck.checked = false
         titleField.text = ""
         artistField.text = ""
         albumField.text = ""
         genreField.text = ""
         yearField.value = 0
         trackField.value = 0
+        bpmField.value = 0
     }
 
     contentItem: ColumnLayout {
@@ -166,6 +169,18 @@ Dialog {
                 enabled: trackCheck.checked
                 editable: true
             }
+
+            AccentCheckBox {
+                id: bpmCheck
+            }
+            Label { text: root.tr("tagEditor.bpm") }
+            SpinBox {
+                id: bpmField
+                from: 0
+                to: 999
+                enabled: bpmCheck.checked
+                editable: true
+            }
         }
 
         Label {
@@ -202,7 +217,8 @@ Dialog {
                                 albumCheck.checked, albumField.text,
                                 genreCheck.checked, genreField.text,
                                 yearCheck.checked, yearField.value,
-                                trackCheck.checked, trackField.value)
+                                trackCheck.checked, trackField.value,
+                                bpmCheck.checked, bpmField.value)
 
                     if (!ok) {
                         return

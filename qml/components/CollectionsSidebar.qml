@@ -29,6 +29,7 @@ Rectangle {
     readonly property bool collectionsEnabled: smartCollectionsEngine && smartCollectionsEngine.enabled
     readonly property bool playlistsEnabled: playlistProfilesManager !== undefined && playlistProfilesManager !== null
     readonly property int popupMarginPx: 12
+    readonly property int listScrollBarWidth: 8
 
     signal playlistRequested()
     signal newPlaylistRequested()
@@ -177,6 +178,29 @@ Rectangle {
         }
     }
 
+    function requestDeleteAllCollections() {
+        if (!collectionsEnabled || collectionsModel.count <= 0) {
+            return
+        }
+        deleteAllCollectionsDialog.open()
+    }
+
+    function confirmDeleteAllCollections() {
+        if (!collectionsEnabled) {
+            return
+        }
+
+        const selectedId = selectedCollectionId
+        const wasCollectionMode = collectionModeActive
+        if (wasCollectionMode) {
+            playlistRequested()
+        }
+        const success = smartCollectionsEngine.deleteAllCollections()
+        if (!success && wasCollectionMode && selectedId > 0) {
+            collectionRequested(selectedId, "")
+        }
+    }
+
     function clearDeletePlaylistRequest() {
         pendingDeletePlaylistId = -1
         pendingDeletePlaylistName = ""
@@ -222,6 +246,28 @@ Rectangle {
         if (success) {
             refreshPlaylists()
             if (!collectionModeActive && selectedPlaylistProfileId === deletedId) {
+                playlistRequested()
+            }
+        }
+    }
+
+    function requestDeleteAllPlaylists() {
+        if (!playlistsEnabled || playlistsModel.count <= 0) {
+            return
+        }
+        deleteAllPlaylistsDialog.open()
+    }
+
+    function confirmDeleteAllPlaylists() {
+        if (!playlistsEnabled) {
+            return
+        }
+
+        const hadSelectedSavedPlaylist = !collectionModeActive && selectedPlaylistProfileId > 0
+        const success = playlistProfilesManager.deleteAllPlaylists()
+        if (success) {
+            refreshPlaylists()
+            if (hadSelectedSavedPlaylist) {
                 playlistRequested()
             }
         }
@@ -532,12 +578,34 @@ Rectangle {
         interactive: contentHeight > height
 
         ScrollBar.vertical: ScrollBar {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            z: 200
+            width: root.listScrollBarWidth
             policy: ScrollBar.AsNeeded
+
+            background: Rectangle {
+                implicitWidth: root.listScrollBarWidth
+                radius: 4
+                color: Qt.rgba(themeManager.surfaceColor.r,
+                               themeManager.surfaceColor.g,
+                               themeManager.surfaceColor.b,
+                               0.55)
+            }
+
+            contentItem: Rectangle {
+                implicitWidth: root.listScrollBarWidth
+                implicitHeight: 72
+                radius: 4
+                color: themeManager.primaryColor
+                opacity: 0.86
+            }
         }
 
         ColumnLayout {
             id: sidebarColumn
-            width: sidebarFlickable.width
+            width: Math.max(1, sidebarFlickable.width - root.listScrollBarWidth - 4)
             spacing: 8
 
         ColumnLayout {
@@ -568,6 +636,16 @@ Rectangle {
                 ToolTip.text: root.tr("playlists.add")
                 ToolTip.visible: hovered
             }
+
+            ToolButton {
+                icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
+                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                display: AbstractButton.IconOnly
+                enabled: root.playlistsEnabled && playlistsModel.count > 0
+                onClicked: root.requestDeleteAllPlaylists()
+                ToolTip.text: root.tr("playlists.deleteAll")
+                ToolTip.visible: hovered
+            }
         }
 
         Label {
@@ -590,6 +668,11 @@ Rectangle {
             enabled: root.playlistsEnabled
 
             ScrollBar.vertical: ScrollBar {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                z: 200
+                width: root.listScrollBarWidth
                 policy: ScrollBar.AsNeeded
             }
 
@@ -598,7 +681,7 @@ Rectangle {
                 required property string name
                 required property int trackCount
 
-                width: playlistsView.width
+                width: Math.max(1, playlistsView.width - root.listScrollBarWidth - 4)
                 height: 32
                 radius: themeManager.borderRadius
                 color: {
@@ -741,6 +824,16 @@ Rectangle {
                 ToolTip.text: root.tr("collections.create")
                 ToolTip.visible: hovered
             }
+
+            ToolButton {
+                icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
+                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                display: AbstractButton.IconOnly
+                enabled: root.collectionsEnabled && collectionsModel.count > 0
+                onClicked: root.requestDeleteAllCollections()
+                ToolTip.text: root.tr("collections.deleteAll")
+                ToolTip.visible: hovered
+            }
         }
 
         Label {
@@ -772,6 +865,11 @@ Rectangle {
             enabled: root.collectionsEnabled
 
             ScrollBar.vertical: ScrollBar {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                z: 200
+                width: root.listScrollBarWidth
                 policy: ScrollBar.AsNeeded
             }
 
@@ -781,7 +879,7 @@ Rectangle {
                 required property bool entryEnabled
                 required property bool pinned
 
-                width: collectionsView.width
+                width: Math.max(1, collectionsView.width - root.listScrollBarWidth - 4)
                 height: 34
                 radius: themeManager.borderRadius
                 color: {
@@ -989,6 +1087,27 @@ Rectangle {
     }
 
     Dialog {
+        id: deleteAllPlaylistsDialog
+        modal: true
+        title: root.tr("playlists.deleteAllConfirmTitle")
+        standardButtons: Dialog.Yes | Dialog.No
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: root.fitPopupSize(480, 320, root.popupContainerWidth(deleteAllPlaylistsDialog))
+        height: root.fitPopupSize(220, 170, root.popupContainerHeight(deleteAllPlaylistsDialog))
+        x: root.popupCenteredX(deleteAllPlaylistsDialog)
+        y: root.popupCenteredY(deleteAllPlaylistsDialog)
+
+        onAccepted: root.confirmDeleteAllPlaylists()
+
+        contentItem: Label {
+            text: root.tr("playlists.deleteAllConfirmMessage").arg(playlistsModel.count)
+            wrapMode: Text.WordWrap
+            color: themeManager.textColor
+            padding: 8
+        }
+    }
+
+    Dialog {
         id: editPlaylistDialog
         parent: Overlay.overlay
         modal: true
@@ -1043,6 +1162,11 @@ Rectangle {
                 interactive: root.editTrackDragIndex < 0
 
                 ScrollBar.vertical: ScrollBar {
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    z: 200
+                    width: root.listScrollBarWidth
                     policy: ScrollBar.AsNeeded
                 }
 
@@ -1051,7 +1175,7 @@ Rectangle {
                     required property string displayName
                     required property string filePath
 
-                    width: editTracksView.width
+                    width: Math.max(1, editTracksView.width - root.listScrollBarWidth - 4)
                     height: 34
                     radius: themeManager.borderRadius
                     color: dragHandle.pressed
@@ -1257,6 +1381,27 @@ Rectangle {
 
         contentItem: Label {
             text: root.tr("collections.deleteConfirmMessage").arg(root.pendingDeleteCollectionName)
+            wrapMode: Text.WordWrap
+            color: themeManager.textColor
+            padding: 8
+        }
+    }
+
+    Dialog {
+        id: deleteAllCollectionsDialog
+        modal: true
+        title: root.tr("collections.deleteAllConfirmTitle")
+        standardButtons: Dialog.Yes | Dialog.No
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: root.fitPopupSize(480, 320, root.popupContainerWidth(deleteAllCollectionsDialog))
+        height: root.fitPopupSize(220, 170, root.popupContainerHeight(deleteAllCollectionsDialog))
+        x: root.popupCenteredX(deleteAllCollectionsDialog)
+        y: root.popupCenteredY(deleteAllCollectionsDialog)
+
+        onAccepted: root.confirmDeleteAllCollections()
+
+        contentItem: Label {
+            text: root.tr("collections.deleteAllConfirmMessage").arg(collectionsModel.count)
             wrapMode: Text.WordWrap
             color: themeManager.textColor
             padding: 8

@@ -10,6 +10,7 @@
 
 #include "AppSettingsManager.h"
 #include "YtDlpImportService.h"
+#include "AppSettingsManager.h"
 
 namespace {
 void clearSettings()
@@ -1590,7 +1591,7 @@ void YtDlpImportServiceTest::importSchedulerKeepsBoundedParallelWorkers()
         return runningCount == 2;
     }(), 2000);
     QTRY_COMPARE_WITH_TIMEOUT(service.statusText(),
-                              QStringLiteral("Running: 2 active downloads."),
+                              AppSettingsManager::translateForCurrentLanguage(QStringLiteral("ytDlpImport.importRunningActiveCount")).arg(2),
                               2000);
     QTRY_VERIFY_WITH_TIMEOUT([&service]() {
         bool sawAlpha = false;
@@ -1742,8 +1743,8 @@ void YtDlpImportServiceTest::parallelCancelBroadcastsToActiveAndPendingItems()
     service.startImport();
     QTRY_VERIFY_WITH_TIMEOUT(service.isRunning(), 2000);
     QTRY_COMPARE_WITH_TIMEOUT(service.statusText(),
-                              QStringLiteral("Running: 2 active downloads."),
-                              5000);
+                              AppSettingsManager::translateForCurrentLanguage(QStringLiteral("ytDlpImport.importRunningActiveCount")).arg(2),
+                              2000);
 
     int runningCount = 0;
     int pendingCount = 0;
@@ -1770,7 +1771,9 @@ void YtDlpImportServiceTest::parallelCancelBroadcastsToActiveAndPendingItems()
     QCOMPARE(summary.value(QStringLiteral("skippedCount")).toInt(), 0);
     QVERIFY(summary.value(QStringLiteral("orderedResultFiles")).toStringList().isEmpty());
     QCOMPARE(service.batchProgress(), 1.0);
-    QVERIFY(service.statusText().contains(QStringLiteral("canceled: 3")));
+    QVERIFY(service.statusText().contains(
+        AppSettingsManager::translateForCurrentLanguage(QStringLiteral("ytDlpImport.summaryDetailPattern"))
+            .arg(0).arg(0).arg(3).arg(0)));
     QVERIFY(service.lastError().isEmpty());
 
     const QVariantList items = service.items();

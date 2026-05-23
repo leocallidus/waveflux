@@ -225,6 +225,7 @@ private:
     static constexpr double kPanStopVelocity = 0.003;
     static constexpr double kPanZoomBoostMax = 1.35;
     static constexpr double kPanSpeedBoostMax = 1.55;
+    static constexpr qreal kWaveformAmplitudeScale = 0.98;
     static constexpr int kPeakCacheResizeBucketPx = 8;
     static constexpr qsizetype kDefaultLayerCacheBudgetBytes = 8 * 1024 * 1024;
     static constexpr qsizetype kFullscreenLayerCacheBudgetBytes = 16 * 1024 * 1024;

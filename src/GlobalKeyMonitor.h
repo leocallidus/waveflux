@@ -3,6 +3,8 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QString>
+#include <Qt>
 
 class QEvent;
 class QKeyEvent;
@@ -17,23 +19,31 @@ public:
     ~GlobalKeyMonitor() override;
 
     void setMainWindow(QWindow *window);
+    void setTapHoldShortcutSequence(const QString &sequence);
 
 signals:
     void plainSpacePressed();
     void plainSpaceReleased();
     void plainSpaceCanceled();
+    void tapHoldShortcutPressed();
+    void tapHoldShortcutReleased();
+    void tapHoldShortcutCanceled();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    static bool isPlainSpaceEvent(const QKeyEvent *event);
     static bool focusObjectAcceptsTextInput(QObject *object);
-    bool shouldHandlePlainSpace(const QKeyEvent *event) const;
-    void cancelTrackedSpacePress();
+    static Qt::KeyboardModifiers shortcutRelevantModifiers(Qt::KeyboardModifiers modifiers);
+    bool isTapHoldShortcutEvent(const QKeyEvent *event) const;
+    bool isAutoRepeatOfTrackedKey(const QKeyEvent *event) const;
+    bool shouldHandleTapHoldShortcut(const QKeyEvent *event) const;
+    void cancelTrackedTapHoldPress();
 
     QPointer<QWindow> m_mainWindow;
-    bool m_plainSpacePressed = false;
+    int m_tapHoldKey = Qt::Key_Space;
+    Qt::KeyboardModifiers m_tapHoldModifiers = Qt::NoModifier;
+    bool m_tapHoldPressed = false;
 };
 
 #endif // GLOBALKEYMONITOR_H

@@ -31,6 +31,15 @@ void ThemeManager::setWaveformColor(const QColor &color)
     }
 }
 
+void ThemeManager::setWaveformBackgroundColor(const QColor &color)
+{
+    if (m_waveformBackgroundColor != color) {
+        m_waveformBackgroundColor = color;
+        emit waveformBackgroundColorChanged();
+        emit themeChanged();
+    }
+}
+
 void ThemeManager::setProgressColor(const QColor &color)
 {
     if (m_progressColor != color) {
@@ -140,6 +149,8 @@ void ThemeManager::loadTheme(const QString &name)
     
     if (m_settings.contains("waveformColor")) {
         m_waveformColor = QColor(m_settings.value("waveformColor").toString());
+        m_waveformBackgroundColor = QColor(
+            m_settings.value("waveformBackgroundColor", m_waveformBackgroundColor.name()).toString());
         m_progressColor = QColor(m_settings.value("progressColor").toString());
         m_accentColor = QColor(m_settings.value("accentColor").toString());
         m_primaryColor = QColor(m_settings.value("primaryColor", m_accentColor.name()).toString());
@@ -148,6 +159,7 @@ void ThemeManager::loadTheme(const QString &name)
     m_settings.endGroup();
     
     emit waveformColorChanged();
+    emit waveformBackgroundColorChanged();
     emit progressColorChanged();
     emit primaryColorChanged();
     emit backgroundColorChanged();
@@ -165,6 +177,7 @@ void ThemeManager::saveCurrentTheme(const QString &name)
 {
     m_settings.beginGroup("Themes/" + name);
     m_settings.setValue("waveformColor", m_waveformColor.name());
+    m_settings.setValue("waveformBackgroundColor", m_waveformBackgroundColor.name());
     m_settings.setValue("progressColor", m_progressColor.name());
     m_settings.setValue("primaryColor", m_primaryColor.name());
     m_settings.setValue("backgroundColor", m_backgroundColor.name());
@@ -198,6 +211,7 @@ void ThemeManager::resetToDefault()
     applySystemPalette();
 
     emit waveformColorChanged();
+    emit waveformBackgroundColorChanged();
     emit progressColorChanged();
     emit primaryColorChanged();
     emit backgroundColorChanged();
@@ -218,6 +232,9 @@ void ThemeManager::loadSettings()
     if (m_settings.contains("waveformColor")) {
         m_waveformColor = QColor(m_settings.value("waveformColor").toString());
     }
+    if (m_settings.contains("waveformBackgroundColor")) {
+        m_waveformBackgroundColor = QColor(m_settings.value("waveformBackgroundColor").toString());
+    }
     if (m_settings.contains("progressColor")) {
         m_progressColor = QColor(m_settings.value("progressColor").toString());
     }
@@ -235,8 +252,9 @@ void ThemeManager::loadSettings()
 void ThemeManager::saveSettings()
 {
     m_settings.beginGroup("Theme");
-    // Only save user-customizable colors (waveform, progress, accent)
+    // Only save user-customizable colors (waveform, waveform background, progress, accent)
     m_settings.setValue("waveformColor", m_waveformColor.name());
+    m_settings.setValue("waveformBackgroundColor", m_waveformBackgroundColor.name());
     m_settings.setValue("progressColor", m_progressColor.name());
     m_settings.setValue("primaryColor", m_primaryColor.name());
     m_settings.setValue("accentColor", m_accentColor.name());
@@ -250,6 +268,7 @@ void ThemeManager::applyDarkTheme()
     m_darkMode = true;
     
     emit waveformColorChanged();
+    emit waveformBackgroundColorChanged();
     emit progressColorChanged();
     emit primaryColorChanged();
     emit backgroundColorChanged();
@@ -267,6 +286,7 @@ void ThemeManager::applyLightTheme()
     m_darkMode = false;
     
     emit waveformColorChanged();
+    emit waveformBackgroundColorChanged();
     emit progressColorChanged();
     emit primaryColorChanged();
     emit backgroundColorChanged();
@@ -293,6 +313,7 @@ void ThemeManager::applySystemPalette()
     m_primaryColor = palette.color(QPalette::Highlight);
     m_progressColor = palette.color(QPalette::Highlight);
     m_waveformColor = QColor(QStringLiteral("#00786b"));
+    m_waveformBackgroundColor = m_backgroundColor;
     
     // Detect dark mode from system
     m_darkMode = (palette.color(QPalette::Window).lightness() < 128);

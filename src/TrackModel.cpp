@@ -190,6 +190,29 @@ int propertyToInt(const TagLib::PropertyMap &properties, const char *key)
     return ok ? value : 0;
 }
 
+QString propertyToString(const TagLib::PropertyMap &properties, const char *key)
+{
+    const auto it = properties.find(TagLib::String(key));
+    if (it == properties.end() || it->second.isEmpty()) {
+        return {};
+    }
+
+    return QString::fromUtf8(it->second.front().toCString(true)).trimmed();
+}
+
+QString normalizeYearTag(QString value)
+{
+    value = value.trimmed();
+    if (value.size() >= 4) {
+        bool ok = false;
+        value.left(4).toInt(&ok);
+        if (ok) {
+            return value.left(4);
+        }
+    }
+    return value;
+}
+
 int propertyToRoundedPositiveInt(const TagLib::PropertyMap &properties, const char *key)
 {
     const auto it = properties.find(TagLib::String(key));
@@ -555,6 +578,10 @@ Track trackFromVariantMap(const QVariantMap &map)
     track.title = map.value(QStringLiteral("title")).toString();
     track.artist = map.value(QStringLiteral("artist")).toString();
     track.album = map.value(QStringLiteral("album")).toString();
+    track.comment = map.value(QStringLiteral("comment")).toString();
+    track.genre = map.value(QStringLiteral("genre")).toString();
+    track.year = map.value(QStringLiteral("year")).toString();
+    track.trackNumber = map.value(QStringLiteral("trackNumber")).toString();
     track.duration = map.value(QStringLiteral("durationMs"), map.value(QStringLiteral("duration"))).toLongLong();
     track.addedAt = map.value(QStringLiteral("addedAtMs"), map.value(QStringLiteral("addedAt"))).toLongLong();
     track.format = map.value(QStringLiteral("format")).toString();
@@ -562,6 +589,7 @@ Track trackFromVariantMap(const QVariantMap &map)
     track.sampleRate = map.value(QStringLiteral("sampleRate")).toInt();
     track.bitDepth = map.value(QStringLiteral("bitDepth")).toInt();
     track.bpm = map.value(QStringLiteral("bpm")).toInt();
+    track.channelCount = map.value(QStringLiteral("channelCount")).toInt();
     track.albumArt = map.value(QStringLiteral("albumArt"), map.value(QStringLiteral("albumArtUri"))).toString();
     track.cueSegment = map.value(QStringLiteral("cueSegment")).toBool();
     track.cueStartMs = qMax<qint64>(0, map.value(QStringLiteral("cueStartMs")).toLongLong());
@@ -569,6 +597,9 @@ Track trackFromVariantMap(const QVariantMap &map)
         ? map.value(QStringLiteral("cueEndMs")).toLongLong()
         : -1;
     track.cueTrackNumber = map.value(QStringLiteral("cueTrackNumber")).toInt();
+    if (track.trackNumber.isEmpty() && track.cueTrackNumber > 0) {
+        track.trackNumber = QString::number(track.cueTrackNumber);
+    }
     track.cueSheetPath = map.value(QStringLiteral("cueSheetPath")).toString();
     return track;
 }
@@ -580,6 +611,10 @@ QVariantMap trackToVariantMap(const Track &track)
     map.insert(QStringLiteral("title"), track.title);
     map.insert(QStringLiteral("artist"), track.artist);
     map.insert(QStringLiteral("album"), track.album);
+    map.insert(QStringLiteral("comment"), track.comment);
+    map.insert(QStringLiteral("genre"), track.genre);
+    map.insert(QStringLiteral("year"), track.year);
+    map.insert(QStringLiteral("trackNumber"), track.trackNumber);
     map.insert(QStringLiteral("durationMs"), track.duration);
     map.insert(QStringLiteral("addedAtMs"), track.addedAt);
     map.insert(QStringLiteral("format"), track.format);
@@ -587,6 +622,7 @@ QVariantMap trackToVariantMap(const Track &track)
     map.insert(QStringLiteral("sampleRate"), track.sampleRate);
     map.insert(QStringLiteral("bitDepth"), track.bitDepth);
     map.insert(QStringLiteral("bpm"), track.bpm);
+    map.insert(QStringLiteral("channelCount"), track.channelCount);
     map.insert(QStringLiteral("albumArt"), track.albumArt);
     map.insert(QStringLiteral("cueSegment"), track.cueSegment);
     map.insert(QStringLiteral("cueStartMs"), track.cueStartMs);
@@ -674,6 +710,18 @@ QVariant TrackModel::data(const QModelIndex &index, int role) const
     case AlbumRole:
         result = track.album;
         break;
+    case CommentRole:
+        result = track.comment;
+        break;
+    case GenreRole:
+        result = track.genre;
+        break;
+    case YearRole:
+        result = track.year;
+        break;
+    case TrackNumberRole:
+        result = track.trackNumber;
+        break;
     case DurationRole:
         result = track.duration;
         break;
@@ -694,6 +742,9 @@ QVariant TrackModel::data(const QModelIndex &index, int role) const
         break;
     case BpmRole:
         result = track.bpm;
+        break;
+    case ChannelCountRole:
+        result = track.channelCount;
         break;
     case AlbumArtRole:
         result = track.albumArt;
@@ -717,6 +768,10 @@ QHash<int, QByteArray> TrackModel::roleNames() const
         {TitleRole, "title"},
         {ArtistRole, "artist"},
         {AlbumRole, "album"},
+        {CommentRole, "comment"},
+        {GenreRole, "genre"},
+        {YearRole, "year"},
+        {TrackNumberRole, "trackNumber"},
         {DurationRole, "duration"},
         {DisplayNameRole, "displayName"},
         {FormatRole, "format"},
@@ -724,6 +779,7 @@ QHash<int, QByteArray> TrackModel::roleNames() const
         {SampleRateRole, "sampleRate"},
         {BitDepthRole, "bitDepth"},
         {BpmRole, "bpm"},
+        {ChannelCountRole, "channelCount"},
         {AlbumArtRole, "albumArt"}
     };
 }
@@ -756,6 +812,42 @@ QString TrackModel::currentAlbum() const
     return track ? track->album : QString();
 }
 
+QString TrackModel::currentComment() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->comment : QString();
+}
+
+QString TrackModel::currentGenre() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->genre : QString();
+}
+
+QString TrackModel::currentYear() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->year : QString();
+}
+
+QString TrackModel::currentTrackNumber() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->trackNumber : QString();
+}
+
+qint64 TrackModel::currentDuration() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->duration : 0;
+}
+
+QString TrackModel::currentFilePath() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->filePath : QString();
+}
+
 QString TrackModel::currentFormat() const
 {
     const Track *track = currentTrackPtr();
@@ -786,6 +878,12 @@ int TrackModel::currentBpm() const
     return track ? track->bpm : 0;
 }
 
+int TrackModel::currentChannelCount() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->channelCount : 0;
+}
+
 QString TrackModel::currentAlbumArt() const
 {
     return m_currentAlbumArt;
@@ -801,6 +899,17 @@ bool TrackModel::currentIsHiRes() const
     const int bitDepth = currentBitDepth();
     const int sampleRate = currentSampleRate();
     return bitDepth > 16 || sampleRate > 48000;
+}
+
+qint64 TrackModel::playlistDuration() const
+{
+    qint64 total = 0;
+    for (const Track &track : m_tracks) {
+        if (track.duration > 0) {
+            total += track.duration;
+        }
+    }
+    return total;
 }
 
 void TrackModel::setDeterministicShuffleEnabled(bool enabled)
@@ -934,6 +1043,9 @@ QVariantMap TrackModel::addFilesWithReport(const QStringList &filePaths)
                 track.title = segment.title;
                 track.artist = segment.performer;
                 track.album = segment.album;
+                if (segment.trackNumber > 0) {
+                    track.trackNumber = QString::number(segment.trackNumber);
+                }
                 track.addedAt = nowMs;
                 track.format = upperExtension(segment.sourceFilePath);
                 track.cueSegment = true;
@@ -983,6 +1095,17 @@ TrackModel::AppendReport TrackModel::appendAcceptedTracks(QVector<Track> accepte
                                                           const QVector<int> &ingestTrackOffsets,
                                                           const QVector<int> &metadataTrackOffsets)
 {
+    return insertAcceptedTracks(m_tracks.size(),
+                                std::move(acceptedTracks),
+                                ingestTrackOffsets,
+                                metadataTrackOffsets);
+}
+
+TrackModel::AppendReport TrackModel::insertAcceptedTracks(int index,
+                                                          QVector<Track> acceptedTracks,
+                                                          const QVector<int> &ingestTrackOffsets,
+                                                          const QVector<int> &metadataTrackOffsets)
+{
     AppendReport report;
     if (acceptedTracks.isEmpty()) {
         return report;
@@ -1001,7 +1124,7 @@ TrackModel::AppendReport TrackModel::appendAcceptedTracks(QVector<Track> accepte
 
     m_collectionViewActive = false;
 
-    const int first = m_tracks.size();
+    const int first = qBound(0, index, m_tracks.size());
     const int last = first + acceptedTracks.size() - 1;
     report.firstInsertedIndex = first;
     report.lastInsertedIndex = last;
@@ -1012,14 +1135,24 @@ TrackModel::AppendReport TrackModel::appendAcceptedTracks(QVector<Track> accepte
     }
 
     beginInsertRows(QModelIndex(), first, last);
-    m_tracks.reserve(last + 1);
+    m_tracks.reserve(m_tracks.size() + acceptedTracks.size());
+    int insertAt = first;
     for (Track &track : acceptedTracks) {
-        m_tracks.push_back(std::move(track));
+        m_tracks.insert(insertAt, std::move(track));
+        ++insertAt;
     }
     invalidateSearchCache();
     endInsertRows();
 
+    if (m_currentIndex >= first) {
+        m_currentIndex += acceptedTracks.size();
+        syncCurrentAlbumArtCache();
+        emit currentIndexChanged(m_currentIndex);
+        emit currentTrackChanged();
+    }
+
     emit countChanged();
+    emit playlistDurationChanged();
     updateProfilerPlaylistCount();
 
     if (m_libraryRepository && !ingestBatch.isEmpty()) {
@@ -1085,6 +1218,11 @@ void TrackModel::addUrl(const QUrl &url)
 
 void TrackModel::addUrls(const QList<QUrl> &urls)
 {
+    insertUrlsAt(m_tracks.size(), urls);
+}
+
+void TrackModel::insertUrlsAt(int index, const QList<QUrl> &urls)
+{
     if (urls.isEmpty()) {
         return;
     }
@@ -1127,10 +1265,13 @@ void TrackModel::addUrls(const QList<QUrl> &urls)
                 for (const CueTrackSegment &segment : std::as_const(segments)) {
                     Track cueTrack;
                     cueTrack.filePath = segment.sourceFilePath;
-                    cueTrack.title = segment.title;
-                    cueTrack.artist = segment.performer;
-                    cueTrack.album = segment.album;
-                    cueTrack.addedAt = nowMs;
+                        cueTrack.title = segment.title;
+                        cueTrack.artist = segment.performer;
+                        cueTrack.album = segment.album;
+                        if (segment.trackNumber > 0) {
+                            cueTrack.trackNumber = QString::number(segment.trackNumber);
+                        }
+                        cueTrack.addedAt = nowMs;
                     cueTrack.format = upperExtension(segment.sourceFilePath);
                     cueTrack.cueSegment = true;
                     cueTrack.cueStartMs = qMax<qint64>(0, segment.startMs);
@@ -1265,7 +1406,7 @@ void TrackModel::addUrls(const QList<QUrl> &urls)
         (void)appendResolvedSource(url.toString(), QString(), QString(), QString(), -1);
     }
 
-    appendAcceptedTracks(std::move(acceptedTracks), ingestTrackOffsets, metadataTrackOffsets);
+    insertAcceptedTracks(index, std::move(acceptedTracks), ingestTrackOffsets, metadataTrackOffsets);
 }
 
 void TrackModel::removeAt(int index)
@@ -1300,6 +1441,7 @@ void TrackModel::removeAt(int index)
     }
 
     emit countChanged();
+    emit playlistDurationChanged();
     updateProfilerPlaylistCount();
 
     if (!removedCueSegment
@@ -1326,6 +1468,7 @@ void TrackModel::clear()
     invalidateSearchCache();
     endResetModel();
     emit countChanged();
+    emit playlistDurationChanged();
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
@@ -1360,6 +1503,7 @@ void TrackModel::setTracks(QVector<Track> tracks)
     endResetModel();
 
     emit countChanged();
+    emit playlistDurationChanged();
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
@@ -1513,6 +1657,7 @@ void TrackModel::importTracksSnapshot(const QVariantList &snapshot, int requeste
     endResetModel();
 
     emit countChanged();
+    emit playlistDurationChanged();
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
@@ -1562,6 +1707,7 @@ void TrackModel::applySmartCollectionRows(const QVariantList &rows)
     endResetModel();
 
     emit countChanged();
+    emit playlistDurationChanged();
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
@@ -1607,6 +1753,26 @@ QString TrackModel::getFilePath(int index) const
         return m_tracks[index].filePath;
     }
     return {};
+}
+
+QVariantMap TrackModel::trackInfoAt(int index) const
+{
+    if (index < 0 || index >= m_tracks.size()) {
+        return {};
+    }
+
+    const Track &track = m_tracks.at(index);
+    QVariantMap info = trackToVariantMap(track);
+    info.insert(QStringLiteral("playlistIndex"), index);
+    info.insert(QStringLiteral("playlistCount"), m_tracks.size());
+    info.insert(QStringLiteral("playlistDurationMs"), playlistDuration());
+    info.insert(QStringLiteral("displayName"), track.displayName());
+    return info;
+}
+
+QVariantMap TrackModel::currentTrackInfo() const
+{
+    return trackInfoAt(m_currentIndex);
 }
 
 qint64 TrackModel::cueStartMs(int index) const
@@ -2321,15 +2487,21 @@ void TrackModel::loadMetadata(int index, bool includeAlbumArt, bool forceReload)
         ? (track.bitrate > 0
            || track.sampleRate > 0
            || track.bitDepth > 0
-           || track.bpm > 0)
+           || track.bpm > 0
+           || track.channelCount > 0)
         : (!track.title.isEmpty()
            || !track.artist.isEmpty()
            || !track.album.isEmpty()
+           || !track.comment.isEmpty()
+           || !track.genre.isEmpty()
+           || !track.year.isEmpty()
+           || !track.trackNumber.isEmpty()
            || track.duration > 0
            || track.bitrate > 0
            || track.sampleRate > 0
            || track.bitDepth > 0
-           || track.bpm > 0);
+           || track.bpm > 0
+           || track.channelCount > 0);
 
     if (!forceReload && hasCoreMetadata && !shouldIncludeAlbumArt) {
         return;
@@ -2435,6 +2607,14 @@ TrackModel::ParsedMetadata TrackModel::readMetadataForFile(const QString &filePa
         metadata.title = toQString(tag->title());
         metadata.artist = toQString(tag->artist());
         metadata.album = toQString(tag->album());
+        metadata.comment = toQString(tag->comment());
+        metadata.genre = toQString(tag->genre());
+        if (tag->year() > 0) {
+            metadata.year = QString::number(tag->year());
+        }
+        if (tag->track() > 0) {
+            metadata.trackNumber = QString::number(tag->track());
+        }
     }
 
     const TagLib::AudioProperties *audioProperties = file.audioProperties();
@@ -2443,10 +2623,33 @@ TrackModel::ParsedMetadata TrackModel::readMetadataForFile(const QString &filePa
         metadata.bitrate = audioProperties->bitrate();
         metadata.sampleRate = audioProperties->sampleRate();
         metadata.bitDepth = bitDepthFromAudioProperties(audioProperties);
+        metadata.channelCount = audioProperties->channels();
     }
 
     if (file.file()) {
         const TagLib::PropertyMap properties = file.file()->properties();
+        if (metadata.comment.isEmpty()) {
+            metadata.comment = propertyToString(properties, "COMMENT");
+        }
+        if (metadata.comment.isEmpty()) {
+            metadata.comment = propertyToString(properties, "DESCRIPTION");
+        }
+        if (metadata.genre.isEmpty()) {
+            metadata.genre = propertyToString(properties, "GENRE");
+        }
+        if (metadata.year.isEmpty()) {
+            metadata.year = normalizeYearTag(propertyToString(properties, "DATE"));
+        }
+        if (metadata.year.isEmpty()) {
+            metadata.year = normalizeYearTag(propertyToString(properties, "YEAR"));
+        }
+        if (metadata.trackNumber.isEmpty()) {
+            metadata.trackNumber = propertyToString(properties, "TRACKNUMBER");
+        }
+        if (metadata.trackNumber.isEmpty()) {
+            metadata.trackNumber = propertyToString(properties, "TRACK");
+        }
+
         if (metadata.bitDepth <= 0) {
             metadata.bitDepth = propertyToInt(properties, "BITS_PER_SAMPLE");
         }
@@ -2581,6 +2784,10 @@ void TrackModel::internTrackStrings(Track &track)
     track.title = internString(track.title);
     track.artist = internString(track.artist);
     track.album = internString(track.album);
+    track.comment = internString(track.comment);
+    track.genre = internString(track.genre);
+    track.year = internString(track.year);
+    track.trackNumber = internString(track.trackNumber);
     track.format = internString(track.format);
     track.albumArt = internString(track.albumArt);
     track.cueSheetPath = internString(track.cueSheetPath);
@@ -3073,6 +3280,7 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
     QVector<int> changedRows;
     changedRows.reserve(2);
     bool currentTrackWasChanged = false;
+    bool playlistDurationWasChanged = false;
     int firstChangedNonCueRow = -1;
 
     for (int i = 0; i < m_tracks.size(); ++i) {
@@ -3088,6 +3296,12 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
                 changed = true;
             }
         };
+        auto setDurationIfDifferent = [&setIfDifferent, &playlistDurationWasChanged](qint64 &target, qint64 value) {
+            if (target != value) {
+                playlistDurationWasChanged = true;
+            }
+            setIfDifferent(target, value);
+        };
 
         if (!track.cueSegment) {
             if (!metadata.title.isEmpty()) {
@@ -3099,6 +3313,22 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
             if (!metadata.album.isEmpty()) {
                 setIfDifferent(track.album, metadata.album);
             }
+        }
+        if (!metadata.comment.isEmpty()) {
+            setIfDifferent(track.comment, metadata.comment);
+        }
+        if (!metadata.genre.isEmpty()) {
+            setIfDifferent(track.genre, metadata.genre);
+        }
+        if (!metadata.year.isEmpty()) {
+            setIfDifferent(track.year, metadata.year);
+        }
+        if (!track.cueSegment && !metadata.trackNumber.isEmpty()) {
+            setIfDifferent(track.trackNumber, metadata.trackNumber);
+        } else if (track.cueSegment && track.cueTrackNumber > 0) {
+            setIfDifferent(track.trackNumber, QString::number(track.cueTrackNumber));
+        } else if (!metadata.trackNumber.isEmpty()) {
+            setIfDifferent(track.trackNumber, metadata.trackNumber);
         }
 
         if (track.cueSegment) {
@@ -3116,10 +3346,10 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
                 resolvedCueDuration = metadata.duration - cueStart;
             }
             if (resolvedCueDuration > 0) {
-                setIfDifferent(track.duration, resolvedCueDuration);
+                setDurationIfDifferent(track.duration, resolvedCueDuration);
             }
         } else if (metadata.duration > 0) {
-            setIfDifferent(track.duration, metadata.duration);
+            setDurationIfDifferent(track.duration, metadata.duration);
         }
         if (!metadata.format.isEmpty()) {
             setIfDifferent(track.format, metadata.format);
@@ -3136,6 +3366,9 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
         if (metadata.bpm > 0) {
             setIfDifferent(track.bpm, metadata.bpm);
         }
+        if (metadata.channelCount > 0) {
+            setIfDifferent(track.channelCount, metadata.channelCount);
+        }
         if (metadata.albumArtChecked) {
             if (i == m_currentIndex) {
                 setIfDifferent(track.albumArt, metadata.albumArt);
@@ -3148,6 +3381,10 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
         const QString previousTitle = track.title;
         const QString previousArtist = track.artist;
         const QString previousAlbum = track.album;
+        const QString previousComment = track.comment;
+        const QString previousGenre = track.genre;
+        const QString previousYear = track.year;
+        const QString previousTrackNumber = track.trackNumber;
         const QString previousFormat = track.format;
         const QString previousAlbumArt = track.albumArt;
         const QString previousCueSheetPath = track.cueSheetPath;
@@ -3155,6 +3392,10 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
         if (track.title != previousTitle ||
             track.artist != previousArtist ||
             track.album != previousAlbum ||
+            track.comment != previousComment ||
+            track.genre != previousGenre ||
+            track.year != previousYear ||
+            track.trackNumber != previousTrackNumber ||
             track.format != previousFormat ||
             track.albumArt != previousAlbumArt ||
             track.cueSheetPath != previousCueSheetPath) {
@@ -3191,6 +3432,9 @@ void TrackModel::applyParsedMetadata(const ParsedMetadata &metadata)
 
     if (currentTrackWasChanged) {
         emit currentTrackChanged();
+    }
+    if (playlistDurationWasChanged) {
+        emit playlistDurationChanged();
     }
 
     if (m_libraryRepository && firstChangedNonCueRow >= 0) {

@@ -1,6 +1,7 @@
 qt_add_executable(tst_equalizer_preset_manager
     tst_EqualizerPresetManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/EqualizerPresetManager.cpp
 )
 
@@ -51,6 +52,7 @@ add_test(NAME tst_xspf_playlist_parser COMMAND tst_xspf_playlist_parser)
 qt_add_executable(tst_app_settings_manager
     tst_AppSettingsManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
 )
 
 target_include_directories(tst_app_settings_manager PRIVATE
@@ -65,9 +67,69 @@ target_link_libraries(tst_app_settings_manager PRIVATE
 
 add_test(NAME tst_app_settings_manager COMMAND tst_app_settings_manager)
 
+qt_add_executable(tst_update_checker
+    tst_UpdateChecker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/UpdateChecker.cpp
+)
+
+target_include_directories(tst_update_checker PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_compile_definitions(tst_update_checker PRIVATE
+    WAVEFLUX_UPDATECHECKER_TESTING
+)
+
+target_link_libraries(tst_update_checker PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Test
+    KF6::I18n
+)
+
+add_test(NAME tst_update_checker COMMAND tst_update_checker)
+
+qt_add_executable(tst_shortcut_manager
+    tst_ShortcutManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ShortcutManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ShortcutRegistry.cpp
+)
+
+target_include_directories(tst_shortcut_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_shortcut_manager PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test
+)
+
+add_test(NAME tst_shortcut_manager COMMAND tst_shortcut_manager)
+
+qt_add_executable(tst_track_info_formatter
+    tst_TrackInfoFormatter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+)
+
+target_include_directories(tst_track_info_formatter PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_track_info_formatter PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME tst_track_info_formatter COMMAND tst_track_info_formatter)
+
 qt_add_executable(tst_batch_audio_converter_preset_manager
     tst_BatchAudioConverterPresetManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/BatchAudioConverterPresetManager.cpp
 )
 
@@ -86,6 +148,7 @@ add_test(NAME tst_batch_audio_converter_preset_manager COMMAND tst_batch_audio_c
 qt_add_executable(tst_ytdlp_import_service
     tst_YtDlpImportService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/YtDlpImportService.cpp
 )
 
@@ -108,6 +171,7 @@ add_test(NAME tst_ytdlp_import_service COMMAND tst_ytdlp_import_service)
 qt_add_executable(tst_ytdlp_import_dialog_smoke
     tst_YtDlpImportDialogSmoke.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThemeManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/YtDlpImportService.cpp
 )
@@ -271,6 +335,7 @@ add_test(NAME tst_waveform_provider COMMAND tst_waveform_provider)
 qt_add_executable(tst_audio_converter_service
     tst_AudioConverterService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioConverterService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
@@ -310,6 +375,7 @@ add_test(NAME tst_audio_converter_service COMMAND tst_audio_converter_service)
 qt_add_executable(tst_batch_audio_converter_service
     tst_BatchAudioConverterService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/BatchAudioConverterService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioConverterService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
@@ -350,6 +416,7 @@ add_test(NAME tst_batch_audio_converter_service COMMAND tst_batch_audio_converte
 qt_add_executable(tst_playback_controller_transitions
     tst_PlaybackControllerTransitions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/PlaybackController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/RemoteTrackerSourceCache.h
@@ -399,6 +466,7 @@ add_test(NAME tst_playback_controller_transitions COMMAND tst_playback_controlle
 qt_add_executable(tst_playback_controller_scenarios
     tst_PlaybackControllerScenarios.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/PlaybackController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/RemoteTrackerSourceCache.h
@@ -477,6 +545,7 @@ add_test(NAME tst_track_model COMMAND tst_track_model)
 qt_add_executable(tst_playback_backend_routing
     tst_PlaybackBackendRouting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/RemoteTrackerSourceCache.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/RemoteTrackerSourceCache.cpp

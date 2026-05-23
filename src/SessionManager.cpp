@@ -166,6 +166,9 @@ void recoverLegacyCueMetadata(QVector<Track> *tracks, const QVector<bool> &hasCu
             track.cueStartMs = qMax<qint64>(0, segment.startMs);
             track.cueEndMs = segment.endMs;
             track.cueTrackNumber = segment.trackNumber;
+            if (track.trackNumber.trimmed().isEmpty() && segment.trackNumber > 0) {
+                track.trackNumber = QString::number(segment.trackNumber);
+            }
             track.cueSheetPath = segment.cueSheetPath;
 
             if (track.title.trimmed().isEmpty()) {
@@ -203,6 +206,16 @@ void SessionManager::initialize(TrackModel *trackModel,
     m_playbackController = playbackController;
 
     connectSignals();
+}
+
+void SessionManager::setRestorePlaybackPositionOnStartup(bool enabled)
+{
+    m_restorePlaybackPositionOnStartup = enabled;
+}
+
+void SessionManager::setRestorePlaybackPausedOnStartup(bool enabled)
+{
+    m_restorePlaybackPausedOnStartup = enabled;
 }
 
 void SessionManager::restoreSession()
@@ -262,6 +275,10 @@ void SessionManager::restoreSession()
         track.title = item.value("title").toString();
         track.artist = item.value("artist").toString();
         track.album = item.value("album").toString();
+        track.comment = item.value("comment").toString();
+        track.genre = item.value("genre").toString();
+        track.year = item.value("year").toString();
+        track.trackNumber = item.value("trackNumber").toString();
         track.duration = static_cast<qint64>(item.value("duration").toDouble(0));
         track.addedAt = static_cast<qint64>(item.value("addedAt").toDouble(0));
         track.format = item.value("format").toString();
@@ -269,6 +286,7 @@ void SessionManager::restoreSession()
         track.sampleRate = item.value("sampleRate").toInt(0);
         track.bitDepth = item.value("bitDepth").toInt(0);
         track.bpm = item.value("bpm").toInt(0);
+        track.channelCount = item.value("channelCount").toInt(0);
         const bool hasCueMetadata = hasCueMetadataKeys(item);
         track.cueSegment = item.value("cueSegment").toBool(false);
         track.cueStartMs = static_cast<qint64>(item.value("cueStartMs").toDouble(0));
@@ -276,6 +294,9 @@ void SessionManager::restoreSession()
             ? static_cast<qint64>(item.value("cueEndMs").toDouble(-1))
             : -1;
         track.cueTrackNumber = item.value("cueTrackNumber").toInt(0);
+        if (track.trackNumber.isEmpty() && track.cueTrackNumber > 0) {
+            track.trackNumber = QString::number(track.cueTrackNumber);
+        }
         track.cueSheetPath = item.value("cueSheetPath").toString();
         tracks.append(track);
         hasCueMetadataFromSession.push_back(hasCueMetadata);
@@ -305,8 +326,12 @@ void SessionManager::restoreSession()
 
     if (restoredTrackCount > 0 && savedIndex >= 0 && savedIndex < restoredTrackCount) {
         m_trackModel->setCurrentIndex(savedIndex);
-        restorePlaybackPosition(savedPosition, wasPlaying);
-        m_lastSavedPositionMs = qBound<qint64>(0, savedPosition, kPositionHardCapMs);
+        if (m_restorePlaybackPositionOnStartup) {
+            restorePlaybackPosition(savedPosition, wasPlaying && !m_restorePlaybackPausedOnStartup);
+            m_lastSavedPositionMs = qBound<qint64>(0, savedPosition, kPositionHardCapMs);
+        } else {
+            m_lastSavedPositionMs = -1;
+        }
     } else {
         m_lastSavedPositionMs = -1;
     }
@@ -350,6 +375,10 @@ void SessionManager::saveNow()
         trackObj["title"] = track.title;
         trackObj["artist"] = track.artist;
         trackObj["album"] = track.album;
+        trackObj["comment"] = track.comment;
+        trackObj["genre"] = track.genre;
+        trackObj["year"] = track.year;
+        trackObj["trackNumber"] = track.trackNumber;
         trackObj["duration"] = static_cast<double>(track.duration);
         trackObj["addedAt"] = static_cast<double>(track.addedAt);
         trackObj["format"] = track.format;
@@ -357,6 +386,7 @@ void SessionManager::saveNow()
         trackObj["sampleRate"] = track.sampleRate;
         trackObj["bitDepth"] = track.bitDepth;
         trackObj["bpm"] = track.bpm;
+        trackObj["channelCount"] = track.channelCount;
         trackObj["cueSegment"] = track.cueSegment;
         trackObj["cueStartMs"] = static_cast<double>(track.cueStartMs);
         trackObj["cueEndMs"] = static_cast<double>(track.cueEndMs);

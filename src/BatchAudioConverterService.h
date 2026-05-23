@@ -40,6 +40,8 @@ class BatchAudioConverterService : public QObject
     Q_PROPERTY(QString channelMode READ channelMode WRITE setChannelMode NOTIFY channelModeChanged)
     Q_PROPERTY(double playbackRate READ playbackRate WRITE setPlaybackRate NOTIFY playbackRateChanged)
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
+    Q_PROPERTY(bool applyEqualizer READ applyEqualizer WRITE setApplyEqualizer NOTIFY applyEqualizerChanged)
+    Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains WRITE setEqualizerBandGains NOTIFY equalizerBandGainsChanged)
     Q_PROPERTY(bool addResultsToPlaylist READ addResultsToPlaylist WRITE setAddResultsToPlaylist NOTIFY addResultsToPlaylistChanged)
     Q_PROPERTY(bool canAddSucceededResultsToPlaylist READ canAddSucceededResultsToPlaylist NOTIFY finalSummaryChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY itemsChanged)
@@ -128,6 +130,8 @@ public:
         QString channelMode = QStringLiteral("stereo");
         double playbackRate = 1.0;
         int pitchSemitones = 0;
+        bool applyEqualizer = false;
+        QVariantList equalizerBandGains;
         bool addResultsToPlaylist = true;
     };
 
@@ -143,6 +147,8 @@ public:
         QString channelMode;
         double playbackRate = 1.0;
         int pitchSemitones = 0;
+        bool applyEqualizer = false;
+        QVariantList equalizerBandGains;
         bool addResultsToPlaylist = true;
         qint64 capturedAtMs = 0;
     };
@@ -223,6 +229,8 @@ public:
     QString channelMode() const { return m_settings.channelMode; }
     double playbackRate() const { return m_settings.playbackRate; }
     int pitchSemitones() const { return m_settings.pitchSemitones; }
+    bool applyEqualizer() const { return m_settings.applyEqualizer; }
+    QVariantList equalizerBandGains() const { return m_settings.equalizerBandGains; }
     bool addResultsToPlaylist() const { return m_settings.addResultsToPlaylist; }
     bool canAddSucceededResultsToPlaylist() const;
     bool isRunning() const { return m_isRunning; }
@@ -311,6 +319,8 @@ public slots:
     void setChannelMode(const QString &channelMode);
     void setPlaybackRate(double playbackRate);
     void setPitchSemitones(int pitchSemitones);
+    void setApplyEqualizer(bool applyEqualizer);
+    void setEqualizerBandGains(const QVariantList &gains);
     void setAddResultsToPlaylist(bool addResultsToPlaylist);
 
 signals:
@@ -335,6 +345,8 @@ signals:
     void channelModeChanged();
     void playbackRateChanged();
     void pitchSemitonesChanged();
+    void applyEqualizerChanged();
+    void equalizerBandGainsChanged();
     void addResultsToPlaylistChanged();
     void batchStarted();
     void batchFinished();
@@ -359,6 +371,7 @@ private:
     static int normalizeSampleRate(int sampleRate);
     static double normalizePlaybackRate(double playbackRate);
     static int normalizePitchSemitones(int pitchSemitones);
+    static QVariantList normalizeEqualizerBandGains(const QVariantList &gains);
     static QString uniqueOutputPath(const QString &path,
                                     const QSet<QString> &reservedPaths,
                                     const QSet<QString> &existingPaths);

@@ -8,6 +8,7 @@
 #include <taglib/tag.h>
 
 #include "AudioConverterService.h"
+#include "AppSettingsManager.h"
 #include "TagLibPath.h"
 #include "TrackModel.h"
 
@@ -153,6 +154,7 @@ private slots:
     void rejectsInvalidStartRequests();
     void resetsTransientStateForNewEditingSession();
     void completesWavConversionForValidInput();
+    void completesTrimmedWavConversion();
     void completesMp3ConversionForValidInput();
     void completesWebmConversionForValidInput();
     void completesMp3ToMp3ConversionForValidInput();
@@ -187,6 +189,8 @@ void AudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(service.channelMode(), QStringLiteral("stereo"));
     QCOMPARE(service.playbackRate(), 1.0);
     QCOMPARE(service.pitchSemitones(), 0);
+    QCOMPARE(service.applyEqualizer(), false);
+    QCOMPARE(service.equalizerBandGains().size(), 10);
     QCOMPARE(service.isRunning(), false);
     QCOMPARE(service.progress(), 0.0);
     QVERIFY(!service.statusText().trimmed().isEmpty());
@@ -208,6 +212,8 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     QSignalSpy channelSpy(&service, &AudioConverterService::channelModeChanged);
     QSignalSpy rateSpy(&service, &AudioConverterService::playbackRateChanged);
     QSignalSpy pitchSpy(&service, &AudioConverterService::pitchSemitonesChanged);
+    QSignalSpy equalizerEnabledSpy(&service, &AudioConverterService::applyEqualizerChanged);
+    QSignalSpy equalizerGainsSpy(&service, &AudioConverterService::equalizerBandGainsChanged);
 
     service.setFormat(QStringLiteral("FLAC"));
     service.setBitrate(111);
@@ -215,6 +221,8 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     service.setChannelMode(QStringLiteral("mono"));
     service.setPlaybackRate(99.0);
     service.setPitchSemitones(-200);
+    service.setApplyEqualizer(true);
+    service.setEqualizerBandGains({-99.0, -1.5, 0.0, 3.25, 99.0});
 
     QCOMPARE(service.format(), QStringLiteral("flac"));
     QCOMPARE(service.bitrate(), 0);
@@ -222,12 +230,21 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     QCOMPARE(service.channelMode(), QStringLiteral("mono"));
     QCOMPARE(service.playbackRate(), 4.0);
     QCOMPARE(service.pitchSemitones(), -24);
+    QCOMPARE(service.applyEqualizer(), true);
+    QCOMPARE(service.equalizerBandGains().size(), 10);
+    QCOMPARE(service.equalizerBandGains().at(0).toDouble(), -24.0);
+    QCOMPARE(service.equalizerBandGains().at(1).toDouble(), -1.5);
+    QCOMPARE(service.equalizerBandGains().at(3).toDouble(), 3.25);
+    QCOMPARE(service.equalizerBandGains().at(4).toDouble(), 12.0);
+    QCOMPARE(service.equalizerBandGains().at(9).toDouble(), 0.0);
     QCOMPARE(formatSpy.count(), 1);
     QVERIFY(bitrateSpy.count() >= 1);
     QCOMPARE(sampleRateSpy.count(), 2);
     QCOMPARE(channelSpy.count(), 1);
     QCOMPARE(rateSpy.count(), 1);
     QCOMPARE(pitchSpy.count(), 1);
+    QCOMPARE(equalizerEnabledSpy.count(), 1);
+    QCOMPARE(equalizerGainsSpy.count(), 1);
 
     service.setFormat(QStringLiteral("mp3"));
     service.setSampleRate(88200);
@@ -428,13 +445,17 @@ void AudioConverterServiceTest::rejectsInvalidStartRequests()
     service.setSourceFile(sourcePath);
     service.setOutputFile(sourcePath);
     QVERIFY(!service.startConversion());
-    QVERIFY(service.lastError().contains(QStringLiteral("different"), Qt::CaseInsensitive));
+    QVERIFY(service.lastError().contains(
+        AppSettingsManager::translateForCurrentLanguage(QStringLiteral("audioConverter.preflightOutputMatchesSource")),
+        Qt::CaseInsensitive));
     QCOMPARE(service.errorPresentation().value(QStringLiteral("messageKey")).toString(),
              QStringLiteral("audioConverter.preflightOutputMatchesSource"));
 
     service.setOutputFile(tempDir.filePath(QStringLiteral("missing/subdir/output.wav")));
     QVERIFY(!service.startConversion());
-    QVERIFY(service.lastError().contains(QStringLiteral("does not exist"), Qt::CaseInsensitive));
+    QVERIFY(service.lastError().contains(
+        AppSettingsManager::translateForCurrentLanguage(QStringLiteral("audioConverter.preflightOutputDirectoryMissing")).arg(QString()).trimmed(),
+        Qt::CaseInsensitive));
     QCOMPARE(service.errorPresentation().value(QStringLiteral("messageKey")).toString(),
              QStringLiteral("audioConverter.preflightOutputDirectoryMissing"));
 
@@ -452,7 +473,9 @@ void AudioConverterServiceTest::rejectsInvalidStartRequests()
         QCOMPARE(service.errorPresentation().value(QStringLiteral("messageKey")).toString(),
                  QStringLiteral("audioConverter.preflightMissingPlugins"));
     } else {
-        QVERIFY(service.lastError().contains(QStringLiteral("already exists"), Qt::CaseInsensitive));
+        QVERIFY(service.lastError().contains(
+        AppSettingsManager::translateForCurrentLanguage(QStringLiteral("audioConverter.preflightExistingOutputConfirm")).arg(QString()).trimmed(),
+        Qt::CaseInsensitive));
         QCOMPARE(service.errorPresentation().value(QStringLiteral("messageKey")).toString(),
                  QStringLiteral("audioConverter.preflightExistingOutputConfirm"));
     }
@@ -517,6 +540,49 @@ void AudioConverterServiceTest::completesWavConversionForValidInput()
     QCOMPARE(finishedSpy.at(0).at(0).toString(), outputPath);
     QCOMPARE(service.lastConversionMetrics().value(QStringLiteral("terminationKey")).toString(),
              QStringLiteral("succeeded"));
+    QVERIFY(temporaryConverterArtifacts(tempDir.path()).isEmpty());
+}
+
+void AudioConverterServiceTest::completesTrimmedWavConversion()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("wavenc")
+        || !hasFactory("filesink")) {
+        QSKIP("Required GStreamer conversion elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("long-song.wav"));
+    writeSilentWavFile(sourcePath, 44100, 1, 4000);
+
+    AudioConverterService service;
+    QSignalSpy finishedSpy(&service, &AudioConverterService::conversionFinished);
+    QSignalSpy failedSpy(&service, &AudioConverterService::conversionFailed);
+
+    service.setSourceFile(sourcePath);
+    service.setFormat(QStringLiteral("wav"));
+    service.setTrimEnabled(true);
+    service.setTrimStartMs(1000);
+    service.setTrimEndMs(2500);
+    const QString outputPath = tempDir.filePath(QStringLiteral("trimmed.wav"));
+    service.setOutputFile(outputPath);
+
+    QVERIFY(service.preflight().value(QStringLiteral("canStart")).toBool());
+    QVERIFY(service.startConversion());
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(failedSpy.count(), 0);
+    QVERIFY(QFileInfo::exists(outputPath));
+
+    const qint64 outputDurationMs = readDurationMs(outputPath);
+    QVERIFY2(outputDurationMs >= 1200 && outputDurationMs <= 1900,
+             qPrintable(QStringLiteral("Unexpected trimmed duration: %1 ms").arg(outputDurationMs)));
+    QCOMPARE(service.progress(), 1.0);
     QVERIFY(temporaryConverterArtifacts(tempDir.path()).isEmpty());
 }
 
@@ -721,7 +787,9 @@ void AudioConverterServiceTest::overwritesExistingOutputWhenExplicitlyAllowed()
     service.setOutputFile(outputPath);
 
     QVERIFY(!service.startConversion());
-    QVERIFY(service.lastError().contains(QStringLiteral("already exists"), Qt::CaseInsensitive));
+    QVERIFY(service.lastError().contains(
+        AppSettingsManager::translateForCurrentLanguage(QStringLiteral("audioConverter.preflightExistingOutputConfirm")).arg(QString()).trimmed(),
+        Qt::CaseInsensitive));
 
     service.setOverwriteExisting(true);
     QVERIFY(service.startConversion());

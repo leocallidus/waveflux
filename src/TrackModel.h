@@ -29,6 +29,10 @@ struct Track {
     QString title;
     QString artist;
     QString album;
+    QString comment;
+    QString genre;
+    QString year;
+    QString trackNumber;
     qint64 duration = 0; // in milliseconds
     qint64 addedAt = 0;  // unix ms timestamp
     QString format;
@@ -36,6 +40,7 @@ struct Track {
     int sampleRate = 0;
     int bitDepth = 0;
     int bpm = 0;
+    int channelCount = 0;
     QString albumArt;
     bool cueSegment = false;
     qint64 cueStartMs = 0;
@@ -86,14 +91,22 @@ class TrackModel : public QAbstractListModel
     Q_PROPERTY(QString currentTitle READ currentTitle NOTIFY currentTrackChanged)
     Q_PROPERTY(QString currentArtist READ currentArtist NOTIFY currentTrackChanged)
     Q_PROPERTY(QString currentAlbum READ currentAlbum NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentComment READ currentComment NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentGenre READ currentGenre NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentYear READ currentYear NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentTrackNumber READ currentTrackNumber NOTIFY currentTrackChanged)
+    Q_PROPERTY(qint64 currentDuration READ currentDuration NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentFilePath READ currentFilePath NOTIFY currentTrackChanged)
     Q_PROPERTY(QString currentFormat READ currentFormat NOTIFY currentTrackChanged)
     Q_PROPERTY(int currentBitrate READ currentBitrate NOTIFY currentTrackChanged)
     Q_PROPERTY(int currentSampleRate READ currentSampleRate NOTIFY currentTrackChanged)
     Q_PROPERTY(int currentBitDepth READ currentBitDepth NOTIFY currentTrackChanged)
     Q_PROPERTY(int currentBpm READ currentBpm NOTIFY currentTrackChanged)
+    Q_PROPERTY(int currentChannelCount READ currentChannelCount NOTIFY currentTrackChanged)
     Q_PROPERTY(QString currentAlbumArt READ currentAlbumArt NOTIFY currentTrackChanged)
     Q_PROPERTY(bool currentIsLossless READ currentIsLossless NOTIFY currentTrackChanged)
     Q_PROPERTY(bool currentIsHiRes READ currentIsHiRes NOTIFY currentTrackChanged)
+    Q_PROPERTY(qint64 playlistDuration READ playlistDuration NOTIFY playlistDurationChanged)
     Q_PROPERTY(int searchRevision READ searchRevision NOTIFY searchRevisionChanged)
     Q_PROPERTY(bool deterministicShuffleEnabled READ deterministicShuffleEnabled WRITE setDeterministicShuffleEnabled NOTIFY deterministicShuffleEnabledChanged)
     Q_PROPERTY(quint32 shuffleSeed READ shuffleSeed WRITE setShuffleSeed NOTIFY shuffleSeedChanged)
@@ -122,6 +135,10 @@ public:
         TitleRole,
         ArtistRole,
         AlbumRole,
+        CommentRole,
+        GenreRole,
+        YearRole,
+        TrackNumberRole,
         DurationRole,
         DisplayNameRole,
         FormatRole,
@@ -129,6 +146,7 @@ public:
         SampleRateRole,
         BitDepthRole,
         BpmRole,
+        ChannelCountRole,
         AlbumArtRole
     };
     Q_ENUM(Roles)
@@ -147,14 +165,22 @@ public:
     QString currentTitle() const;
     QString currentArtist() const;
     QString currentAlbum() const;
+    QString currentComment() const;
+    QString currentGenre() const;
+    QString currentYear() const;
+    QString currentTrackNumber() const;
+    qint64 currentDuration() const;
+    QString currentFilePath() const;
     QString currentFormat() const;
     int currentBitrate() const;
     int currentSampleRate() const;
     int currentBitDepth() const;
     int currentBpm() const;
+    int currentChannelCount() const;
     QString currentAlbumArt() const;
     bool currentIsLossless() const;
     bool currentIsHiRes() const;
+    qint64 playlistDuration() const;
     int searchRevision() const { return m_searchUiRevision; }
     bool deterministicShuffleEnabled() const { return m_deterministicShuffleEnabled; }
     quint32 shuffleSeed() const { return m_shuffleSeed; }
@@ -172,11 +198,14 @@ public:
     Q_INVOKABLE void addFolder(const QUrl &folderUrl);
     Q_INVOKABLE void addUrl(const QUrl &url);
     Q_INVOKABLE void addUrls(const QList<QUrl> &urls);
+    Q_INVOKABLE void insertUrlsAt(int index, const QList<QUrl> &urls);
     Q_INVOKABLE void removeAt(int index);
     Q_INVOKABLE void clear();
     Q_INVOKABLE void move(int from, int to);
     
     Q_INVOKABLE QString getFilePath(int index) const;
+    Q_INVOKABLE QVariantMap trackInfoAt(int index) const;
+    Q_INVOKABLE QVariantMap currentTrackInfo() const;
     Q_INVOKABLE qint64 cueStartMs(int index) const;
     Q_INVOKABLE qint64 cueEndMs(int index) const;
     Q_INVOKABLE bool isCueTrack(int index) const;
@@ -247,6 +276,7 @@ signals:
     void deterministicShuffleEnabledChanged();
     void shuffleSeedChanged();
     void repeatableShuffleChanged();
+    void playlistDurationChanged();
     
 private:
     friend class PlaybackController;
@@ -256,12 +286,17 @@ private:
         QString title;
         QString artist;
         QString album;
+        QString comment;
+        QString genre;
+        QString year;
+        QString trackNumber;
         qint64 duration = 0;
         QString format;
         int bitrate = 0;
         int sampleRate = 0;
         int bitDepth = 0;
         int bpm = 0;
+        int channelCount = 0;
         QString albumArt;
         bool albumArtChecked = false;
     };
@@ -340,6 +375,10 @@ private:
     void setCurrentIndexSilently(int index);
     void applyCurrentIndex(int index, bool emitTrackSelectedSignal);
     AppendReport appendAcceptedTracks(QVector<Track> acceptedTracks,
+                                      const QVector<int> &ingestTrackOffsets,
+                                      const QVector<int> &metadataTrackOffsets);
+    AppendReport insertAcceptedTracks(int index,
+                                      QVector<Track> acceptedTracks,
                                       const QVector<int> &ingestTrackOffsets,
                                       const QVector<int> &metadataTrackOffsets);
     void updatePlaylistFolderWatch();

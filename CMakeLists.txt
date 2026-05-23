@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(waveflux VERSION 1.2.0 LANGUAGES CXX)
+project(waveflux VERSION 1.3.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CheckCXXSourceCompiles)
@@ -125,6 +125,7 @@ set(SOURCES
     src/playback/PlaybackBackendRouting.cpp
     src/WaveformProvider.cpp
     src/TrackModel.cpp
+    src/TrackInfoFormatter.cpp
     src/XspfPlaylistParser.cpp
     src/CueSheetParser.cpp
     src/WaveformItem.cpp
@@ -138,6 +139,9 @@ set(SOURCES
     src/EqualizerPresetManager.cpp
     src/BatchAudioConverterPresetManager.cpp
     src/AppSettingsManager.cpp
+    src/UpdateChecker.cpp
+    src/ShortcutRegistry.cpp
+    src/ShortcutManager.cpp
     src/GlobalKeyMonitor.cpp
     src/TrayManager.cpp
     src/PeaksCacheManager.cpp
@@ -181,6 +185,7 @@ set(HEADERS
     src/WaveformProvider.h
     src/PeaksCacheManager.h
     src/TrackModel.h
+    src/TrackInfoFormatter.h
     src/XspfPlaylistParser.h
     src/CueSheetParser.h
     src/WaveformItem.h
@@ -194,6 +199,9 @@ set(HEADERS
     src/EqualizerPresetManager.h
     src/BatchAudioConverterPresetManager.h
     src/AppSettingsManager.h
+    src/UpdateChecker.h
+    src/ShortcutRegistry.h
+    src/ShortcutManager.h
     src/GlobalKeyMonitor.h
     src/MprisService.h
     src/TrayManager.h
@@ -232,7 +240,7 @@ file(GLOB WAVEFLUX_ICON_RESOURCES
 
 qt_add_qml_module(waveflux
     URI WaveFlux
-    VERSION 1.2
+    VERSION 1.3
     QML_FILES
         qml/Main.qml
         qml/CompactSkin.qml
@@ -249,10 +257,17 @@ qt_add_qml_module(waveflux
         qml/components/AccentSwitch.qml
         qml/components/AccentCheckBox.qml
         qml/components/AccentComboBox.qml
+        qml/components/PlaybackAdjustStrip.qml
+        qml/components/VolumeStrip.qml
         qml/components/SettingsTabButton.qml
         qml/components/SettingsTabBar.qml
         qml/components/SettingsSectionPage.qml
         qml/components/SettingsSearchResults.qml
+        qml/components/SelectableMessageDialog.qml
+        qml/components/TrackInfoOverlay.qml
+        qml/components/WaveformHoverTooltip.qml
+        qml/OpenUrlDialog.qml
+        qml/UpdateAvailableDialog.qml
         qml/components/AccentMenu.qml
         qml/components/AccentMenuItem.qml
         qml/components/AccentMenuSeparator.qml
@@ -329,6 +344,7 @@ endif()
 # Compiler definitions
 target_compile_definitions(waveflux PRIVATE
     $<$<CONFIG:Debug>:QT_QML_DEBUG>
+    WAVEFLUX_VERSION="${PROJECT_VERSION}"
     $<$<BOOL:${WAVEFLUX_ENABLE_DBUS_INTEGRATION}>:WAVEFLUX_ENABLE_DBUS_INTEGRATION>
 )
 
@@ -359,3 +375,12 @@ install(TARGETS waveflux
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/debian/waveflux.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+    )
+    install(FILES resources/icons/waveflux.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+    )
+endif()

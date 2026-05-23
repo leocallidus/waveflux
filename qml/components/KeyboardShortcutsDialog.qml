@@ -5,8 +5,8 @@ import QtQuick.Layouts
 Dialog {
     id: root
 
-    property var shortcutsModel: []
-    property var tableRows: []
+    readonly property int shortcutRevision: shortcutManager ? shortcutManager.revision : 0
+    readonly property var tableRows: buildTableRows()
 
     title: ""
     modal: true
@@ -23,8 +23,9 @@ Dialog {
     readonly property int contentPadding: compactLayout ? 12 : 16
     readonly property int rowVerticalPadding: compactLayout ? 6 : 8
     readonly property int sequenceColumnWidth: compactLayout ? 112 : 140
+    readonly property int defaultColumnWidth: compactLayout ? 112 : 140
     readonly property int contextColumnWidth: compactLayout ? 110 : 132
-    readonly property var groupOrder: ["playback", "navigation", "playlist", "profiler"]
+    readonly property var groupOrder: ["file", "playback", "navigation", "playlist", "library", "equalizer", "profiler", "help", "dialog"]
     readonly property color panelColor: themeManager.surfaceColor
     readonly property color frameColor: themeManager.borderColor
     readonly property color cardColor: Qt.rgba(themeManager.backgroundColor.r,
@@ -35,7 +36,7 @@ Dialog {
                                                      themeManager.borderColor.g,
                                                      themeManager.borderColor.b,
                                                      0.82)
-    
+
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
@@ -48,17 +49,71 @@ Dialog {
 
     function sectionTitle(sectionKey) {
         switch (sectionKey) {
+        case "file":
+            return root.tr("menu.file")
         case "playback":
             return root.tr("help.shortcutsGroupPlayback")
         case "navigation":
             return root.tr("help.shortcutsGroupNavigation")
         case "playlist":
             return root.tr("help.shortcutsGroupPlaylist")
+        case "library":
+            return root.tr("menu.library")
+        case "equalizer":
+            return root.tr("player.equalizer")
         case "profiler":
             return root.tr("help.shortcutsGroupProfiler")
+        case "help":
+            return root.tr("menu.help")
+        case "dialog":
+            return root.tr("help.shortcutsContextDialog")
         default:
             return root.tr("help.shortcutsDialogTitle")
         }
+    }
+
+    function contextTitle(contextKey) {
+        switch (String(contextKey || "")) {
+        case "application":
+            return root.tr("help.shortcutsContextGlobal")
+        case "window":
+            return root.tr("help.shortcutsContextMainWindow")
+        case "playlist":
+            return root.tr("help.shortcutsContextPlaylist")
+        case "dialog":
+            return root.tr("help.shortcutsContextDialog")
+        case "normal-skin":
+            return root.tr("settings.skinNormal")
+        case "compact-skin":
+            return root.tr("settings.skinCompact")
+        default:
+            return String(contextKey || "")
+        }
+    }
+
+    function actionTitle(row) {
+        const key = String(row && row.translationKey ? row.translationKey : "")
+        const translated = key.length > 0 ? root.tr(key) : ""
+        if (translated.length > 0 && translated !== key) {
+            return translated
+        }
+        return String(row && row.action ? row.action : row && row.id ? row.id : "")
+    }
+
+    function displaySequence(row) {
+        return String(row && row.displaySequence ? row.displaySequence : row && row.sequence ? row.sequence : "").trim()
+    }
+
+    function defaultDisplaySequence(row) {
+        return String(row && row.defaultDisplaySequence ? row.defaultDisplaySequence : "").trim()
+    }
+
+    function sourceRows() {
+        const _shortcutRevision = root.shortcutRevision
+        if (shortcutManager) {
+            return shortcutManager.shortcutRows()
+        }
+        return []
     }
 
     function buildTableRows() {
@@ -68,22 +123,26 @@ Dialog {
         }
         buckets.other = []
 
-        const source = shortcutsModel && shortcutsModel.length ? shortcutsModel : []
+        const source = sourceRows()
         for (let i = 0; i < source.length; ++i) {
             const row = source[i]
             if (!row) {
                 continue
             }
+            if (row.enabled === false) {
+                continue
+            }
 
             const group = String(row.group || "").trim().toLowerCase()
-            const actionText = String(row.action || "").trim()
-            let sequenceText = String(row.sequence || "").trim()
-            let contextText = String(row.context || "").trim()
+            const actionText = actionTitle(row).trim()
+            const sequenceText = displaySequence(row)
+            const defaultText = defaultDisplaySequence(row)
+            let contextText = row.context ? contextTitle(row.context) : String(row.context || "").trim()
             if (actionText.length === 0) {
                 continue
             }
             if (sequenceText.length === 0) {
-                sequenceText = "-"
+                continue
             }
             if (contextText.length === 0) {
                 contextText = root.tr("help.shortcutsContextGlobal")
@@ -91,6 +150,7 @@ Dialog {
             const normalized = {
                 action: actionText,
                 sequence: sequenceText,
+                defaultSequence: defaultText.length > 0 && defaultText !== sequenceText ? defaultText : "",
                 context: contextText
             }
 
@@ -116,6 +176,7 @@ Dialog {
                               kind: "entry",
                               action: buckets[key][j].action,
                               sequence: buckets[key][j].sequence,
+                              defaultSequence: buckets[key][j].defaultSequence,
                               context: buckets[key][j].context
                           })
             }
@@ -131,25 +192,13 @@ Dialog {
                               kind: "entry",
                               action: buckets.other[k].action,
                               sequence: buckets.other[k].sequence,
+                              defaultSequence: buckets.other[k].defaultSequence,
                               context: buckets.other[k].context
                           })
             }
         }
         return rows
     }
-
-    function rebuildRows() {
-        tableRows = buildTableRows()
-    }
-
-    onShortcutsModelChanged: rebuildRows()
-    onVisibleChanged: {
-        if (visible) {
-            rebuildRows()
-        }
-    }
-
-    Component.onCompleted: rebuildRows()
 
     width: root.parent
            ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
@@ -248,6 +297,16 @@ Dialog {
                     }
 
                     Label {
+                        Layout.preferredWidth: root.defaultColumnWidth
+                        text: root.tr("settings.shortcutDefault")
+                        horizontalAlignment: Text.AlignHCenter
+                        color: themeManager.primaryColor
+                        font.family: themeManager.fontFamily
+                        font.bold: true
+                        font.pixelSize: 11
+                    }
+
+                    Label {
                         Layout.preferredWidth: root.contextColumnWidth
                         text: root.tr("help.shortcutsColumnContext")
                         horizontalAlignment: Text.AlignLeft
@@ -278,7 +337,7 @@ Dialog {
                     width: ListView.view ? ListView.view.width : 0
                     implicitHeight: headerRow
                                     ? (headerLabel.implicitHeight + 10)
-                                    : Math.max(34, actionLabel.implicitHeight + root.rowVerticalPadding * 2)
+                                    : Math.max(40, actionLabel.implicitHeight + root.rowVerticalPadding * 2)
 
                     Label {
                         id: headerLabel
@@ -328,17 +387,31 @@ Dialog {
                                 Layout.preferredWidth: root.sequenceColumnWidth
                                 text: delegateRoot.row.sequence || "-"
                                 horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                                 color: text === "-"
                                        ? themeManager.textMutedColor
                                        : themeManager.primaryColor
                                 font.family: themeManager.monoFontFamily
                                 font.pixelSize: 11
                                 font.bold: true
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                Layout.preferredWidth: root.defaultColumnWidth
+                                text: String(delegateRoot.row.defaultSequence || "")
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                color: themeManager.textMutedColor
+                                font.family: themeManager.monoFontFamily
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
                             }
 
                             Label {
                                 Layout.preferredWidth: root.contextColumnWidth
                                 text: delegateRoot.row.context || root.tr("help.shortcutsContextGlobal")
+                                verticalAlignment: Text.AlignVCenter
                                 color: themeManager.textSecondaryColor
                                 font.family: themeManager.fontFamily
                                 font.pixelSize: 11

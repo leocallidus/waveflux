@@ -2,6 +2,7 @@ import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
 import "components"
 
 Dialog {
@@ -42,7 +43,7 @@ Dialog {
     readonly property color panelColor: themeManager.surfaceColor
     readonly property color cardColor: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.55)
     readonly property color cardBorderColor: Qt.rgba(themeManager.borderColor.r, themeManager.borderColor.g, themeManager.borderColor.b, 0.85)
-    readonly property var sectionOrder: ["appearance", "system", "audio", "waveform", "colors", "theme"]
+    readonly property var sectionOrder: ["appearance", "system", "audio", "waveform", "trackInfo", "colors", "shortcuts", "theme"]
     readonly property int preferredDialogWidth: 780
     readonly property int preferredDialogHeight: 700
     readonly property int minimumDialogWidth: appSettings.skinMode === "compact" ? 500 : 620
@@ -80,10 +81,21 @@ Dialog {
     property var ytDlpInspection: ({})
     property var ffmpegInspection: ({})
     property string pendingExecutablePickerTool: ""
+    property string shortcutSearchQuery: ""
+    property string shortcutGroupFilter: "all"
+    property string shortcutStatusText: ""
+    property string shortcutCaptureTargetId: ""
+    property string shortcutCaptureTargetLabel: ""
+    property bool shortcutCaptureTargetAllowEmpty: true
+    property string shortcutCaptureSequence: ""
+    property string pendingShortcutConflictId: ""
+    property string pendingShortcutConflictSequence: ""
+    property var pendingShortcutConflictReport: ({})
     readonly property string normalizedSettingsSearchQuery: String(settingsSearchQuery || "").trim().toLowerCase()
     readonly property bool hasSearchQuery: normalizedSettingsSearchQuery.length > 0
     readonly property string contentMode: hasSearchQuery ? searchResultsMode : normalSectionsMode
     readonly property int minimumInteractiveHeight: 34
+    readonly property int shortcutRevision: shortcutManager ? shortcutManager.revision : 0
 
     Settings {
         id: settingsDialogState
@@ -110,9 +122,26 @@ Dialog {
             icon: "",
             searchTermKeys: [
                 "settings.trayEnabled",
+                "settings.trayIconAlwaysVisible",
                 "settings.confirmTrashDeletion",
                 "settings.automaticPlaylistSearch",
                 "settings.autoAddTracksFromPlaylistFolder",
+                "settings.playlistScrollBarVisible",
+                "settings.playSearchResultsInOrder",
+                "settings.autoCheckUpdates",
+                "settings.includePrereleaseUpdates",
+                "settings.checkUpdatesNow",
+                "settings.lastUpdateCheck",
+                "settings.autoScrollToCurrentTrackOnStartup",
+                "settings.playExternalOpenWithoutPlaylist",
+                "settings.restorePlaybackPositionOnStartup",
+                "settings.restorePlaybackPausedOnStartup",
+                "settings.quitAfterPlaybackFinished",
+                "settings.keepAboveWhilePlaying",
+                "settings.alwaysKeepAbove",
+                "settings.keyboardSeekStepSeconds",
+                "settings.keyboardSeekBackwardToPreviousTrack",
+                "settings.factoryReset",
                 "settings.ytDlpExecutablePath",
                 "settings.ffmpegExecutablePath",
                 "settings.importRuntimeVersionPolicy"
@@ -128,6 +157,7 @@ Dialog {
                 "settings.speed",
                 "settings.showSpeedPitch",
                 "settings.audioQualityProfile",
+                "settings.displayVolumeInDecibels",
                 "settings.dynamicSpectrum"
             ]
         },
@@ -143,6 +173,23 @@ Dialog {
                 "settings.waveformCueOverlayEnabled"
             ]
         },
+        "trackInfo": {
+            id: "trackInfo",
+            titleKey: "settings.trackInfoSection",
+            descriptionKey: "settings.sectionTrackInfoDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.trackInfoEnabled",
+                "settings.trackInfoWaveformOverlayHoverOnly",
+                "settings.trackInfoWindowTitleFormat",
+                "settings.trackInfoTooltipFormat",
+                "settings.trackInfoOverlayFormats",
+                "settings.trackInfoSyntax",
+                "settings.trackInfoPreview",
+                "settings.trackInfoResetMinimal",
+                "settings.trackInfoClearAll"
+            ]
+        },
         "colors": {
             id: "colors",
             titleKey: "settings.colors",
@@ -150,8 +197,21 @@ Dialog {
             icon: "",
             searchTermKeys: [
                 "settings.waveformColor",
+                "settings.waveformBackgroundColor",
                 "settings.progressColor",
                 "settings.accentColor"
+            ]
+        },
+        "shortcuts": {
+            id: "shortcuts",
+            titleKey: "settings.shortcuts",
+            descriptionKey: "settings.sectionShortcutsDescription",
+            icon: "",
+            searchTermKeys: [
+                "settings.shortcuts",
+                "settings.shortcutSearch",
+                "settings.shortcutResetAll",
+                "settings.shortcutCapture"
             ]
         },
         "theme": {
@@ -214,11 +274,12 @@ Dialog {
         return items
     }
     readonly property int matchingSectionCount: matchingSections.length
-    readonly property var visibleTabSections: contentMode === searchResultsMode ? searchResultSections : sectionDefinitions
+    readonly property var visibleTabSections: (contentMode === searchResultsMode ? searchResultSections : sectionDefinitions) || []
     readonly property var activeSectionMetadata: sectionMetadata(activeSectionId)
     property string pendingResetAction: ""
     property string pendingResetTitle: ""
     property var pendingResetChanges: []
+    property string factoryResetErrorText: ""
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -285,7 +346,9 @@ Dialog {
             case "system": return "Система"
             case "audio": return "Аудио"
             case "waveform": return "Волна"
+            case "trackInfo": return "Трек"
             case "colors": return "Цвета"
+            case "shortcuts": return "Клавиши"
             case "theme": return "Тема"
             default: return sectionTitle(sectionId)
             }
@@ -296,7 +359,9 @@ Dialog {
         case "system": return "System"
         case "audio": return "Audio"
         case "waveform": return "Wave"
+        case "trackInfo": return "Track"
         case "colors": return "Colors"
+        case "shortcuts": return "Keys"
         case "theme": return "Theme"
         default: return sectionTitle(sectionId)
         }
@@ -323,6 +388,7 @@ Dialog {
         }
         appSettings.showSpeedPitchControls = false
         appSettings.audioQualityProfile = "standard"
+        appSettings.displayVolumeInDecibels = false
         appSettings.dynamicSpectrum = false
         appSettings.deterministicShuffleEnabled = false
         appSettings.shuffleSeed = 3303396001
@@ -338,6 +404,20 @@ Dialog {
         appSettings.cueWaveformOverlayAutoHideOnZoom = true
     }
 
+    function resetTrackInfoSettings() {
+        appSettings.trackInfoEnabled = true
+        appSettings.trackInfoWaveformOverlayHoverOnly = true
+        appSettings.trackInfoWindowTitleFormat = appSettings.defaultTrackInfoWindowTitleFormat()
+        appSettings.trackInfoWaveformTooltipFormat = appSettings.defaultTrackInfoWaveformTooltipFormat()
+        appSettings.trackInfoWaveformOverlayFormats = appSettings.defaultTrackInfoWaveformOverlayFormats()
+    }
+
+    function clearTrackInfoSettings() {
+        appSettings.trackInfoWindowTitleFormat = ""
+        appSettings.trackInfoWaveformTooltipFormat = ""
+        appSettings.trackInfoWaveformOverlayFormats = appSettings.emptyTrackInfoWaveformOverlayFormats()
+    }
+
     function resetAllSettings() {
         appSettings.language = "auto"
         appSettings.skinMode = "normal"
@@ -348,13 +428,28 @@ Dialog {
             sidebarSectionController.sidebarCollectionsSectionVisible = true
         }
         appSettings.trayEnabled = false
+        appSettings.trayIconAlwaysVisible = false
         appSettings.confirmTrashDeletion = true
         appSettings.automaticPlaylistSearch = false
         appSettings.autoAddTracksFromPlaylistFolder = true
+        appSettings.playlistScrollBarVisible = true
+        appSettings.playSearchResultsInOrder = false
+        appSettings.autoCheckUpdates = true
+        appSettings.includePrereleaseUpdates = false
+        appSettings.autoScrollToCurrentTrackOnStartup = true
+        appSettings.playExternalOpenWithoutPlaylist = false
+        appSettings.restorePlaybackPositionOnStartup = true
+        appSettings.restorePlaybackPausedOnStartup = false
+        appSettings.quitAfterPlaybackFinished = false
+        appSettings.keepAboveWhilePlaying = false
+        appSettings.alwaysKeepAbove = false
+        appSettings.keyboardSeekStepSeconds = 5
+        appSettings.keyboardSeekBackwardToPreviousTrack = false
         appSettings.ytDlpExecutablePath = ""
         appSettings.ffmpegExecutablePath = ""
         resetAudioSettings()
         resetWaveformSettings()
+        resetTrackInfoSettings()
         themeManager.resetToDefault()
         settingsSearchQuery = ""
         refreshImportToolInspections()
@@ -430,6 +525,70 @@ Dialog {
         return String(value || "")
     }
 
+    function trackInfoOverlayFormat(key) {
+        const formats = appSettings.trackInfoWaveformOverlayFormats || ({})
+        return String(formats[key] || "")
+    }
+
+    function setTrackInfoOverlayFormat(key, value) {
+        const formats = Object.assign({}, appSettings.trackInfoWaveformOverlayFormats || ({}))
+        formats[key] = String(value || "")
+        appSettings.trackInfoWaveformOverlayFormats = formats
+    }
+
+    function currentTrackInfoPreviewContext() {
+        let info = trackModel ? trackModel.currentTrackInfo() : ({})
+        if (!info) {
+            info = ({})
+        }
+        const hasModelTrack = info && Object.keys(info).length > 0
+        const currentFile = audioEngine ? String(audioEngine.currentFile || "") : ""
+        const currentDuration = audioEngine ? Number(audioEngine.duration || 0) : 0
+        if (!hasModelTrack && currentFile.length === 0 && currentDuration <= 0) {
+            return ({})
+        }
+        if ((!info.filePath || String(info.filePath).length === 0) && currentFile.length > 0) {
+            info.filePath = currentFile
+        }
+        info.positionMs = audioEngine ? audioEngine.position : 0
+        info.hoverPositionMs = info.positionMs
+        if ((!info.durationMs || Number(info.durationMs) <= 0) && currentDuration > 0) {
+            info.durationMs = currentDuration
+        }
+        if (info.playlistIndex === undefined && trackModel) {
+            info.playlistIndex = trackModel.currentIndex
+        }
+        if (info.playlistCount === undefined && trackModel) {
+            info.playlistCount = trackModel.count
+        }
+        if (info.playlistDurationMs === undefined && trackModel) {
+            info.playlistDurationMs = trackModel.playlistDuration
+        }
+        return info
+    }
+
+    function hasTrackInfoPreview() {
+        const info = currentTrackInfoPreviewContext()
+        return info && Object.keys(info).length > 0
+    }
+
+    function trackInfoPreview(format, contextName) {
+        const info = currentTrackInfoPreviewContext()
+        if (!info || Object.keys(info).length === 0) {
+            return ""
+        }
+        const rendered = appSettings.renderTrackInfoFormat(String(format || ""), info, contextName)
+        return rendered.length > 0 ? rendered : ""
+    }
+
+    function trackInfoWindowTitlePreview() {
+        const rendered = trackInfoPreview(appSettings.trackInfoWindowTitleFormat, "windowTitle")
+        if (rendered.length === 0) {
+            return ""
+        }
+        return rendered + " - " + root.tr("app.title")
+    }
+
     function compareToken(value) {
         if (value === undefined || value === null) {
             return ""
@@ -479,6 +638,9 @@ Dialog {
                           appSettings.audioQualityProfile, "standard",
                           localizedAudioQualityProfile(appSettings.audioQualityProfile),
                           localizedAudioQualityProfile("standard"))
+        appendResetChange(changes, root.tr("settings.displayVolumeInDecibels"),
+                          appSettings.displayVolumeInDecibels, false,
+                          localizedBoolean(appSettings.displayVolumeInDecibels), localizedBoolean(false))
         appendResetChange(changes, root.tr("settings.dynamicSpectrum"),
                           appSettings.dynamicSpectrum, false,
                           localizedBoolean(appSettings.dynamicSpectrum), localizedBoolean(false))
@@ -517,11 +679,35 @@ Dialog {
         return changes
     }
 
+    function buildTrackInfoResetChanges() {
+        const changes = []
+        appendResetChange(changes, root.tr("settings.trackInfoEnabled"),
+                          appSettings.trackInfoEnabled, true,
+                          localizedBoolean(appSettings.trackInfoEnabled), localizedBoolean(true))
+        appendResetChange(changes, root.tr("settings.trackInfoWaveformOverlayHoverOnly"),
+                          appSettings.trackInfoWaveformOverlayHoverOnly, true,
+                          localizedBoolean(appSettings.trackInfoWaveformOverlayHoverOnly), localizedBoolean(true))
+        appendResetChange(changes, root.tr("settings.trackInfoWindowTitleFormat"),
+                          appSettings.trackInfoWindowTitleFormat, appSettings.defaultTrackInfoWindowTitleFormat(),
+                          appSettings.trackInfoWindowTitleFormat, appSettings.defaultTrackInfoWindowTitleFormat())
+        appendResetChange(changes, root.tr("settings.trackInfoTooltipFormat"),
+                          appSettings.trackInfoWaveformTooltipFormat, appSettings.defaultTrackInfoWaveformTooltipFormat(),
+                          appSettings.trackInfoWaveformTooltipFormat, appSettings.defaultTrackInfoWaveformTooltipFormat())
+        appendResetChange(changes, root.tr("settings.trackInfoOverlayFormats"),
+                          JSON.stringify(appSettings.trackInfoWaveformOverlayFormats || ({})),
+                          JSON.stringify(appSettings.defaultTrackInfoWaveformOverlayFormats()),
+                          root.tr("settings.trackInfoOverlayFormats"),
+                          root.tr("settings.trackInfoResetMinimal"))
+        return changes
+    }
+
     function buildThemeResetChanges() {
         const changes = []
         const systemDefaultText = root.tr("settings.valueSystemDefault")
         appendForcedResetChange(changes, root.tr("settings.waveformColor"),
                                 formatColor(themeManager.waveformColor), systemDefaultText)
+        appendForcedResetChange(changes, root.tr("settings.waveformBackgroundColor"),
+                                formatColor(themeManager.waveformBackgroundColor), systemDefaultText)
         appendForcedResetChange(changes, root.tr("settings.progressColor"),
                                 formatColor(themeManager.progressColor), systemDefaultText)
         appendForcedResetChange(changes, root.tr("settings.accentColor"),
@@ -535,6 +721,8 @@ Dialog {
             return buildAudioResetChanges()
         case "waveform":
             return buildWaveformResetChanges()
+        case "trackInfo":
+            return buildTrackInfoResetChanges()
         case "theme":
             return buildThemeResetChanges()
         case "all": {
@@ -562,6 +750,9 @@ Dialog {
             appendResetChange(changes, root.tr("settings.trayEnabled"),
                               appSettings.trayEnabled, false,
                               localizedBoolean(appSettings.trayEnabled), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.trayIconAlwaysVisible"),
+                              appSettings.trayIconAlwaysVisible, false,
+                              localizedBoolean(appSettings.trayIconAlwaysVisible), localizedBoolean(false))
             appendResetChange(changes, root.tr("settings.confirmTrashDeletion"),
                               appSettings.confirmTrashDeletion, true,
                               localizedBoolean(appSettings.confirmTrashDeletion), localizedBoolean(true))
@@ -571,6 +762,46 @@ Dialog {
             appendResetChange(changes, root.tr("settings.autoAddTracksFromPlaylistFolder"),
                               appSettings.autoAddTracksFromPlaylistFolder, true,
                               localizedBoolean(appSettings.autoAddTracksFromPlaylistFolder), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.playlistScrollBarVisible"),
+                              appSettings.playlistScrollBarVisible, true,
+                              localizedBoolean(appSettings.playlistScrollBarVisible), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.playSearchResultsInOrder"),
+                              appSettings.playSearchResultsInOrder, false,
+                              localizedBoolean(appSettings.playSearchResultsInOrder), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.autoCheckUpdates"),
+                              appSettings.autoCheckUpdates, true,
+                              localizedBoolean(appSettings.autoCheckUpdates), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.includePrereleaseUpdates"),
+                              appSettings.includePrereleaseUpdates, false,
+                              localizedBoolean(appSettings.includePrereleaseUpdates), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.autoScrollToCurrentTrackOnStartup"),
+                              appSettings.autoScrollToCurrentTrackOnStartup, true,
+                              localizedBoolean(appSettings.autoScrollToCurrentTrackOnStartup), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.playExternalOpenWithoutPlaylist"),
+                              appSettings.playExternalOpenWithoutPlaylist, false,
+                              localizedBoolean(appSettings.playExternalOpenWithoutPlaylist), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.restorePlaybackPositionOnStartup"),
+                              appSettings.restorePlaybackPositionOnStartup, true,
+                              localizedBoolean(appSettings.restorePlaybackPositionOnStartup), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.restorePlaybackPausedOnStartup"),
+                              appSettings.restorePlaybackPausedOnStartup, false,
+                              localizedBoolean(appSettings.restorePlaybackPausedOnStartup), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.quitAfterPlaybackFinished"),
+                              appSettings.quitAfterPlaybackFinished, false,
+                              localizedBoolean(appSettings.quitAfterPlaybackFinished), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.keepAboveWhilePlaying"),
+                              appSettings.keepAboveWhilePlaying, false,
+                              localizedBoolean(appSettings.keepAboveWhilePlaying), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.alwaysKeepAbove"),
+                              appSettings.alwaysKeepAbove, false,
+                              localizedBoolean(appSettings.alwaysKeepAbove), localizedBoolean(false))
+            appendResetChange(changes, root.tr("settings.keyboardSeekStepSeconds"),
+                              appSettings.keyboardSeekStepSeconds, 5,
+                              appSettings.keyboardSeekStepSeconds + "s", "5s")
+            appendResetChange(changes, root.tr("settings.keyboardSeekBackwardToPreviousTrack"),
+                              appSettings.keyboardSeekBackwardToPreviousTrack, false,
+                              localizedBoolean(appSettings.keyboardSeekBackwardToPreviousTrack),
+                              localizedBoolean(false))
             appendResetChange(changes, root.tr("settings.ytDlpExecutablePath"),
                               appSettings.ytDlpExecutablePath, "",
                               appSettings.ytDlpExecutablePath || root.tr("settings.valueSystemDefault"),
@@ -587,9 +818,13 @@ Dialog {
             for (let j = 0; j < waveformChanges.length; ++j) {
                 changes.push(waveformChanges[j])
             }
+            const trackInfoChanges = buildTrackInfoResetChanges()
+            for (let k = 0; k < trackInfoChanges.length; ++k) {
+                changes.push(trackInfoChanges[k])
+            }
             const themeChanges = buildThemeResetChanges()
-            for (let k = 0; k < themeChanges.length; ++k) {
-                changes.push(themeChanges[k])
+            for (let m = 0; m < themeChanges.length; ++m) {
+                changes.push(themeChanges[m])
             }
             return changes
         }
@@ -602,6 +837,7 @@ Dialog {
         switch (action) {
         case "audio": return root.tr("settings.resetConfirmTitleAudio")
         case "waveform": return root.tr("settings.resetConfirmTitleWaveform")
+        case "trackInfo": return root.tr("settings.resetConfirmTitleTrackInfo")
         case "all": return root.tr("settings.resetConfirmTitleAll")
         case "theme": return root.tr("settings.resetConfirmTitleTheme")
         default: return root.tr("settings.reset")
@@ -623,6 +859,9 @@ Dialog {
         case "waveform":
             resetWaveformSettings()
             break
+        case "trackInfo":
+            resetTrackInfoSettings()
+            break
         case "all":
             resetAllSettings()
             break
@@ -639,6 +878,55 @@ Dialog {
         pendingResetAction = ""
         pendingResetTitle = ""
         pendingResetChanges = []
+    }
+
+    function openAnchoredMenu(menu, sourceButton) {
+        if (!menu || !sourceButton) {
+            return
+        }
+
+        const popupWidth = Math.max(menu.implicitWidth || 0, menu.width || 0)
+        const popupHeight = Math.max(menu.implicitHeight || 0, menu.height || 0)
+        const overlay = sourceButton.Overlay.overlay
+        if (!overlay) {
+            menu.open()
+            return
+        }
+        menu.parent = overlay
+        const anchorPoint = sourceButton.mapToItem(overlay, 0, sourceButton.height)
+        const availableWidth = Math.max(1, overlay.width)
+        const availableHeight = Math.max(1, overlay.height)
+        menu.x = Math.max(0,
+                          Math.min(availableWidth - popupWidth,
+                                   Math.round(anchorPoint.x + sourceButton.width - popupWidth)))
+        menu.y = Math.max(0,
+                          Math.min(availableHeight - popupHeight,
+                                   Math.round(anchorPoint.y + 2)))
+        menu.open()
+    }
+
+    function requestFactoryReset() {
+        factoryResetErrorText = ""
+        factoryResetDialog.open()
+    }
+
+    function applyFactoryReset() {
+        factoryResetErrorText = ""
+        if (audioEngine) {
+            audioEngine.stop()
+        }
+
+        const result = appSettings.performFullApplicationReset()
+        if (!result || !result.ok) {
+            const failedPaths = result && result.failedPaths ? result.failedPaths : []
+            factoryResetErrorText = root.tr("settings.factoryResetFailed")
+            if (failedPaths.length > 0) {
+                factoryResetErrorText += "\n" + failedPaths.join("\n")
+            }
+            return
+        }
+
+        Qt.quit()
     }
 
     function matchesSearchText(text) {
@@ -659,6 +947,219 @@ Dialog {
             }
         }
         return false
+    }
+
+    function lastUpdateCheckText() {
+        const value = appSettings.lastUpdateCheckAt
+        if (!value || !value.getTime || isNaN(value.getTime())) {
+            return root.tr("settings.lastUpdateCheckNever")
+        }
+        return Qt.formatDateTime(value, Qt.DefaultLocaleShortDate)
+    }
+
+    function shortcutGroupOptions() {
+        return [
+            { value: "all", label: root.tr("settings.shortcutGroupAll") },
+            { value: "file", label: root.tr("menu.file") },
+            { value: "playlist", label: root.tr("help.shortcutsGroupPlaylist") },
+            { value: "navigation", label: root.tr("help.shortcutsGroupNavigation") },
+            { value: "playback", label: root.tr("help.shortcutsGroupPlayback") },
+            { value: "library", label: root.tr("menu.library") },
+            { value: "equalizer", label: root.tr("player.equalizer") },
+            { value: "profiler", label: root.tr("profiler.title") },
+            { value: "help", label: root.tr("menu.help") },
+            { value: "dialog", label: root.tr("help.shortcutsContextDialog") }
+        ]
+    }
+
+    function shortcutGroupLabel(group) {
+        const options = shortcutGroupOptions()
+        for (let i = 0; i < options.length; ++i) {
+            if (options[i].value === group) {
+                return options[i].label
+            }
+        }
+        return group
+    }
+
+    function shortcutContextLabel(context) {
+        switch (String(context || "")) {
+        case "application": return root.tr("help.shortcutsContextGlobal")
+        case "window": return root.tr("help.shortcutsContextMainWindow")
+        case "playlist": return root.tr("help.shortcutsContextPlaylist")
+        case "dialog": return root.tr("help.shortcutsContextDialog")
+        case "normal-skin": return root.tr("settings.skinNormal")
+        case "compact-skin": return root.tr("settings.skinCompact")
+        default: return String(context || "")
+        }
+    }
+
+    function shortcutActionLabel(row) {
+        const key = String(row && row.translationKey ? row.translationKey : "")
+        const translated = key.length > 0 ? root.tr(key) : ""
+        if (translated.length > 0 && translated !== key) {
+            return translated
+        }
+        return String(row && row.id ? row.id : "")
+    }
+
+    function shortcutSequenceLabel(row) {
+        const text = String(row && row.displaySequence ? row.displaySequence : "")
+        return text.length > 0 ? text : root.tr("settings.shortcutUnassigned")
+    }
+
+    function shortcutDefaultLabel(row) {
+        const text = String(row && row.defaultDisplaySequence ? row.defaultDisplaySequence : "")
+        return text.length > 0 ? text : root.tr("settings.shortcutUnassigned")
+    }
+
+    function shortcutRows() {
+        return shortcutManager ? shortcutManager.shortcutRows() : []
+    }
+
+    function filteredShortcutRows() {
+        const _shortcutRevision = root.shortcutRevision
+        const rows = shortcutRows()
+        const query = shortcutSearchQuery.trim().toLowerCase()
+        const group = shortcutGroupFilter
+        const filtered = []
+        for (let i = 0; i < rows.length; ++i) {
+            const row = rows[i]
+            if (group !== "all" && row.group !== group) {
+                continue
+            }
+            if (query.length > 0) {
+                const haystack = [
+                    row.id,
+                    shortcutActionLabel(row),
+                    shortcutSequenceLabel(row),
+                    shortcutDefaultLabel(row),
+                    shortcutGroupLabel(row.group),
+                    shortcutContextLabel(row.context)
+                ].join(" ").toLowerCase()
+                if (haystack.indexOf(query) < 0) {
+                    continue
+                }
+            }
+            filtered.push(row)
+        }
+        return filtered
+    }
+
+    function shortcutKeyName(key, text) {
+        if (key >= Qt.Key_A && key <= Qt.Key_Z) {
+            return String.fromCharCode("A".charCodeAt(0) + key - Qt.Key_A)
+        }
+        if (key >= Qt.Key_0 && key <= Qt.Key_9) {
+            return String.fromCharCode("0".charCodeAt(0) + key - Qt.Key_0)
+        }
+        if (key >= Qt.Key_F1 && key <= Qt.Key_F35) {
+            return "F" + (key - Qt.Key_F1 + 1)
+        }
+        switch (key) {
+        case Qt.Key_Space: return "Space"
+        case Qt.Key_Backspace: return "Backspace"
+        case Qt.Key_Delete: return "Delete"
+        case Qt.Key_Escape: return "Escape"
+        case Qt.Key_Left: return "Left"
+        case Qt.Key_Right: return "Right"
+        case Qt.Key_Up: return "Up"
+        case Qt.Key_Down: return "Down"
+        case Qt.Key_Home: return "Home"
+        case Qt.Key_End: return "End"
+        case Qt.Key_PageUp: return "PgUp"
+        case Qt.Key_PageDown: return "PgDown"
+        case Qt.Key_Tab: return "Tab"
+        case Qt.Key_Return:
+        case Qt.Key_Enter: return "Return"
+        case Qt.Key_Minus: return "-"
+        case Qt.Key_Equal: return "="
+        case Qt.Key_BracketLeft: return "["
+        case Qt.Key_BracketRight: return "]"
+        case Qt.Key_Slash: return "/"
+        case Qt.Key_Backslash: return "\\"
+        case Qt.Key_Comma: return ","
+        case Qt.Key_Period: return "."
+        case Qt.Key_Semicolon: return ";"
+        case Qt.Key_Apostrophe: return "'"
+        case Qt.Key_Plus: return "+"
+        default:
+            if (text && text.length === 1 && text.charCodeAt(0) >= 33) {
+                return text.toUpperCase()
+            }
+            return ""
+        }
+    }
+
+    function shortcutEventSequence(event) {
+        const keyName = shortcutKeyName(event.key, event.text)
+        if (keyName.length === 0) {
+            return ""
+        }
+        const parts = []
+        if ((event.modifiers & Qt.ControlModifier) !== 0) parts.push("Ctrl")
+        if ((event.modifiers & Qt.AltModifier) !== 0) parts.push("Alt")
+        if ((event.modifiers & Qt.ShiftModifier) !== 0) parts.push("Shift")
+        if ((event.modifiers & Qt.MetaModifier) !== 0) parts.push("Meta")
+        parts.push(keyName)
+        return parts.join("+")
+    }
+
+    function beginShortcutCapture(row) {
+        shortcutCaptureTargetId = row.id
+        shortcutCaptureTargetLabel = shortcutActionLabel(row)
+        shortcutCaptureTargetAllowEmpty = !!row.allowEmpty
+        shortcutCaptureSequence = ""
+        shortcutCaptureDialog.open()
+    }
+
+    function applyShortcutSequence(id, sequence) {
+        shortcutStatusText = ""
+        const report = shortcutManager.conflictReportForSequence(id, sequence)
+        if (!report.ok) {
+            shortcutStatusText = shortcutErrorStatus(report.reason)
+            return
+        }
+        if (report.hasConflicts) {
+            pendingShortcutConflictId = id
+            pendingShortcutConflictSequence = sequence
+            pendingShortcutConflictReport = report
+            shortcutConflictDialog.open()
+            return
+        }
+        if (!shortcutManager.setCustomSequence(id, sequence)) {
+            shortcutStatusText = shortcutErrorStatus(shortcutManager.lastError)
+        } else {
+            shortcutStatusText = root.tr("settings.shortcutStatusReset")
+        }
+    }
+
+    function clearShortcut(id) {
+        if (!shortcutManager.clearCustomSequence(id)) {
+            shortcutStatusText = shortcutErrorStatus(shortcutManager.lastError)
+        } else {
+            shortcutStatusText = root.tr("settings.shortcutStatusReset")
+        }
+    }
+
+    function shortcutErrorText(reason) {
+        switch (String(reason || "")) {
+        case "unknown-id": return root.tr("settings.shortcutValidationUnknownId")
+        case "not-assignable": return root.tr("settings.shortcutValidationNotAssignable")
+        case "empty-not-allowed": return root.tr("settings.shortcutValidationEmptyNotAllowed")
+        case "invalid-sequence": return root.tr("settings.shortcutValidationInvalid")
+        case "reserved-sequence": return root.tr("settings.shortcutValidationReserved")
+        case "conflict": return root.tr("settings.shortcutValidationConflict")
+        case "non-replaceable-conflict": return root.tr("settings.shortcutValidationNonReplaceableConflict")
+        case "replace-failed": return root.tr("settings.shortcutValidationReplaceFailed")
+        case "unknown-group": return root.tr("settings.shortcutValidationUnknownGroup")
+        default:
+            return root.tr("settings.shortcutValidationUnknown")
+        }
+    }
+
+    function shortcutErrorStatus(reason) {
+        return root.tr("settings.shortcutError") + ": " + shortcutErrorText(reason)
     }
 
     function escapeHtml(value) {
@@ -772,14 +1273,32 @@ Dialog {
                     || (sidebarCollectionsSectionVisibleRow && sidebarCollectionsSectionVisibleRow.visible)
         case "system":
             return (trayEnabledRow && trayEnabledRow.visible)
+                    || (trayIconAlwaysVisibleRow && trayIconAlwaysVisibleRow.visible)
                     || (confirmTrashDeletionRow && confirmTrashDeletionRow.visible)
                     || (automaticPlaylistSearchRow && automaticPlaylistSearchRow.visible)
                     || (autoAddTracksFromPlaylistFolderRow && autoAddTracksFromPlaylistFolderRow.visible)
+                    || (playlistScrollBarVisibleRow && playlistScrollBarVisibleRow.visible)
+                    || (playSearchResultsInOrderRow && playSearchResultsInOrderRow.visible)
+                    || (autoCheckUpdatesRow && autoCheckUpdatesRow.visible)
+                    || (includePrereleaseUpdatesRow && includePrereleaseUpdatesRow.visible)
+                    || (checkUpdatesNowRow && checkUpdatesNowRow.visible)
+                    || (lastUpdateCheckRow && lastUpdateCheckRow.visible)
+                    || (autoScrollToCurrentTrackOnStartupRow && autoScrollToCurrentTrackOnStartupRow.visible)
+                    || (playExternalOpenWithoutPlaylistRow && playExternalOpenWithoutPlaylistRow.visible)
+                    || (restorePlaybackPositionOnStartupRow && restorePlaybackPositionOnStartupRow.visible)
+                    || (restorePlaybackPausedOnStartupRow && restorePlaybackPausedOnStartupRow.visible)
+                    || (quitAfterPlaybackFinishedRow && quitAfterPlaybackFinishedRow.visible)
+                    || (keepAboveWhilePlayingRow && keepAboveWhilePlayingRow.visible)
+                    || (alwaysKeepAboveRow && alwaysKeepAboveRow.visible)
+                    || (keyboardSeekStepRow && keyboardSeekStepRow.visible)
+                    || (keyboardSeekBackwardToPreviousTrackRow && keyboardSeekBackwardToPreviousTrackRow.visible)
+                    || (factoryResetRow && factoryResetRow.visible)
         case "audio":
             return (pitchRow && pitchRow.visible)
                     || (speedRow && speedRow.visible)
                     || (showSpeedPitchRow && showSpeedPitchRow.visible)
                     || (audioQualityProfileRow && audioQualityProfileRow.visible)
+                    || (displayVolumeInDecibelsRow && displayVolumeInDecibelsRow.visible)
                     || (dynamicSpectrumRow && dynamicSpectrumRow.visible)
                     || (deterministicShuffleRow && deterministicShuffleRow.visible)
                     || (shuffleSeedRow && shuffleSeedRow.visible)
@@ -791,10 +1310,26 @@ Dialog {
                     || (waveformCueOverlayRow && waveformCueOverlayRow.visible)
                     || (waveformCueLabelsRow && waveformCueLabelsRow.visible)
                     || (waveformCueAutoHideRow && waveformCueAutoHideRow.visible)
+        case "trackInfo":
+            return (trackInfoEnabledRow && trackInfoEnabledRow.visible)
+                    || (trackInfoOverlayHoverOnlyRow && trackInfoOverlayHoverOnlyRow.visible)
+                    || (trackInfoWindowTitleRow && trackInfoWindowTitleRow.visible)
+                    || (trackInfoTooltipRow && trackInfoTooltipRow.visible)
+                    || (trackInfoOverlaySection && trackInfoOverlaySection.visible)
+                    || (trackInfoSyntaxSection && trackInfoSyntaxSection.visible)
+                    || (trackInfoPreviewSection && trackInfoPreviewSection.visible)
+                    || (trackInfoResetRow && trackInfoResetRow.visible)
         case "colors":
             return (waveformColorRow && waveformColorRow.visible)
+                    || (waveformBackgroundColorRow && waveformBackgroundColorRow.visible)
                     || (progressColorRow && progressColorRow.visible)
                     || (accentColorRow && accentColorRow.visible)
+        case "shortcuts":
+            return matchesAny([root.tr("settings.shortcuts"),
+                               root.tr("settings.sectionShortcutsDescription"),
+                               root.tr("settings.shortcutSearch"),
+                               root.tr("settings.shortcutResetAll"),
+                               root.tr("settings.shortcutCapture")])
         case "theme":
             return (themeResetRow && themeResetRow.visible)
         default:
@@ -844,6 +1379,7 @@ Dialog {
         case "audio": return audioCard
         case "waveform": return waveformCard
         case "colors": return colorsCard
+        case "shortcuts": return shortcutsCard
         case "theme": return themeCard
         default: return null
         }
@@ -1050,7 +1586,7 @@ Dialog {
                             Layout.minimumHeight: root.minimumInteractiveHeight
                             activeFocusOnTab: true
                             Accessible.name: text
-                            onClicked: quickActionsMenu.open()
+                            onClicked: root.openAnchoredMenu(quickActionsMenu, quickActionsButton)
                         }
 
                         AccentMenu {
@@ -1064,6 +1600,11 @@ Dialog {
                             AccentMenuItem {
                                 text: root.tr("settings.quickResetWaveform")
                                 onTriggered: root.requestReset("waveform")
+                            }
+
+                            AccentMenuItem {
+                                text: root.tr("settings.quickResetTrackInfo")
+                                onTriggered: root.requestReset("trackInfo")
                             }
 
                             AccentMenuItem {
@@ -1147,26 +1688,33 @@ Dialog {
         id: scrollView
         clip: true
         padding: root.dialogContentPadding
+        rightPadding: root.dialogContentPadding + 12
 
         ScrollBar.vertical: ScrollBar {
             id: settingsScrollBar
-            width: 6
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            z: 200
+            width: 8
             padding: 0
-            policy: ScrollBar.AsNeeded
+            policy: ScrollBar.AlwaysOn
 
             background: Rectangle {
-                implicitWidth: 6
-                radius: 3
-                color: themeManager.backgroundColor
+                implicitWidth: 8
+                radius: 4
+                color: Qt.rgba(themeManager.surfaceColor.r,
+                               themeManager.surfaceColor.g,
+                               themeManager.surfaceColor.b,
+                               0.55)
             }
 
             contentItem: Rectangle {
-                implicitWidth: 6
+                implicitWidth: 8
                 implicitHeight: 80
-                radius: 3
-                color: themeManager.borderColor
-                opacity: settingsScrollBar.policy === ScrollBar.AlwaysOn
-                         || (settingsScrollBar.active && settingsScrollBar.size < 1.0) ? 1.0 : 0.72
+                radius: 4
+                color: themeManager.primaryColor
+                opacity: 0.88
 
                 Behavior on opacity {
                     NumberAnimation { duration: 120 }
@@ -1416,6 +1964,26 @@ Dialog {
                     }
 
                     SettingToggleRow {
+                        id: trayIconAlwaysVisibleRow
+                        title: root.tr("settings.trayIconAlwaysVisible")
+                        checked: appSettings.trayIconAlwaysVisible
+                        rowEnabled: trayManager.available
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.trayIconAlwaysVisibleDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.trayIconAlwaysVisible = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.trayIconAlwaysVisibleDescription")
+                        rowEnabled: trayManager.available
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: trayIconAlwaysVisibleRow.visible
+                    }
+
+                    SettingToggleRow {
                         id: confirmTrashDeletionRow
                         title: root.tr("settings.confirmTrashDeletion")
                         checked: appSettings.confirmTrashDeletion
@@ -1467,6 +2035,332 @@ Dialog {
                         text: root.tr("settings.autoAddTracksFromPlaylistFolderDescription")
                         searchQuery: root.settingsSearchQuery
                         forceVisible: autoAddTracksFromPlaylistFolderRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: playlistScrollBarVisibleRow
+                        title: root.tr("settings.playlistScrollBarVisible")
+                        checked: appSettings.playlistScrollBarVisible
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.playlistScrollBarVisibleDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.playlistScrollBarVisible = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.playlistScrollBarVisibleDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: playlistScrollBarVisibleRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: playSearchResultsInOrderRow
+                        title: root.tr("settings.playSearchResultsInOrder")
+                        checked: appSettings.playSearchResultsInOrder
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.playSearchResultsInOrderDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.playSearchResultsInOrder = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.playSearchResultsInOrderDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: playSearchResultsInOrderRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: autoCheckUpdatesRow
+                        title: root.tr("settings.autoCheckUpdates")
+                        checked: appSettings.autoCheckUpdates
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.autoCheckUpdatesDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.autoCheckUpdates = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.autoCheckUpdatesDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: autoCheckUpdatesRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: includePrereleaseUpdatesRow
+                        title: root.tr("settings.includePrereleaseUpdates")
+                        checked: appSettings.includePrereleaseUpdates
+                        rowEnabled: appSettings.autoCheckUpdates
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.includePrereleaseUpdatesDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.includePrereleaseUpdates = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.includePrereleaseUpdatesDescription")
+                        rowEnabled: appSettings.autoCheckUpdates
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: includePrereleaseUpdatesRow.visible
+                    }
+
+                    RowLayout {
+                        id: checkUpdatesNowRow
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: 38
+                        spacing: 10
+                        visible: root.matchesAny([
+                            root.tr("settings.checkUpdatesNow"),
+                            root.tr("settings.checkUpdatesNowDescription")
+                        ])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.highlightedSearchText(root.tr("settings.checkUpdatesNowDescription"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Button {
+                            text: root.tr("settings.checkUpdatesNow")
+                            enabled: updateChecker && !updateChecker.checking
+                            implicitHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            Accessible.name: text
+                            Accessible.description: root.tr("settings.checkUpdatesNowDescription")
+                            onClicked: updateChecker.checkNow(true)
+                        }
+                    }
+
+                    SettingHintText {
+                        id: lastUpdateCheckRow
+                        text: root.tr("settings.lastUpdateCheck") + ": " + root.lastUpdateCheckText()
+                        searchQuery: root.settingsSearchQuery
+                        searchableText: root.tr("settings.lastUpdateCheck") + " "
+                                        + root.tr("settings.lastUpdateCheckNever") + " "
+                                        + root.lastUpdateCheckText()
+                    }
+
+                    SettingToggleRow {
+                        id: autoScrollToCurrentTrackOnStartupRow
+                        title: root.tr("settings.autoScrollToCurrentTrackOnStartup")
+                        checked: appSettings.autoScrollToCurrentTrackOnStartup
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.autoScrollToCurrentTrackOnStartupDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.autoScrollToCurrentTrackOnStartup = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.autoScrollToCurrentTrackOnStartupDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: autoScrollToCurrentTrackOnStartupRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: playExternalOpenWithoutPlaylistRow
+                        title: root.tr("settings.playExternalOpenWithoutPlaylist")
+                        checked: appSettings.playExternalOpenWithoutPlaylist
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.playExternalOpenWithoutPlaylistDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.playExternalOpenWithoutPlaylist = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.playExternalOpenWithoutPlaylistDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: playExternalOpenWithoutPlaylistRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: restorePlaybackPositionOnStartupRow
+                        title: root.tr("settings.restorePlaybackPositionOnStartup")
+                        checked: appSettings.restorePlaybackPositionOnStartup
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.restorePlaybackPositionOnStartupDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.restorePlaybackPositionOnStartup = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.restorePlaybackPositionOnStartupDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: restorePlaybackPositionOnStartupRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: restorePlaybackPausedOnStartupRow
+                        title: root.tr("settings.restorePlaybackPausedOnStartup")
+                        checked: appSettings.restorePlaybackPausedOnStartup
+                        rowEnabled: appSettings.restorePlaybackPositionOnStartup
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.restorePlaybackPausedOnStartupDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.restorePlaybackPausedOnStartup = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.restorePlaybackPausedOnStartupDescription")
+                        rowEnabled: appSettings.restorePlaybackPositionOnStartup
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: restorePlaybackPausedOnStartupRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: quitAfterPlaybackFinishedRow
+                        title: root.tr("settings.quitAfterPlaybackFinished")
+                        checked: appSettings.quitAfterPlaybackFinished
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.quitAfterPlaybackFinishedDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.quitAfterPlaybackFinished = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.quitAfterPlaybackFinishedDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: quitAfterPlaybackFinishedRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: keepAboveWhilePlayingRow
+                        title: root.tr("settings.keepAboveWhilePlaying")
+                        checked: appSettings.keepAboveWhilePlaying
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.keepAboveWhilePlayingDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.keepAboveWhilePlaying = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.keepAboveWhilePlayingDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: keepAboveWhilePlayingRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: alwaysKeepAboveRow
+                        title: root.tr("settings.alwaysKeepAbove")
+                        checked: appSettings.alwaysKeepAbove
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.alwaysKeepAboveDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.alwaysKeepAbove = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.alwaysKeepAboveDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: alwaysKeepAboveRow.visible
+                    }
+
+                    SettingSliderRow {
+                        id: keyboardSeekStepRow
+                        title: root.tr("settings.keyboardSeekStepSeconds")
+                        from: 1
+                        to: 60
+                        stepSize: 1
+                        value: appSettings.keyboardSeekStepSeconds
+                        valueText: appSettings.keyboardSeekStepSeconds + "s"
+                        valueLabelWidth: 46
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.keyboardSeekStepSecondsDescription")
+
+                        onMoved: function(value) {
+                            appSettings.keyboardSeekStepSeconds = Math.round(value)
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.keyboardSeekStepSecondsDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: keyboardSeekStepRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: keyboardSeekBackwardToPreviousTrackRow
+                        title: root.tr("settings.keyboardSeekBackwardToPreviousTrack")
+                        checked: appSettings.keyboardSeekBackwardToPreviousTrack
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.keyboardSeekBackwardToPreviousTrackDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.keyboardSeekBackwardToPreviousTrack = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.keyboardSeekBackwardToPreviousTrackDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: keyboardSeekBackwardToPreviousTrackRow.visible
+                    }
+
+                    RowLayout {
+                        id: factoryResetRow
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: 44
+                        spacing: 10
+                        visible: root.matchesAny([root.tr("settings.factoryReset"),
+                                                  root.tr("settings.factoryResetDescription")])
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.highlightedSearchText(root.tr("settings.factoryReset"))
+                                textFormat: Text.StyledText
+                                color: themeManager.textColor
+                                font.family: themeManager.fontFamily
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.highlightedSearchText(root.tr("settings.factoryResetDescription"))
+                                textFormat: Text.StyledText
+                                color: themeManager.textMutedColor
+                                font.family: themeManager.fontFamily
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        Button {
+                            text: root.tr("settings.factoryReset")
+                            implicitHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            Accessible.name: text
+                            onClicked: root.requestFactoryReset()
+                        }
                     }
 
                     RowLayout {
@@ -1894,6 +2788,24 @@ Dialog {
                     }
 
                     SettingToggleRow {
+                        id: displayVolumeInDecibelsRow
+                        title: root.tr("settings.displayVolumeInDecibels")
+                        checked: appSettings.displayVolumeInDecibels
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.displayVolumeInDecibelsDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.displayVolumeInDecibels = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.displayVolumeInDecibelsDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: displayVolumeInDecibelsRow.visible
+                    }
+
+                    SettingToggleRow {
                         id: dynamicSpectrumRow
                         title: root.tr("settings.dynamicSpectrum")
                         checked: appSettings.dynamicSpectrum
@@ -2193,6 +3105,397 @@ Dialog {
             }
 
             SettingsSectionPage {
+                id: trackInfoCard
+                width: parent.width
+                visible: root.sectionVisibleInCurrentMode("trackInfo")
+                title: root.tr("settings.trackInfoSection").toUpperCase()
+                description: root.tr("settings.sectionTrackInfoDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
+
+                    readonly property bool narrowEditor: root.width < 700
+                    readonly property var overlayCells: [
+                        { key: "topLeft", label: root.tr("settings.trackInfoTop") + " / " + root.tr("settings.trackInfoLeft"), row: root.tr("settings.trackInfoTop"), column: root.tr("settings.trackInfoLeft") },
+                        { key: "topCenter", label: root.tr("settings.trackInfoTop") + " / " + root.tr("settings.trackInfoCenter"), row: root.tr("settings.trackInfoTop"), column: root.tr("settings.trackInfoCenter") },
+                        { key: "topRight", label: root.tr("settings.trackInfoTop") + " / " + root.tr("settings.trackInfoRight"), row: root.tr("settings.trackInfoTop"), column: root.tr("settings.trackInfoRight") },
+                        { key: "middleLeft", label: root.tr("settings.trackInfoMiddle") + " / " + root.tr("settings.trackInfoLeft"), row: root.tr("settings.trackInfoMiddle"), column: root.tr("settings.trackInfoLeft") },
+                        { key: "middleCenter", label: root.tr("settings.trackInfoMiddle") + " / " + root.tr("settings.trackInfoCenter"), row: root.tr("settings.trackInfoMiddle"), column: root.tr("settings.trackInfoCenter") },
+                        { key: "middleRight", label: root.tr("settings.trackInfoMiddle") + " / " + root.tr("settings.trackInfoRight"), row: root.tr("settings.trackInfoMiddle"), column: root.tr("settings.trackInfoRight") },
+                        { key: "bottomLeft", label: root.tr("settings.trackInfoBottom") + " / " + root.tr("settings.trackInfoLeft"), row: root.tr("settings.trackInfoBottom"), column: root.tr("settings.trackInfoLeft") },
+                        { key: "bottomCenter", label: root.tr("settings.trackInfoBottom") + " / " + root.tr("settings.trackInfoCenter"), row: root.tr("settings.trackInfoBottom"), column: root.tr("settings.trackInfoCenter") },
+                        { key: "bottomRight", label: root.tr("settings.trackInfoBottom") + " / " + root.tr("settings.trackInfoRight"), row: root.tr("settings.trackInfoBottom"), column: root.tr("settings.trackInfoRight") }
+                    ]
+
+                    SettingToggleRow {
+                        id: trackInfoEnabledRow
+                        title: root.tr("settings.trackInfoEnabled")
+                        checked: appSettings.trackInfoEnabled
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.trackInfoEnabledDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.trackInfoEnabled = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.trackInfoEnabledDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: trackInfoEnabledRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: trackInfoOverlayHoverOnlyRow
+                        title: root.tr("settings.trackInfoWaveformOverlayHoverOnly")
+                        checked: appSettings.trackInfoWaveformOverlayHoverOnly
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.trackInfoWaveformOverlayHoverOnlyDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.trackInfoWaveformOverlayHoverOnly = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.trackInfoWaveformOverlayHoverOnlyDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: trackInfoOverlayHoverOnlyRow.visible
+                    }
+
+                    ColumnLayout {
+                        id: trackInfoWindowTitleRow
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: root.matchesAny([root.tr("settings.trackInfoWindowTitleFormat"),
+                                                  appSettings.trackInfoWindowTitleFormat])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.highlightedSearchText(root.tr("settings.trackInfoWindowTitleFormat"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+
+                        TextField {
+                            id: trackInfoWindowTitleField
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            text: appSettings.trackInfoWindowTitleFormat
+                            activeFocusOnTab: true
+                            selectByMouse: true
+                            font.family: themeManager.monoFontFamily
+                            Accessible.name: root.tr("settings.trackInfoWindowTitleFormat")
+                            onEditingFinished: appSettings.trackInfoWindowTitleFormat = text
+                            onAccepted: appSettings.trackInfoWindowTitleFormat = text
+
+                            Connections {
+                                target: appSettings
+                                function onTrackInfoWindowTitleFormatChanged() {
+                                    if (!trackInfoWindowTitleField.activeFocus) {
+                                        trackInfoWindowTitleField.text = appSettings.trackInfoWindowTitleFormat
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: trackInfoTooltipRow
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: root.matchesAny([root.tr("settings.trackInfoTooltipFormat"),
+                                                  appSettings.trackInfoWaveformTooltipFormat])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.highlightedSearchText(root.tr("settings.trackInfoTooltipFormat"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+
+                        TextField {
+                            id: trackInfoTooltipField
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            text: appSettings.trackInfoWaveformTooltipFormat
+                            activeFocusOnTab: true
+                            selectByMouse: true
+                            font.family: themeManager.monoFontFamily
+                            Accessible.name: root.tr("settings.trackInfoTooltipFormat")
+                            onEditingFinished: appSettings.trackInfoWaveformTooltipFormat = text
+                            onAccepted: appSettings.trackInfoWaveformTooltipFormat = text
+
+                            Connections {
+                                target: appSettings
+                                function onTrackInfoWaveformTooltipFormatChanged() {
+                                    if (!trackInfoTooltipField.activeFocus) {
+                                        trackInfoTooltipField.text = appSettings.trackInfoWaveformTooltipFormat
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: trackInfoOverlaySection
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: root.matchesAny([root.tr("settings.trackInfoOverlayFormats"),
+                                                  root.tr("settings.trackInfoTop"),
+                                                  root.tr("settings.trackInfoMiddle"),
+                                                  root.tr("settings.trackInfoBottom"),
+                                                  root.tr("settings.trackInfoLeft"),
+                                                  root.tr("settings.trackInfoCenter"),
+                                                  root.tr("settings.trackInfoRight"),
+                                                  JSON.stringify(appSettings.trackInfoWaveformOverlayFormats || ({}))])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.highlightedSearchText(root.tr("settings.trackInfoOverlayFormats"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+
+                        GridLayout {
+                            Layout.fillWidth: true
+                            visible: !trackInfoCard.narrowEditor
+                            columns: 4
+                            columnSpacing: 8
+                            rowSpacing: 8
+
+                            Item {
+                                Layout.preferredWidth: 92
+                            }
+
+                            Repeater {
+                                model: [root.tr("settings.trackInfoLeft"),
+                                        root.tr("settings.trackInfoCenter"),
+                                        root.tr("settings.trackInfoRight")]
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData
+                                    color: themeManager.textMutedColor
+                                    font.family: themeManager.fontFamily
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            Repeater {
+                                model: [
+                                    { row: root.tr("settings.trackInfoTop"), keys: ["topLeft", "topCenter", "topRight"] },
+                                    { row: root.tr("settings.trackInfoMiddle"), keys: ["middleLeft", "middleCenter", "middleRight"] },
+                                    { row: root.tr("settings.trackInfoBottom"), keys: ["bottomLeft", "bottomCenter", "bottomRight"] }
+                                ]
+
+                                RowLayout {
+                                    Layout.columnSpan: 4
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Label {
+                                        Layout.preferredWidth: 92
+                                        text: modelData.row
+                                        color: themeManager.textMutedColor
+                                        font.family: themeManager.fontFamily
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Repeater {
+                                        model: modelData.keys
+
+                                        TextField {
+                                            Layout.fillWidth: true
+                                            Layout.minimumHeight: root.minimumInteractiveHeight
+                                            text: root.trackInfoOverlayFormat(modelData)
+                                            activeFocusOnTab: true
+                                            selectByMouse: true
+                                            font.family: themeManager.monoFontFamily
+                                            Accessible.name: modelData
+                                            onEditingFinished: root.setTrackInfoOverlayFormat(modelData, text)
+                                            onAccepted: root.setTrackInfoOverlayFormat(modelData, text)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: trackInfoCard.narrowEditor
+                            spacing: 6
+
+                            Repeater {
+                                model: trackInfoCard.overlayCells
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.label
+                                        color: themeManager.textMutedColor
+                                        font.family: themeManager.fontFamily
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+
+                                    TextField {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: root.minimumInteractiveHeight
+                                        text: root.trackInfoOverlayFormat(modelData.key)
+                                        activeFocusOnTab: true
+                                        selectByMouse: true
+                                        font.family: themeManager.monoFontFamily
+                                        Accessible.name: modelData.label
+                                        onEditingFinished: root.setTrackInfoOverlayFormat(modelData.key, text)
+                                        onAccepted: root.setTrackInfoOverlayFormat(modelData.key, text)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: trackInfoPreviewSection
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: root.matchesAny([root.tr("settings.trackInfoPreview"),
+                                                  root.tr("settings.trackInfoNoPreview")])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.tr("settings.trackInfoPreview")
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: root.hasTrackInfoPreview()
+                            text: root.trackInfoWindowTitlePreview()
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: root.hasTrackInfoPreview()
+                            text: root.trackInfoPreview(appSettings.trackInfoWaveformOverlayFormats.middleCenter || "", "waveformOverlay")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.monoFontFamily
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: !root.hasTrackInfoPreview()
+                            text: root.tr("settings.trackInfoNoPreview")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: trackInfoSyntaxSection
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: root.matchesAny([root.tr("settings.trackInfoSyntax"),
+                                                  root.tr("settings.trackInfoSyntaxHint")])
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.tr("settings.trackInfoSyntax")
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.tr("settings.trackInfoSyntaxHint")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    RowLayout {
+                        id: trackInfoResetRow
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: root.matchesAny([root.tr("settings.trackInfoResetMinimal"),
+                                                  root.tr("settings.trackInfoClearAll"),
+                                                  root.tr("settings.reset")])
+
+                        Button {
+                            id: trackInfoResetMinimalButton
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            Accessible.name: root.tr("settings.trackInfoResetMinimal")
+                            onClicked: root.requestReset("trackInfo")
+                            ToolTip.visible: hovered && trackInfoResetMinimalLabel.truncated
+                            ToolTip.text: root.tr("settings.trackInfoResetMinimal")
+
+                            contentItem: Label {
+                                id: trackInfoResetMinimalLabel
+                                text: root.tr("settings.trackInfoResetMinimal")
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                color: themeManager.textColor
+                                font.family: themeManager.fontFamily
+                            }
+                        }
+
+                        Button {
+                            id: trackInfoClearAllButton
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            Accessible.name: root.tr("settings.trackInfoClearAll")
+                            onClicked: root.clearTrackInfoSettings()
+                            ToolTip.visible: hovered && trackInfoClearAllLabel.truncated
+                            ToolTip.text: root.tr("settings.trackInfoClearAll")
+
+                            contentItem: Label {
+                                id: trackInfoClearAllLabel
+                                text: root.tr("settings.trackInfoClearAll")
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                color: themeManager.textColor
+                                font.family: themeManager.fontFamily
+                            }
+                        }
+                    }
+            }
+
+            SettingsSectionPage {
                 id: colorsCard
                 width: parent.width
                 visible: root.sectionVisibleInCurrentMode("colors")
@@ -2244,6 +3547,50 @@ Dialog {
 
                         Label {
                             text: themeManager.waveformColor.toString()
+                            color: themeManager.textColor
+                            opacity: 0.82
+                            font.family: themeManager.monoFontFamily
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    RowLayout {
+                        id: waveformBackgroundColorRow
+                        Layout.fillWidth: true
+                        visible: root.matchesAny([root.tr("settings.waveformBackgroundColor")])
+
+                        Label {
+                            text: root.highlightedSearchText(root.tr("settings.waveformBackgroundColor"))
+                            textFormat: Text.StyledText
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
+
+                        Button {
+                            id: waveformBackgroundColorButton
+                            implicitWidth: root.minimumInteractiveHeight
+                            implicitHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            Accessible.name: root.tr("settings.waveformBackgroundColor")
+                            Accessible.description: themeManager.waveformBackgroundColor.toString()
+                            onClicked: waveformBackgroundColorDialog.open()
+
+                            contentItem: Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                radius: 4
+                                color: themeManager.waveformBackgroundColor
+                                border.width: 1
+                                border.color: themeManager.borderColor
+                            }
+                        }
+
+                        Label {
+                            text: themeManager.waveformBackgroundColor.toString()
                             color: themeManager.textColor
                             opacity: 0.82
                             font.family: themeManager.monoFontFamily
@@ -2341,6 +3688,255 @@ Dialog {
             }
 
             SettingsSectionPage {
+                id: shortcutsCard
+                width: parent.width
+                visible: root.sectionVisibleInCurrentMode("shortcuts")
+                title: root.tr("settings.shortcuts").toUpperCase()
+                description: root.tr("settings.sectionShortcutsDescription")
+                searchQuery: root.settingsSearchQuery
+                panelColor: root.cardColor
+                frameColor: root.cardBorderColor
+                titleColor: themeManager.textMutedColor
+                fontFamily: themeManager.fontFamily
+                sectionPadding: root.sectionPadding
+                sectionSpacing: root.sectionSpacing
+                borderRadius: themeManager.borderRadiusLarge
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: root.matchesAny([root.tr("settings.shortcutSearch"),
+                                                  root.tr("settings.shortcutGroup"),
+                                                  root.tr("settings.shortcuts")])
+
+                        TextField {
+                            id: shortcutSearchField
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            placeholderText: root.tr("settings.shortcutSearch")
+                            text: root.shortcutSearchQuery
+                            selectByMouse: true
+                            activeFocusOnTab: true
+                            color: themeManager.textColor
+                            placeholderTextColor: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            onTextChanged: root.shortcutSearchQuery = text
+                        }
+
+                        ComboBox {
+                            id: shortcutGroupCombo
+                            Layout.preferredWidth: 190
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            model: root.shortcutGroupOptions()
+                            textRole: "label"
+                            valueRole: "value"
+                            activeFocusOnTab: true
+                            onActivated: root.shortcutGroupFilter = currentValue
+                            Component.onCompleted: {
+                                for (let i = 0; i < count; ++i) {
+                                    if (valueAt(i) === root.shortcutGroupFilter) {
+                                        currentIndex = i
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: root.matchesAny([root.tr("settings.shortcutResetGroup"),
+                                                  root.tr("settings.shortcutResetAll")])
+
+                        Button {
+                            id: shortcutResetGroupButton
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            text: root.tr("settings.shortcutResetGroup")
+                            enabled: root.shortcutGroupFilter !== "all"
+                            activeFocusOnTab: true
+                            onClicked: {
+                                if (shortcutManager.resetGroup(root.shortcutGroupFilter)) {
+                                    root.shortcutStatusText = root.tr("settings.shortcutStatusReset")
+                                } else {
+                                    root.shortcutStatusText = root.shortcutErrorStatus(shortcutManager.lastError)
+                                }
+                            }
+                        }
+
+                        Button {
+                            id: shortcutResetAllButton
+                            Layout.minimumHeight: root.minimumInteractiveHeight
+                            text: root.tr("settings.shortcutResetAll")
+                            activeFocusOnTab: true
+                            onClicked: {
+                                if (shortcutManager.resetAll()) {
+                                    root.shortcutStatusText = root.tr("settings.shortcutStatusReset")
+                                } else {
+                                    root.shortcutStatusText = root.shortcutErrorStatus(shortcutManager.lastError)
+                                }
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.shortcutStatusText
+                            visible: root.shortcutStatusText.length > 0
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: root.filteredShortcutRows().length > 0
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.tr("settings.shortcutAction")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.preferredWidth: 118
+                            text: root.tr("settings.shortcutCurrent")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.preferredWidth: 118
+                            text: root.tr("settings.shortcutDefault")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        Item {
+                            Layout.preferredWidth: 220
+                        }
+                    }
+
+                    Repeater {
+                        model: root.filteredShortcutRows()
+
+                        delegate: Rectangle {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            implicitHeight: Math.max(58, shortcutRowLayout.implicitHeight + 16)
+                            color: modelData.hasCustom ? Qt.rgba(themeManager.primaryColor.r,
+                                                                 themeManager.primaryColor.g,
+                                                                 themeManager.primaryColor.b,
+                                                                 0.08)
+                                                       : Qt.rgba(0, 0, 0, 0)
+                            radius: 6
+                            border.width: 1
+                            border.color: modelData.hasCustom ? Qt.rgba(themeManager.primaryColor.r,
+                                                                         themeManager.primaryColor.g,
+                                                                         themeManager.primaryColor.b,
+                                                                         0.28)
+                                                               : root.cardBorderColor
+
+                            RowLayout {
+                                id: shortcutRowLayout
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 8
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: root.shortcutActionLabel(modelData)
+                                        color: themeManager.textColor
+                                        font.family: themeManager.fontFamily
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: root.shortcutGroupLabel(modelData.group) + " | " + root.shortcutContextLabel(modelData.context)
+                                        color: themeManager.textMutedColor
+                                        font.family: themeManager.fontFamily
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Label {
+                                    Layout.preferredWidth: 118
+                                    text: modelData.userAssignable ? root.shortcutSequenceLabel(modelData)
+                                                                   : root.tr("settings.shortcutNotAssignable")
+                                    color: modelData.enabled ? themeManager.textColor : themeManager.textMutedColor
+                                    font.family: themeManager.monoFontFamily
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+
+                                Label {
+                                    Layout.preferredWidth: 118
+                                    text: root.shortcutDefaultLabel(modelData)
+                                    color: themeManager.textMutedColor
+                                    font.family: themeManager.monoFontFamily
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+
+                                Button {
+                                    Layout.minimumHeight: root.minimumInteractiveHeight
+                                    text: root.tr("settings.shortcutCapture")
+                                    enabled: modelData.userAssignable
+                                    activeFocusOnTab: true
+                                    onClicked: root.beginShortcutCapture(modelData)
+                                }
+
+                                Button {
+                                    Layout.minimumHeight: root.minimumInteractiveHeight
+                                    text: root.tr("settings.shortcutClear")
+                                    enabled: modelData.userAssignable && modelData.allowEmpty && modelData.enabled
+                                    activeFocusOnTab: true
+                                    onClicked: root.clearShortcut(modelData.id)
+                                }
+
+                                Button {
+                                    Layout.minimumHeight: root.minimumInteractiveHeight
+                                    text: root.tr("settings.shortcutReset")
+                                    enabled: modelData.userAssignable && modelData.hasCustom
+                                    activeFocusOnTab: true
+                                    onClicked: {
+                                        if (shortcutManager.resetShortcut(modelData.id)) {
+                                            root.shortcutStatusText = root.tr("settings.shortcutStatusReset")
+                                        } else {
+                                            root.shortcutStatusText = root.shortcutErrorStatus(shortcutManager.lastError)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: root.filteredShortcutRows().length === 0
+                        text: root.tr("settings.shortcutNoMatches")
+                        color: themeManager.textMutedColor
+                        font.family: themeManager.fontFamily
+                        wrapMode: Text.WordWrap
+                    }
+            }
+
+            SettingsSectionPage {
                 id: themeCard
                 width: parent.width
                 visible: root.sectionVisibleInCurrentMode("theme")
@@ -2398,6 +3994,331 @@ Dialog {
     }
 
     Dialog {
+        id: shortcutCaptureDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        padding: 0
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.NoAutoClose
+        title: root.tr("settings.shortcutCaptureTitle")
+        width: root.parent ? Math.min(460, root.parent.width - 40) : 460
+        anchors.centerIn: parent
+
+        onOpened: Qt.callLater(shortcutCaptureKeySink.forceActiveFocus)
+        onClosed: {
+            root.shortcutCaptureTargetId = ""
+            root.shortcutCaptureTargetLabel = ""
+            root.shortcutCaptureSequence = ""
+        }
+
+        background: Rectangle {
+            color: root.panelColor
+            border.color: root.cardBorderColor
+            border.width: 1
+            radius: themeManager.borderRadiusLarge
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            width: parent.width
+
+            Item {
+                id: shortcutCaptureKeySink
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                focus: true
+
+                Keys.onPressed: function(event) {
+                    event.accepted = true
+                    if (event.key === Qt.Key_Escape) {
+                        shortcutCaptureDialog.close()
+                        return
+                    }
+                    if (event.key === Qt.Key_Backspace && root.shortcutCaptureTargetAllowEmpty) {
+                        root.clearShortcut(root.shortcutCaptureTargetId)
+                        shortcutCaptureDialog.close()
+                        return
+                    }
+
+                    const sequence = root.shortcutEventSequence(event)
+                    if (sequence.length > 0) {
+                        root.shortcutCaptureSequence = sequence
+                        root.applyShortcutSequence(root.shortcutCaptureTargetId, sequence)
+                        shortcutCaptureDialog.close()
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                Layout.topMargin: 18
+                text: root.shortcutCaptureTargetLabel
+                color: themeManager.textColor
+                font.family: themeManager.fontFamily
+                font.pixelSize: 15
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                text: root.tr("settings.shortcutCaptureHint")
+                color: themeManager.textMutedColor
+                font.family: themeManager.fontFamily
+                wrapMode: Text.WordWrap
+            }
+
+            Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                visible: root.shortcutCaptureTargetAllowEmpty
+                text: root.tr("settings.shortcutCaptureClearHint")
+                color: themeManager.textMutedColor
+                font.family: themeManager.fontFamily
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                Layout.bottomMargin: 18
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("settings.shortcutConflictCancel")
+                    activeFocusOnTab: true
+                    onClicked: shortcutCaptureDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: shortcutConflictDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        padding: 0
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        title: root.tr("settings.shortcutConflictTitle")
+        width: root.parent ? Math.min(520, root.parent.width - 40) : 520
+        anchors.centerIn: parent
+
+        background: Rectangle {
+            color: root.panelColor
+            border.color: root.cardBorderColor
+            border.width: 1
+            radius: themeManager.borderRadiusLarge
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            width: parent.width
+
+            Kirigami.SelectableLabel {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                Layout.topMargin: 18
+                text: root.tr("settings.shortcutConflictMessage") + " " + String(root.pendingShortcutConflictReport.displaySequence || root.pendingShortcutConflictSequence)
+                color: themeManager.textColor
+                font.family: themeManager.fontFamily
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                model: root.pendingShortcutConflictReport.conflicts || []
+
+                delegate: Rectangle {
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 18
+                    Layout.rightMargin: 18
+                    implicitHeight: conflictColumn.implicitHeight + 12
+                    color: Qt.rgba(0, 0, 0, 0)
+                    border.width: 1
+                    border.color: root.cardBorderColor
+                    radius: 6
+
+                    ColumnLayout {
+                        id: conflictColumn
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        spacing: 2
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.shortcutActionLabel(modelData)
+                            color: themeManager.textColor
+                            font.family: themeManager.fontFamily
+                            elide: Text.ElideRight
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.shortcutContextLabel(modelData.context) + " | " + String(modelData.displaySequence || "")
+                            color: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                Layout.bottomMargin: 18
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("settings.shortcutConflictCancel")
+                    activeFocusOnTab: true
+                    onClicked: shortcutConflictDialog.close()
+                }
+
+                Button {
+                    text: root.tr("settings.shortcutConflictReplace")
+                    enabled: !!root.pendingShortcutConflictReport.canReplaceAll
+                    activeFocusOnTab: true
+                    onClicked: {
+                        const result = shortcutManager.setCustomSequenceResolvingConflicts(
+                                    root.pendingShortcutConflictId,
+                                    root.pendingShortcutConflictSequence,
+                                    true)
+                        if (!result.ok) {
+                            root.shortcutStatusText = root.shortcutErrorStatus(result.reason)
+                        } else {
+                            root.shortcutStatusText = root.tr("settings.shortcutStatusReset")
+                        }
+                        shortcutConflictDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: factoryResetDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        padding: 14
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        title: root.tr("settings.factoryResetTitle")
+
+        width: root.boundedDialogSize(root.resetDialogPreferredWidth, root.resetDialogMinimumWidth, root.width - 24)
+        x: Math.round((parent ? parent.width - width : 0) * 0.5)
+        y: Math.round((parent ? parent.height - height : 0) * 0.5)
+
+        onOpened: Qt.callLater(function() {
+            if (factoryResetCancelButton) {
+                factoryResetCancelButton.forceActiveFocus(Qt.TabFocusReason)
+            }
+        })
+
+        onClosed: {
+            root.factoryResetErrorText = ""
+        }
+
+        background: Rectangle {
+            radius: themeManager.borderRadiusLarge
+            color: root.panelColor
+            border.width: 1
+            border.color: root.frameColor
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Kirigami.SelectableLabel {
+                Layout.fillWidth: true
+                text: root.tr("settings.factoryResetTitle")
+                color: themeManager.textColor
+                font.family: themeManager.fontFamily
+                font.pixelSize: 13
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Kirigami.SelectableLabel {
+                Layout.fillWidth: true
+                text: root.tr("settings.factoryResetMessage")
+                color: themeManager.textColor
+                opacity: 0.84
+                font.family: themeManager.fontFamily
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(0, factoryResetErrorLabel.implicitHeight + 18)
+                radius: themeManager.borderRadius
+                color: Qt.rgba(0.78, 0.16, 0.16, 0.14)
+                border.width: 1
+                border.color: Qt.rgba(0.78, 0.16, 0.16, 0.45)
+                visible: root.factoryResetErrorText.length > 0
+
+                Kirigami.SelectableLabel {
+                    id: factoryResetErrorLabel
+                    anchors.fill: parent
+                    anchors.margins: 9
+                    text: root.factoryResetErrorText
+                    color: "#d94c4c"
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    id: factoryResetCancelButton
+                    text: root.tr("settings.resetConfirmCancel")
+                    activeFocusOnTab: true
+                    Accessible.name: text
+                    implicitHeight: root.minimumInteractiveHeight
+                    implicitWidth: 112
+                    onClicked: factoryResetDialog.close()
+                }
+
+                Button {
+                    id: factoryResetApplyButton
+                    text: root.tr("settings.factoryResetConfirm")
+                    activeFocusOnTab: true
+                    Accessible.name: text
+                    implicitHeight: root.minimumInteractiveHeight
+                    implicitWidth: 156
+                    onClicked: root.applyFactoryReset()
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: resetConfirmDialog
         parent: Overlay.overlay
         modal: true
@@ -2441,7 +4362,7 @@ Dialog {
                 width: parent.width
                 spacing: root.lowHeightMode ? 8 : 10
 
-                Label {
+                Kirigami.SelectableLabel {
                     Layout.fillWidth: true
                     text: root.pendingResetTitle
                     color: themeManager.textColor
@@ -2451,7 +4372,7 @@ Dialog {
                     wrapMode: Text.WordWrap
                 }
 
-                Label {
+                Kirigami.SelectableLabel {
                     Layout.fillWidth: true
                     text: root.tr("settings.resetConfirmMessage")
                     color: themeManager.textColor
@@ -2632,6 +4553,13 @@ Dialog {
         title: root.tr("dialogs.chooseWaveformColor")
         selectedColor: themeManager.waveformColor
         onAccepted: themeManager.waveformColor = selectedColor
+    }
+
+    AccentColorDialog {
+        id: waveformBackgroundColorDialog
+        title: root.tr("dialogs.chooseWaveformBackgroundColor")
+        selectedColor: themeManager.waveformBackgroundColor
+        onAccepted: themeManager.waveformBackgroundColor = selectedColor
     }
 
     AccentColorDialog {

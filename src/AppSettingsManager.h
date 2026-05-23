@@ -1,6 +1,7 @@
 #ifndef APPSETTINGSMANAGER_H
 #define APPSETTINGSMANAGER_H
 
+#include <QDateTime>
 #include <QObject>
 #include <QSettings>
 #include <QStringList>
@@ -16,6 +17,7 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QString effectiveLanguage READ effectiveLanguage NOTIFY effectiveLanguageChanged)
     Q_PROPERTY(bool trayEnabled READ trayEnabled WRITE setTrayEnabled NOTIFY trayEnabledChanged)
+    Q_PROPERTY(bool trayIconAlwaysVisible READ trayIconAlwaysVisible WRITE setTrayIconAlwaysVisible NOTIFY trayIconAlwaysVisibleChanged)
     Q_PROPERTY(bool sidebarVisible READ sidebarVisible WRITE setSidebarVisible NOTIFY sidebarVisibleChanged)
     Q_PROPERTY(bool collectionsSidebarVisible READ collectionsSidebarVisible WRITE setCollectionsSidebarVisible NOTIFY collectionsSidebarVisibleChanged)
     Q_PROPERTY(QString skinMode READ skinMode WRITE setSkinMode NOTIFY skinModeChanged)
@@ -28,10 +30,30 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(bool showSpeedPitchControls READ showSpeedPitchControls WRITE setShowSpeedPitchControls NOTIFY showSpeedPitchControlsChanged)
     Q_PROPERTY(bool reversePlayback READ reversePlayback WRITE setReversePlayback NOTIFY reversePlaybackChanged)
     Q_PROPERTY(QString audioQualityProfile READ audioQualityProfile WRITE setAudioQualityProfile NOTIFY audioQualityProfileChanged)
+    Q_PROPERTY(bool displayVolumeInDecibels READ displayVolumeInDecibels WRITE setDisplayVolumeInDecibels NOTIFY displayVolumeInDecibelsChanged)
     Q_PROPERTY(bool dynamicSpectrum READ dynamicSpectrum WRITE setDynamicSpectrum NOTIFY dynamicSpectrumChanged)
     Q_PROPERTY(bool confirmTrashDeletion READ confirmTrashDeletion WRITE setConfirmTrashDeletion NOTIFY confirmTrashDeletionChanged)
     Q_PROPERTY(bool automaticPlaylistSearch READ automaticPlaylistSearch WRITE setAutomaticPlaylistSearch NOTIFY automaticPlaylistSearchChanged)
     Q_PROPERTY(bool autoAddTracksFromPlaylistFolder READ autoAddTracksFromPlaylistFolder WRITE setAutoAddTracksFromPlaylistFolder NOTIFY autoAddTracksFromPlaylistFolderChanged)
+    Q_PROPERTY(bool playlistScrollBarVisible READ playlistScrollBarVisible WRITE setPlaylistScrollBarVisible NOTIFY playlistScrollBarVisibleChanged)
+    Q_PROPERTY(bool playSearchResultsInOrder READ playSearchResultsInOrder WRITE setPlaySearchResultsInOrder NOTIFY playSearchResultsInOrderChanged)
+    Q_PROPERTY(bool trackInfoEnabled READ trackInfoEnabled WRITE setTrackInfoEnabled NOTIFY trackInfoEnabledChanged)
+    Q_PROPERTY(bool trackInfoWaveformOverlayHoverOnly READ trackInfoWaveformOverlayHoverOnly WRITE setTrackInfoWaveformOverlayHoverOnly NOTIFY trackInfoWaveformOverlayHoverOnlyChanged)
+    Q_PROPERTY(QString trackInfoWindowTitleFormat READ trackInfoWindowTitleFormat WRITE setTrackInfoWindowTitleFormat NOTIFY trackInfoWindowTitleFormatChanged)
+    Q_PROPERTY(QString trackInfoWaveformTooltipFormat READ trackInfoWaveformTooltipFormat WRITE setTrackInfoWaveformTooltipFormat NOTIFY trackInfoWaveformTooltipFormatChanged)
+    Q_PROPERTY(QVariantMap trackInfoWaveformOverlayFormats READ trackInfoWaveformOverlayFormats WRITE setTrackInfoWaveformOverlayFormats NOTIFY trackInfoWaveformOverlayFormatsChanged)
+    Q_PROPERTY(bool autoCheckUpdates READ autoCheckUpdates WRITE setAutoCheckUpdates NOTIFY autoCheckUpdatesChanged)
+    Q_PROPERTY(bool includePrereleaseUpdates READ includePrereleaseUpdates WRITE setIncludePrereleaseUpdates NOTIFY includePrereleaseUpdatesChanged)
+    Q_PROPERTY(QDateTime lastUpdateCheckAt READ lastUpdateCheckAt NOTIFY lastUpdateCheckAtChanged)
+    Q_PROPERTY(bool autoScrollToCurrentTrackOnStartup READ autoScrollToCurrentTrackOnStartup WRITE setAutoScrollToCurrentTrackOnStartup NOTIFY autoScrollToCurrentTrackOnStartupChanged)
+    Q_PROPERTY(bool playExternalOpenWithoutPlaylist READ playExternalOpenWithoutPlaylist WRITE setPlayExternalOpenWithoutPlaylist NOTIFY playExternalOpenWithoutPlaylistChanged)
+    Q_PROPERTY(bool restorePlaybackPositionOnStartup READ restorePlaybackPositionOnStartup WRITE setRestorePlaybackPositionOnStartup NOTIFY restorePlaybackPositionOnStartupChanged)
+    Q_PROPERTY(bool restorePlaybackPausedOnStartup READ restorePlaybackPausedOnStartup WRITE setRestorePlaybackPausedOnStartup NOTIFY restorePlaybackPausedOnStartupChanged)
+    Q_PROPERTY(bool quitAfterPlaybackFinished READ quitAfterPlaybackFinished WRITE setQuitAfterPlaybackFinished NOTIFY quitAfterPlaybackFinishedChanged)
+    Q_PROPERTY(bool keepAboveWhilePlaying READ keepAboveWhilePlaying WRITE setKeepAboveWhilePlaying NOTIFY keepAboveWhilePlayingChanged)
+    Q_PROPERTY(bool alwaysKeepAbove READ alwaysKeepAbove WRITE setAlwaysKeepAbove NOTIFY alwaysKeepAboveChanged)
+    Q_PROPERTY(int keyboardSeekStepSeconds READ keyboardSeekStepSeconds WRITE setKeyboardSeekStepSeconds NOTIFY keyboardSeekStepSecondsChanged)
+    Q_PROPERTY(bool keyboardSeekBackwardToPreviousTrack READ keyboardSeekBackwardToPreviousTrack WRITE setKeyboardSeekBackwardToPreviousTrack NOTIFY keyboardSeekBackwardToPreviousTrackChanged)
     Q_PROPERTY(bool deterministicShuffleEnabled READ deterministicShuffleEnabled WRITE setDeterministicShuffleEnabled NOTIFY deterministicShuffleEnabledChanged)
     Q_PROPERTY(quint32 shuffleSeed READ shuffleSeed WRITE setShuffleSeed NOTIFY shuffleSeedChanged)
     Q_PROPERTY(bool repeatableShuffle READ repeatableShuffle WRITE setRepeatableShuffle NOTIFY repeatableShuffleChanged)
@@ -62,6 +84,7 @@ public:
     QString language() const { return m_language; }
     QString effectiveLanguage() const { return m_effectiveLanguage; }
     bool trayEnabled() const { return m_trayEnabled; }
+    bool trayIconAlwaysVisible() const { return m_trayIconAlwaysVisible; }
     bool sidebarVisible() const { return m_sidebarVisible; }
     bool collectionsSidebarVisible() const { return m_collectionsSidebarVisible; }
     QString skinMode() const { return m_skinMode; }
@@ -74,10 +97,34 @@ public:
     bool showSpeedPitchControls() const { return m_showSpeedPitchControls; }
     bool reversePlayback() const { return m_reversePlayback; }
     QString audioQualityProfile() const { return m_audioQualityProfile; }
+    bool displayVolumeInDecibels() const { return m_displayVolumeInDecibels; }
     bool dynamicSpectrum() const { return m_dynamicSpectrum; }
     bool confirmTrashDeletion() const { return m_confirmTrashDeletion; }
     bool automaticPlaylistSearch() const { return m_automaticPlaylistSearch; }
     bool autoAddTracksFromPlaylistFolder() const { return m_autoAddTracksFromPlaylistFolder; }
+    bool playlistScrollBarVisible() const { return m_playlistScrollBarVisible; }
+    bool playSearchResultsInOrder() const { return m_playSearchResultsInOrder; }
+    bool trackInfoEnabled() const { return m_trackInfoEnabled; }
+    bool trackInfoWaveformOverlayHoverOnly() const { return m_trackInfoWaveformOverlayHoverOnly; }
+    QString trackInfoWindowTitleFormat() const { return m_trackInfoWindowTitleFormat; }
+    QString trackInfoWaveformTooltipFormat() const { return m_trackInfoWaveformTooltipFormat; }
+    QVariantMap trackInfoWaveformOverlayFormats() const { return m_trackInfoWaveformOverlayFormats; }
+    bool autoCheckUpdates() const { return m_autoCheckUpdates; }
+    bool includePrereleaseUpdates() const { return m_includePrereleaseUpdates; }
+    QDateTime lastUpdateCheckAt() const { return m_lastUpdateCheckAt; }
+    QDateTime lastAutomaticUpdateCheckAt() const { return m_lastAutomaticUpdateCheckAt; }
+    QString updateCheckerEtag() const { return m_updateCheckerEtag; }
+    QString skippedUpdateTag() const { return m_skippedUpdateTag; }
+    QDateTime updateReminderDeferredUntil() const { return m_updateReminderDeferredUntil; }
+    bool autoScrollToCurrentTrackOnStartup() const { return m_autoScrollToCurrentTrackOnStartup; }
+    bool playExternalOpenWithoutPlaylist() const { return m_playExternalOpenWithoutPlaylist; }
+    bool restorePlaybackPositionOnStartup() const { return m_restorePlaybackPositionOnStartup; }
+    bool restorePlaybackPausedOnStartup() const { return m_restorePlaybackPausedOnStartup; }
+    bool quitAfterPlaybackFinished() const { return m_quitAfterPlaybackFinished; }
+    bool keepAboveWhilePlaying() const { return m_keepAboveWhilePlaying; }
+    bool alwaysKeepAbove() const { return m_alwaysKeepAbove; }
+    int keyboardSeekStepSeconds() const { return m_keyboardSeekStepSeconds; }
+    bool keyboardSeekBackwardToPreviousTrack() const { return m_keyboardSeekBackwardToPreviousTrack; }
     bool deterministicShuffleEnabled() const { return m_deterministicShuffleEnabled; }
     quint32 shuffleSeed() const { return m_shuffleSeed; }
     bool repeatableShuffle() const { return m_repeatableShuffle; }
@@ -110,11 +157,21 @@ public:
     Q_INVOKABLE QVariantMap inspectYtDlpExecutable();
     Q_INVOKABLE QVariantMap inspectFfmpegExecutable();
     Q_INVOKABLE QVariantMap validateYtDlpImportRuntime(const QString &selectedFormat);
+    Q_INVOKABLE QVariantMap performFullApplicationReset();
+    Q_INVOKABLE QVariantMap defaultTrackInfoWaveformOverlayFormats() const;
+    Q_INVOKABLE QVariantMap emptyTrackInfoWaveformOverlayFormats() const;
+    Q_INVOKABLE QString defaultTrackInfoWindowTitleFormat() const;
+    Q_INVOKABLE QString defaultTrackInfoWaveformTooltipFormat() const;
+    Q_INVOKABLE QString renderTrackInfoFormat(const QString &format,
+                                              const QVariantMap &trackInfo,
+                                              const QString &contextName) const;
+    bool fullApplicationResetPending() const { return m_fullApplicationResetPending; }
     static QString translateForCurrentLanguage(const QString &key);
 
 public slots:
     void setLanguage(const QString &language);
     void setTrayEnabled(bool enabled);
+    void setTrayIconAlwaysVisible(bool visible);
     void setSidebarVisible(bool visible);
     void setCollectionsSidebarVisible(bool visible);
     void setSkinMode(const QString &mode);
@@ -127,10 +184,34 @@ public slots:
     void setShowSpeedPitchControls(bool show);
     void setReversePlayback(bool enabled);
     void setAudioQualityProfile(const QString &profile);
+    void setDisplayVolumeInDecibels(bool enabled);
     void setDynamicSpectrum(bool enabled);
     void setConfirmTrashDeletion(bool enabled);
     void setAutomaticPlaylistSearch(bool enabled);
     void setAutoAddTracksFromPlaylistFolder(bool enabled);
+    void setPlaylistScrollBarVisible(bool visible);
+    void setPlaySearchResultsInOrder(bool enabled);
+    void setTrackInfoEnabled(bool enabled);
+    void setTrackInfoWaveformOverlayHoverOnly(bool hoverOnly);
+    void setTrackInfoWindowTitleFormat(const QString &format);
+    void setTrackInfoWaveformTooltipFormat(const QString &format);
+    void setTrackInfoWaveformOverlayFormats(const QVariantMap &formats);
+    void setAutoCheckUpdates(bool enabled);
+    void setIncludePrereleaseUpdates(bool enabled);
+    void setUpdateCheckerEtag(const QString &etag);
+    void setLastUpdateCheckAt(const QDateTime &dateTime);
+    void setLastAutomaticUpdateCheckAt(const QDateTime &dateTime);
+    void setSkippedUpdateTag(const QString &tag);
+    void setUpdateReminderDeferredUntil(const QDateTime &dateTime);
+    void setAutoScrollToCurrentTrackOnStartup(bool enabled);
+    void setPlayExternalOpenWithoutPlaylist(bool enabled);
+    void setRestorePlaybackPositionOnStartup(bool enabled);
+    void setRestorePlaybackPausedOnStartup(bool enabled);
+    void setQuitAfterPlaybackFinished(bool enabled);
+    void setKeepAboveWhilePlaying(bool enabled);
+    void setAlwaysKeepAbove(bool enabled);
+    void setKeyboardSeekStepSeconds(int seconds);
+    void setKeyboardSeekBackwardToPreviousTrack(bool enabled);
     void setDeterministicShuffleEnabled(bool enabled);
     void setShuffleSeed(quint32 seed);
     void setRepeatableShuffle(bool enabled);
@@ -155,6 +236,7 @@ signals:
     void languageChanged();
     void effectiveLanguageChanged();
     void trayEnabledChanged();
+    void trayIconAlwaysVisibleChanged();
     void sidebarVisibleChanged();
     void collectionsSidebarVisibleChanged();
     void skinModeChanged();
@@ -167,10 +249,30 @@ signals:
     void showSpeedPitchControlsChanged();
     void reversePlaybackChanged();
     void audioQualityProfileChanged();
+    void displayVolumeInDecibelsChanged();
     void dynamicSpectrumChanged();
     void confirmTrashDeletionChanged();
     void automaticPlaylistSearchChanged();
     void autoAddTracksFromPlaylistFolderChanged();
+    void playlistScrollBarVisibleChanged();
+    void playSearchResultsInOrderChanged();
+    void trackInfoEnabledChanged();
+    void trackInfoWaveformOverlayHoverOnlyChanged();
+    void trackInfoWindowTitleFormatChanged();
+    void trackInfoWaveformTooltipFormatChanged();
+    void trackInfoWaveformOverlayFormatsChanged();
+    void autoCheckUpdatesChanged();
+    void includePrereleaseUpdatesChanged();
+    void lastUpdateCheckAtChanged();
+    void autoScrollToCurrentTrackOnStartupChanged();
+    void playExternalOpenWithoutPlaylistChanged();
+    void restorePlaybackPositionOnStartupChanged();
+    void restorePlaybackPausedOnStartupChanged();
+    void quitAfterPlaybackFinishedChanged();
+    void keepAboveWhilePlayingChanged();
+    void alwaysKeepAboveChanged();
+    void keyboardSeekStepSecondsChanged();
+    void keyboardSeekBackwardToPreviousTrackChanged();
     void deterministicShuffleEnabledChanged();
     void shuffleSeedChanged();
     void repeatableShuffleChanged();
@@ -212,11 +314,14 @@ private:
     static QVariantMap normalizeYtDlpImportDraft(const QVariantMap &draft);
     static QVariantList normalizeYtDlpImportRecentSources(const QVariantList &sources);
     static QVariantList normalizeYtDlpImportRecentOutputDirectories(const QVariantList &directories);
+    static QString normalizeTrackInfoFormat(const QString &format);
+    static QVariantMap normalizeTrackInfoOverlayFormats(const QVariantMap &formats, bool fillMissingWithDefaults);
 
     QSettings m_settings;
     QString m_language = QStringLiteral("auto");
     QString m_effectiveLanguage = QStringLiteral("en");
     bool m_trayEnabled = false;
+    bool m_trayIconAlwaysVisible = false;
     bool m_sidebarVisible = true;
     bool m_collectionsSidebarVisible = true;
     QString m_skinMode = QStringLiteral("normal");
@@ -229,10 +334,34 @@ private:
     bool m_showSpeedPitchControls = false;
     bool m_reversePlayback = false;
     QString m_audioQualityProfile = QStringLiteral("standard");
+    bool m_displayVolumeInDecibels = false;
     bool m_dynamicSpectrum = false;
     bool m_confirmTrashDeletion = true;
     bool m_automaticPlaylistSearch = false;
     bool m_autoAddTracksFromPlaylistFolder = true;
+    bool m_playlistScrollBarVisible = true;
+    bool m_playSearchResultsInOrder = false;
+    bool m_trackInfoEnabled = true;
+    bool m_trackInfoWaveformOverlayHoverOnly = true;
+    QString m_trackInfoWindowTitleFormat;
+    QString m_trackInfoWaveformTooltipFormat;
+    QVariantMap m_trackInfoWaveformOverlayFormats;
+    bool m_autoCheckUpdates = true;
+    bool m_includePrereleaseUpdates = false;
+    QString m_updateCheckerEtag;
+    QDateTime m_lastUpdateCheckAt;
+    QDateTime m_lastAutomaticUpdateCheckAt;
+    QString m_skippedUpdateTag;
+    QDateTime m_updateReminderDeferredUntil;
+    bool m_autoScrollToCurrentTrackOnStartup = true;
+    bool m_playExternalOpenWithoutPlaylist = false;
+    bool m_restorePlaybackPositionOnStartup = true;
+    bool m_restorePlaybackPausedOnStartup = false;
+    bool m_quitAfterPlaybackFinished = false;
+    bool m_keepAboveWhilePlaying = false;
+    bool m_alwaysKeepAbove = false;
+    int m_keyboardSeekStepSeconds = 5;
+    bool m_keyboardSeekBackwardToPreviousTrack = false;
     bool m_deterministicShuffleEnabled = false;
     quint32 m_shuffleSeed = 0xC4E5D2A1u;
     bool m_repeatableShuffle = true;
@@ -256,6 +385,7 @@ private:
     QVariantList m_ytDlpImportRecentOutputDirectories;
     QTimer m_saveSettingsTimer;
     bool m_saveSettingsPending = false;
+    bool m_fullApplicationResetPending = false;
     int m_translationRevision = 0;
 };
 

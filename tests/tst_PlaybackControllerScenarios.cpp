@@ -324,6 +324,44 @@ private slots:
         QVERIFY(repeatShuffleNext < trackModel.rowCount());
     }
 
+    void searchPlaybackUsesVisibleTableOrderInsteadOfShuffle()
+    {
+        FakeAudioEngine audioEngine;
+        FakeTrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+
+        trackModel.seed({
+                            makeTrack(QStringLiteral("/tmp/waveflux-search-a.flac"), QStringLiteral("Intro")),
+                            makeTrack(QStringLiteral("/tmp/waveflux-search-b.flac"), QStringLiteral("Needle One")),
+                            makeTrack(QStringLiteral("/tmp/waveflux-search-c.flac"), QStringLiteral("Interlude")),
+                            makeTrack(QStringLiteral("/tmp/waveflux-search-d.flac"), QStringLiteral("Needle Two"))
+                        },
+                        0);
+
+        controller.setShuffleEnabled(true);
+        controller.m_shuffleOrder = {0, 3, 1, 2};
+        controller.m_shufflePosition = 0;
+        controller.setSearchPlaybackEnabled(true);
+        controller.setSearchPlaybackQuery(QStringLiteral("needle"));
+        QTRY_COMPARE(trackModel.countMatchingAdvancedNormalized(QStringLiteral("needle"), 0, 0), 2);
+
+        audioEngine.setCurrentFileForTest(trackModel.getFilePath(0), 650);
+        controller.onCurrentFileChanged(trackModel.getFilePath(0));
+
+        QVERIFY(controller.canGoNext());
+        QCOMPARE(controller.calculateNextIndex(true), 1);
+
+        audioEngine.setCurrentFileForTest(trackModel.getFilePath(1), 651);
+        controller.onCurrentFileChanged(trackModel.getFilePath(1));
+
+        QCOMPARE(controller.calculateNextIndex(true), 3);
+
+        audioEngine.setCurrentFileForTest(trackModel.getFilePath(3), 652);
+        controller.onCurrentFileChanged(trackModel.getFilePath(3));
+
+        QCOMPARE(controller.calculatePreviousIndex(), 1);
+    }
+
     void moveAndRemoveCurrentTrackWhilePlaying()
     {
         FakeAudioEngine audioEngine;

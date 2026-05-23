@@ -10,15 +10,21 @@ import "IconResolver.js" as IconResolver
 Kirigami.ApplicationWindow {
     id: root
     
-    title: root.tr("app.title")
+    title: root.windowTitleText()
+    readonly property int compactSkinMinimumWidth: 520
+    readonly property int compactSkinMinimumHeight: 240
     width: appSettings.skinMode === "compact" ? 600 : 1000
     height: appSettings.skinMode === "compact" ? 400 : 700
-    minimumWidth: appSettings.skinMode === "compact" ? 400 : 600
-    minimumHeight: appSettings.skinMode === "compact" ? 150 : 400
+    minimumWidth: appSettings.skinMode === "compact" ? compactSkinMinimumWidth : 600
+    minimumHeight: appSettings.skinMode === "compact" ? compactSkinMinimumHeight : 400
+    readonly property bool keepWindowAbove: appSettings.alwaysKeepAbove
+                                           || (appSettings.keepAboveWhilePlaying
+                                               && audioEngine.state === 1)
+    flags: Qt.Window
 
     // Handle window close based on actual tray runtime state.
     onClosing: function(close) {
-        if (trayManager.enabled) {
+        if (appSettings.trayEnabled && trayManager.enabled) {
             // Tray is enabled - hide window instead of closing
             close.accepted = false
             root.hide()
@@ -194,226 +200,6 @@ Kirigami.ApplicationWindow {
     palette.disabled.windowText: themeManager.textMutedColor
     palette.disabled.text: themeManager.textMutedColor
     palette.disabled.buttonText: themeManager.textMutedColor
-    readonly property var shortcutReferenceModel: [
-        {
-            group: "playlist",
-            action: root.tr("menu.openFiles"),
-            sequence: "Ctrl+O",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playlist",
-            action: root.tr("menu.addFolder"),
-            sequence: "Ctrl+Shift+O",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playlist",
-            action: root.tr("menu.exportPlaylist"),
-            sequence: "Ctrl+E",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playlist",
-            action: root.tr("menu.importUrl"),
-            sequence: "Ctrl+U",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playlist",
-            action: root.tr("playlists.saveCurrent"),
-            sequence: "Ctrl+Shift+S",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playlist",
-            action: root.tr("menu.find"),
-            sequence: "Ctrl+F",
-            context: root.tr("help.shortcutsContextPlaylist")
-        },
-        {
-            group: "playlist",
-            action: root.tr("playlist.removeSelected"),
-            sequence: "Delete",
-            context: root.tr("help.shortcutsContextPlaylist")
-        },
-        {
-            group: "playlist",
-            action: root.tr("playlist.locateCurrent"),
-            sequence: "Ctrl+L",
-            context: root.tr("help.shortcutsContextPlaylist")
-        },
-        {
-            group: "playback",
-            action: root.tr("player.play") + " / " + root.tr("player.pause") + ", " + root.tr("player.spaceHoldSpeed2x"),
-            sequence: "Space",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("menu.seekBack5") + " (x1/x2/x4)",
-            sequence: "Left",
-            context: root.tr("settings.skinNormal")
-        },
-        {
-            group: "playback",
-            action: root.tr("menu.seekForward5") + " (x1/x2/x4)",
-            sequence: "Right",
-            context: root.tr("settings.skinNormal")
-        },
-        {
-            group: "playback",
-            action: root.tr("menu.seekBack5"),
-            sequence: "Left",
-            context: root.tr("settings.skinCompact")
-        },
-        {
-            group: "playback",
-            action: root.tr("menu.seekForward5"),
-            sequence: "Right",
-            context: root.tr("settings.skinCompact")
-        },
-        {
-            group: "playback",
-            action: root.tr("settings.speed") + " -0.1x",
-            sequence: "[",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("settings.speed") + " +0.1x",
-            sequence: "]",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("player.resetSpeed"),
-            sequence: "Backspace",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("settings.pitch") + " -1",
-            sequence: "-",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("settings.pitch") + " +1",
-            sequence: "=",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("player.resetPitch"),
-            sequence: "0",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "playback",
-            action: root.tr("queue.open"),
-            sequence: "Ctrl+Shift+Q",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playback",
-            action: root.tr("player.repeatOff"),
-            sequence: "Ctrl+1",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playback",
-            action: root.tr("player.repeatAll"),
-            sequence: "Ctrl+2",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "playback",
-            action: root.tr("player.repeatOne"),
-            sequence: "Ctrl+3",
-            context: root.tr("help.shortcutsContextMainWindow")
-        },
-        {
-            group: "navigation",
-            action: root.tr("main.enterFullscreen") + " / " + root.tr("main.exitFullscreen"),
-            sequence: "F11",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "navigation",
-            action: root.tr("main.exitFullscreen"),
-            sequence: "Escape",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "navigation",
-            action: root.tr("help.shortcuts"),
-            sequence: "F1",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "navigation",
-            action: root.tr("compact.showPlaylist") + " / " + root.tr("compact.hidePlaylist")
-                    + " (" + root.tr("settings.skinCompact") + ")",
-            sequence: "P",
-            context: root.tr("settings.skinCompact")
-        },
-        {
-            group: "profiler",
-            action: root.tr("menu.profilerOverlay"),
-            sequence: "Ctrl+Shift+P",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("menu.profilerEnable"),
-            sequence: "Ctrl+Shift+E",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("menu.profilerReset"),
-            sequence: "Ctrl+Shift+R",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("menu.profilerExportJson"),
-            sequence: "Ctrl+Shift+J",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("menu.profilerExportCsv"),
-            sequence: "Ctrl+Shift+C",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("menu.profilerExportBundle"),
-            sequence: "Ctrl+Shift+B",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("player.equalizer"),
-            sequence: "Ctrl+Shift+G",
-            context: root.tr("help.shortcutsContextGlobal")
-        },
-        {
-            group: "profiler",
-            action: root.tr("equalizer.import"),
-            sequence: "Ctrl+Shift+I",
-            context: root.tr("help.shortcutsContextDialog")
-        },
-        {
-            group: "profiler",
-            action: root.tr("equalizer.export"),
-            sequence: "Ctrl+Shift+X",
-            context: root.tr("help.shortcutsContextDialog")
-        }
-    ]
-
     function sampleRateKhz(sampleRate) {
         if (!sampleRate || sampleRate <= 0) return ""
         return (sampleRate / 1000).toFixed(1) + " kHz"
@@ -469,6 +255,25 @@ Kirigami.ApplicationWindow {
                 mainPage.forceActiveFocus(Qt.MouseFocusReason)
             }
         }
+    }
+
+    function searchFieldHasActiveFocus() {
+        if (!root.isCompactSkin && headerBar && headerBar.searchFieldHasActiveFocus) {
+            return headerBar.searchFieldHasActiveFocus()
+        }
+        if (root.isCompactSkin
+                && compactSkinLoader.item
+                && compactSkinLoader.item.searchFieldHasActiveFocus) {
+            return compactSkinLoader.item.searchFieldHasActiveFocus()
+        }
+        return false
+    }
+
+    function normalPlaylistShortcutsActive() {
+        return !root.isCompactSkin
+                && playlistTable
+                && trackModel.count > 0
+                && !root.searchFieldHasActiveFocus()
     }
 
     function toggleCollectionsFallbackPanel() {
@@ -868,6 +673,19 @@ Kirigami.ApplicationWindow {
         host.restoreTrackListViewState(viewState || { contentY: 0 })
     }
 
+    function autoLocateCurrentTrackOnStartup() {
+        if (!appSettings.autoScrollToCurrentTrackOnStartup || trackModel.count <= 0) {
+            return
+        }
+        Qt.callLater(function() {
+            const host = root.activeTrackListViewHost()
+            if (!host || !host.locateCurrentTrack || trackModel.count <= 0) {
+                return
+            }
+            host.locateCurrentTrack()
+        })
+    }
+
     function stopPlaybackForContextSwitch() {
         clearPendingContextRestore()
         if (audioEngine.state !== 0) {
@@ -1184,6 +1002,38 @@ Kirigami.ApplicationWindow {
         })
     }
 
+    function applyKeepWindowAboveFlags() {
+        const wantsAbove = root.keepWindowAbove
+        const hasAbove = (root.flags & Qt.WindowStaysOnTopHint) !== 0
+        if (wantsAbove === hasAbove) {
+            return
+        }
+
+        const wasVisible = root.visible
+        const previousVisibility = root.visibility
+        let nextFlags = root.flags
+        if (wantsAbove) {
+            nextFlags = nextFlags | Qt.WindowStaysOnTopHint
+        } else {
+            nextFlags = nextFlags & ~Qt.WindowStaysOnTopHint
+        }
+        root.flags = nextFlags
+
+        if (!wasVisible) {
+            return
+        }
+
+        if (previousVisibility === Window.FullScreen) {
+            root.showFullScreen()
+        } else if (previousVisibility === Window.Maximized) {
+            root.showMaximized()
+        } else if (previousVisibility === Window.Minimized) {
+            root.showMinimized()
+        } else {
+            root.show()
+        }
+    }
+
     function exitFullscreenMode() {
         fullscreenOverlayVisible = true
         root.showNormal()
@@ -1212,6 +1062,88 @@ Kirigami.ApplicationWindow {
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
+    }
+
+    function safeWindowTitle() {
+        return root.tr("app.title")
+    }
+
+    function windowTitleContext() {
+        const _currentIndex = trackModel.currentIndex
+        const _count = trackModel.count
+        const _currentTitle = trackModel.currentTitle
+        const _currentArtist = trackModel.currentArtist
+        const _currentAlbum = trackModel.currentAlbum
+        const _currentComment = trackModel.currentComment
+        const _currentGenre = trackModel.currentGenre
+        const _currentYear = trackModel.currentYear
+        const _currentTrackNumber = trackModel.currentTrackNumber
+        const _currentDuration = trackModel.currentDuration
+        const _currentFormat = trackModel.currentFormat
+        const _currentBitrate = trackModel.currentBitrate
+        const _currentSampleRate = trackModel.currentSampleRate
+        const _currentBitDepth = trackModel.currentBitDepth
+        const _currentBpm = trackModel.currentBpm
+        const _currentChannelCount = trackModel.currentChannelCount
+        const _playlistDuration = trackModel.playlistDuration
+        const _currentFile = audioEngine.currentFile
+        const _engineDuration = audioEngine.duration
+
+        let info = trackModel.currentTrackInfo ? trackModel.currentTrackInfo() : ({})
+        if (!info || Object.keys(info).length === 0) {
+            info = ({})
+        }
+
+        if ((!info.filePath || String(info.filePath).length === 0) && _currentFile) {
+            info.filePath = _currentFile
+        }
+        if ((!info.durationMs || Number(info.durationMs) <= 0) && Number(_engineDuration) > 0) {
+            info.durationMs = _engineDuration
+        }
+        if (info.playlistIndex === undefined) {
+            info.playlistIndex = _currentIndex
+        }
+        if (info.playlistCount === undefined) {
+            info.playlistCount = _count
+        }
+        if (info.playlistDurationMs === undefined) {
+            info.playlistDurationMs = _playlistDuration
+        }
+        return info
+    }
+
+    function windowTitleText() {
+        if (!appSettings.trackInfoEnabled) {
+            return safeWindowTitle()
+        }
+
+        const format = String(appSettings.trackInfoWindowTitleFormat || "")
+        if (format.length === 0) {
+            return safeWindowTitle()
+        }
+
+        const rendered = appSettings.renderTrackInfoFormat(format, windowTitleContext(), "windowTitle")
+        return rendered.length > 0 ? rendered : safeWindowTitle()
+    }
+
+    function actionShortcut(actionId) {
+        return root.shortcutSequence(actionId)
+    }
+
+    function shortcutSequence(shortcutId) {
+        const _shortcutRevision = shortcutManager ? shortcutManager.revision : 0
+        if (!shortcutManager || !shortcutId) {
+            return ""
+        }
+        return shortcutManager.effectiveSequence(shortcutId)
+    }
+
+    function shortcutActive(shortcutId) {
+        const _shortcutRevision = shortcutManager ? shortcutManager.revision : 0
+        if (!shortcutManager || !shortcutId) {
+            return false
+        }
+        return shortcutManager.shortcutEnabled(shortcutId)
     }
 
     function profilerOverlayText() {
@@ -1892,6 +1824,10 @@ Kirigami.ApplicationWindow {
         xdgPortalFilePicker.openFolder(root.tr("dialogs.addFolder"))
     }
 
+    function cmdFileOpenUrl() {
+        openUrlDialog.open()
+    }
+
     function cmdOpenYtDlpImportDialog() {
         root.openYtDlpImportDialog("", false)
     }
@@ -2120,14 +2056,14 @@ Kirigami.ApplicationWindow {
         if (audioEngine.duration <= 0) {
             return
         }
-        playbackController.seekRelative(-5000)
+        root.keyboardSeekRelative(-1, root.keyboardSeekBaseStepMs())
     }
 
     function cmdPlaybackSeekForward5s() {
         if (audioEngine.duration <= 0) {
             return
         }
-        playbackController.seekRelative(5000)
+        root.keyboardSeekRelative(1, root.keyboardSeekBaseStepMs())
     }
 
     function cmdPlaybackToggleShuffle() {
@@ -2368,6 +2304,10 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    onKeepWindowAboveChanged: {
+        Qt.callLater(root.applyKeepWindowAboveFlags)
+    }
+
     Component.onCompleted: {
         root.sidebarPlaylistsSectionVisible = sidebarSectionSettings.sidebarPlaylistsSectionVisible
         root.sidebarCollectionsSectionVisible = sidebarSectionSettings.sidebarCollectionsSectionVisible
@@ -2376,6 +2316,7 @@ Kirigami.ApplicationWindow {
         refreshLibraryDynamicMenuData()
         ensureSelectedPlaylistProfileStillExists()
         performanceProfiler.fullscreenWaveformActive = fullscreenMode
+        Qt.callLater(root.applyKeepWindowAboveFlags)
     }
 
     Timer {
@@ -2445,6 +2386,7 @@ Kirigami.ApplicationWindow {
         readonly property var fileOpenFiles: actionFileOpenFiles
         readonly property var fileAddFolder: actionFileAddFolder
         readonly property var fileOpenAudioConverter: actionFileOpenAudioConverter
+        readonly property var fileOpenUrl: actionFileOpenUrl
         readonly property var fileImportUrl: actionFileImportUrl
         readonly property var fileExportPlaylist: actionFileExportPlaylist
         readonly property var fileClearPlaylist: actionFileClearPlaylist
@@ -2490,6 +2432,7 @@ Kirigami.ApplicationWindow {
         readonly property var playbackResetSpeed: actionPlaybackResetSpeed
         readonly property var playbackResetPitch: actionPlaybackResetPitch
 
+        readonly property var libraryCurrentPlaylist: actionLibraryCurrentPlaylist
         readonly property var librarySaveCurrentPlaylist: actionLibrarySaveCurrentPlaylist
         readonly property var libraryNewEmptyPlaylist: actionLibraryNewEmptyPlaylist
         readonly property var libraryOpenCollectionsPanel: actionLibraryOpenCollectionsPanel
@@ -2502,6 +2445,7 @@ Kirigami.ApplicationWindow {
             actionFileOpenFiles,
             actionFileAddFolder,
             actionFileOpenAudioConverter,
+            actionFileOpenUrl,
             actionFileImportUrl,
             actionFileShowUrlImportSession,
             actionFileExportPlaylist,
@@ -2556,6 +2500,7 @@ Kirigami.ApplicationWindow {
         ]
 
         readonly property var libraryActions: [
+            actionLibraryCurrentPlaylist,
             actionLibrarySaveCurrentPlaylist,
             actionLibraryNewEmptyPlaylist,
             actionLibraryOpenCollectionsPanel,
@@ -2572,7 +2517,7 @@ Kirigami.ApplicationWindow {
         id: actionFileOpenFiles
         objectName: "file.openFiles"
         text: root.tr("menu.openFiles")
-        shortcut: "Ctrl+O"
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdOpenFiles()
     }
 
@@ -2580,7 +2525,7 @@ Kirigami.ApplicationWindow {
         id: actionFileAddFolder
         objectName: "file.addFolder"
         text: root.tr("menu.addFolder")
-        shortcut: "Ctrl+Shift+O"
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdAddFolder()
     }
 
@@ -2588,15 +2533,24 @@ Kirigami.ApplicationWindow {
         id: actionFileOpenAudioConverter
         objectName: "file.audioConverter"
         text: root.tr("menu.audioConverter")
+        shortcut: root.actionShortcut(objectName)
         enabled: root.canOpenAudioConverterForTrack(root.audioConverterTargetIndex())
         onTriggered: root.cmdOpenAudioConverter()
+    }
+
+    Action {
+        id: actionFileOpenUrl
+        objectName: "file.openUrl"
+        text: root.tr("menu.openUrl")
+        shortcut: root.actionShortcut(objectName)
+        onTriggered: root.cmdFileOpenUrl()
     }
 
     Action {
         id: actionFileImportUrl
         objectName: "file.importUrl"
         text: root.tr("menu.importUrl")
-        shortcut: "Ctrl+U"
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdOpenYtDlpImportDialog()
     }
 
@@ -2604,6 +2558,7 @@ Kirigami.ApplicationWindow {
         id: actionFileShowUrlImportSession
         objectName: "file.showUrlImportSession"
         text: root.tr("ytDlpImport.showSession")
+        shortcut: root.actionShortcut(objectName)
         enabled: root.ytDlpImportSessionAvailable
         onTriggered: root.cmdShowCurrentYtDlpImportSession()
     }
@@ -2612,7 +2567,7 @@ Kirigami.ApplicationWindow {
         id: actionFileExportPlaylist
         objectName: "file.exportPlaylist"
         text: root.tr("menu.exportPlaylist")
-        shortcut: "Ctrl+E"
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 0
         onTriggered: root.cmdExportPlaylist()
     }
@@ -2621,6 +2576,7 @@ Kirigami.ApplicationWindow {
         id: actionFileClearPlaylist
         objectName: "file.clearPlaylist"
         text: root.tr("menu.clearPlaylist")
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 0
         onTriggered: root.cmdClearPlaylist()
     }
@@ -2629,6 +2585,7 @@ Kirigami.ApplicationWindow {
         id: actionFileSettings
         objectName: "file.settings"
         text: root.tr("main.settings")
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdOpenSettings()
     }
 
@@ -2636,6 +2593,7 @@ Kirigami.ApplicationWindow {
         id: actionFileQuit
         objectName: "file.quit"
         text: root.tr("menu.quit")
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdQuit()
     }
 
@@ -2643,7 +2601,7 @@ Kirigami.ApplicationWindow {
         id: actionEditFind
         objectName: "edit.find"
         text: root.tr("menu.find")
-        shortcut: "Ctrl+F"
+        shortcut: root.actionShortcut(objectName)
         enabled: headerBar && headerBar.focusSearchField
         onTriggered: root.cmdFocusSearch()
     }
@@ -2652,6 +2610,7 @@ Kirigami.ApplicationWindow {
         id: actionEditSelectAllVisible
         objectName: "edit.selectAllVisible"
         text: root.tr("menu.selectAll")
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 0 && playlistTable && playlistTable.selectAllVisible
         onTriggered: root.cmdSelectAllVisible()
     }
@@ -2660,6 +2619,7 @@ Kirigami.ApplicationWindow {
         id: actionEditClearSelection
         objectName: "edit.clearSelection"
         text: root.tr("menu.clearSelection")
+        shortcut: root.actionShortcut(objectName)
         enabled: playlistTable
                  && playlistTable.clearSelection
                  && playlistTable.hasSelection
@@ -2671,7 +2631,7 @@ Kirigami.ApplicationWindow {
         id: actionEditRemoveSelected
         objectName: "edit.removeSelected"
         text: root.tr("playlist.removeSelected")
-        shortcut: "Delete"
+        shortcut: root.actionShortcut(objectName)
         enabled: playlistTable
                  && playlistTable.hasSelection
                  && playlistTable.hasSelection()
@@ -2682,6 +2642,7 @@ Kirigami.ApplicationWindow {
         id: actionEditEditTagsSelected
         objectName: "edit.editTagsSelected"
         text: root.tr("playlist.editTagsSelected")
+        shortcut: root.actionShortcut(objectName)
         enabled: playlistTable
                  && playlistTable.hasSelection
                  && playlistTable.hasSelection()
@@ -2693,6 +2654,7 @@ Kirigami.ApplicationWindow {
         id: actionEditExportSelected
         objectName: "edit.exportSelected"
         text: root.tr("playlist.exportSelected")
+        shortcut: root.actionShortcut(objectName)
         enabled: playlistTable
                  && playlistTable.hasSelection
                  && playlistTable.hasSelection()
@@ -2703,7 +2665,7 @@ Kirigami.ApplicationWindow {
         id: actionEditLocateCurrent
         objectName: "edit.locateCurrent"
         text: root.tr("playlist.locateCurrent")
-        shortcut: "Ctrl+L"
+        shortcut: root.actionShortcut(objectName)
         enabled: playbackController.activeTrackIndex >= 0
         onTriggered: root.cmdLocateCurrent()
     }
@@ -2712,6 +2674,7 @@ Kirigami.ApplicationWindow {
         id: actionEditShowCurrentInFileManager
         objectName: "edit.showInFileManager"
         text: root.tr("playlist.openInFileManager")
+        shortcut: root.actionShortcut(objectName)
         enabled: playbackController.activeTrackIndex >= 0
                  && root.isLocalTrackSource(trackModel.getFilePath(playbackController.activeTrackIndex))
         onTriggered: root.cmdShowCurrentInFileManager()
@@ -2721,6 +2684,7 @@ Kirigami.ApplicationWindow {
         id: actionViewToggleCollectionsSidebar
         objectName: "view.toggleCollectionsSidebar"
         text: root.tr("menu.viewCollectionsPanel")
+        shortcut: root.actionShortcut(objectName)
         checkable: true
         checked: appSettings.collectionsSidebarVisible
         enabled: !root.isCompactSkin
@@ -2731,6 +2695,7 @@ Kirigami.ApplicationWindow {
         id: actionViewToggleInfoSidebar
         objectName: "view.toggleInfoSidebar"
         text: root.tr("menu.viewInfoSidebar")
+        shortcut: root.actionShortcut(objectName)
         checkable: true
         checked: appSettings.sidebarVisible
         enabled: !root.isCompactSkin
@@ -2741,6 +2706,7 @@ Kirigami.ApplicationWindow {
         id: actionViewToggleSpeedPitch
         objectName: "view.toggleSpeedPitch"
         text: root.tr("menu.viewSpeedPitch")
+        shortcut: root.actionShortcut(objectName)
         checkable: true
         checked: appSettings.showSpeedPitchControls
         onTriggered: root.cmdToggleSpeedPitchControls()
@@ -2759,7 +2725,7 @@ Kirigami.ApplicationWindow {
         id: actionViewToggleQueuePanel
         objectName: "view.toggleQueuePanel"
         text: root.tr("queue.open")
-        shortcut: "Ctrl+Shift+Q"
+        shortcut: root.actionShortcut(objectName)
         enabled: controlBar && controlBar.toggleQueuePopup
         onTriggered: root.cmdToggleQueuePanel()
     }
@@ -2768,6 +2734,7 @@ Kirigami.ApplicationWindow {
         id: actionViewOpenCollectionsPanel
         objectName: "view.openCollectionsPanel"
         text: root.tr("collections.openPanel")
+        shortcut: root.actionShortcut(objectName)
         enabled: root.useCollectionsDrawerFallback || root.showCollectionsSidebar
         onTriggered: root.cmdOpenCollectionsPanel()
     }
@@ -2827,6 +2794,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackPlayPause
         objectName: "playback.playPause"
         text: audioEngine.state === 1 ? root.tr("player.pause") : root.tr("player.play")
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 0
         onTriggered: root.cmdPlaybackPlayPause()
     }
@@ -2835,6 +2803,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackStop
         objectName: "playback.stop"
         text: root.tr("player.stop")
+        shortcut: root.actionShortcut(objectName)
         enabled: audioEngine.state !== 0
         onTriggered: root.cmdPlaybackStop()
     }
@@ -2843,6 +2812,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackPrevious
         objectName: "playback.previous"
         text: root.tr("player.previous")
+        shortcut: root.actionShortcut(objectName)
         enabled: playbackController.canGoPrevious
         onTriggered: root.cmdPlaybackPrevious()
     }
@@ -2851,6 +2821,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackNext
         objectName: "playback.next"
         text: root.tr("player.next")
+        shortcut: root.actionShortcut(objectName)
         enabled: playbackController.canGoNext
         onTriggered: root.cmdPlaybackNext()
     }
@@ -2858,7 +2829,8 @@ Kirigami.ApplicationWindow {
     Action {
         id: actionPlaybackSeekBack5s
         objectName: "playback.seekBack5s"
-        text: root.tr("menu.seekBack5")
+        text: root.tr("menu.seekBack5").replace("5", String(appSettings.keyboardSeekStepSeconds))
+        shortcut: root.actionShortcut(objectName)
         enabled: audioEngine.duration > 0
         onTriggered: root.cmdPlaybackSeekBack5s()
     }
@@ -2866,7 +2838,8 @@ Kirigami.ApplicationWindow {
     Action {
         id: actionPlaybackSeekForward5s
         objectName: "playback.seekForward5s"
-        text: root.tr("menu.seekForward5")
+        text: root.tr("menu.seekForward5").replace("5", String(appSettings.keyboardSeekStepSeconds))
+        shortcut: root.actionShortcut(objectName)
         enabled: audioEngine.duration > 0
         onTriggered: root.cmdPlaybackSeekForward5s()
     }
@@ -2877,6 +2850,7 @@ Kirigami.ApplicationWindow {
         text: playbackController.shuffleEnabled
               ? root.tr("player.shuffleDisable")
               : root.tr("player.shuffleEnable")
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 1
         checkable: true
         checked: playbackController.shuffleEnabled
@@ -2891,6 +2865,7 @@ Kirigami.ApplicationWindow {
               : (playbackController.repeatMode === 1
                  ? root.tr("player.repeatAll")
                  : root.tr("player.repeatOff"))
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 0
         onTriggered: root.cmdPlaybackCycleRepeat()
     }
@@ -2899,7 +2874,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackRepeatOff
         objectName: "playback.repeatOff"
         text: root.tr("player.repeatOff")
-        shortcut: "Ctrl+1"
+        shortcut: root.actionShortcut(objectName)
         checkable: true
         checked: playbackController.repeatMode === 0
         enabled: trackModel.count > 0
@@ -2910,7 +2885,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackRepeatAll
         objectName: "playback.repeatAll"
         text: root.tr("player.repeatAll")
-        shortcut: "Ctrl+2"
+        shortcut: root.actionShortcut(objectName)
         checkable: true
         checked: playbackController.repeatMode === 1
         enabled: trackModel.count > 0
@@ -2921,7 +2896,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackRepeatOne
         objectName: "playback.repeatOne"
         text: root.tr("player.repeatOne")
-        shortcut: "Ctrl+3"
+        shortcut: root.actionShortcut(objectName)
         checkable: true
         checked: playbackController.repeatMode === 2
         enabled: trackModel.count > 0
@@ -2932,6 +2907,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackClearQueue
         objectName: "playback.clearQueue"
         text: root.tr("playlist.clearQueue")
+        shortcut: root.actionShortcut(objectName)
         enabled: playbackController.queueCount > 0
         onTriggered: root.cmdPlaybackClearQueue()
     }
@@ -2940,6 +2916,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackLocateCurrent
         objectName: "playback.locateCurrent"
         text: root.tr("playlist.locateCurrent")
+        shortcut: root.actionShortcut(objectName)
         enabled: playbackController.activeTrackIndex >= 0
         onTriggered: root.cmdLocateCurrent()
     }
@@ -2958,6 +2935,7 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackResetSpeed
         objectName: "playback.resetSpeed"
         text: root.tr("player.resetSpeed")
+        shortcut: root.actionShortcut(objectName)
         enabled: audioEngine.rateAvailable && Math.abs(audioEngine.playbackRate - 1.0) > 0.001
         onTriggered: root.cmdPlaybackResetSpeed()
     }
@@ -2966,15 +2944,25 @@ Kirigami.ApplicationWindow {
         id: actionPlaybackResetPitch
         objectName: "playback.resetPitch"
         text: root.tr("player.resetPitch")
+        shortcut: root.actionShortcut(objectName)
         enabled: audioEngine.pitchAvailable && audioEngine.pitchSemitones !== 0
         onTriggered: root.cmdPlaybackResetPitch()
+    }
+
+    Action {
+        id: actionLibraryCurrentPlaylist
+        objectName: "library.currentPlaylist"
+        text: root.tr("collections.currentPlaylist")
+        shortcut: root.actionShortcut(objectName)
+        enabled: root.collectionModeActive || root.selectedPlaylistProfileId >= 0
+        onTriggered: root.activateCurrentPlaylistView()
     }
 
     Action {
         id: actionLibrarySaveCurrentPlaylist
         objectName: "library.saveCurrentPlaylist"
         text: root.tr("playlists.saveCurrent")
-        shortcut: "Ctrl+Shift+S"
+        shortcut: root.actionShortcut(objectName)
         enabled: trackModel.count > 0
         onTriggered: root.cmdLibrarySaveCurrentPlaylist()
     }
@@ -2983,6 +2971,7 @@ Kirigami.ApplicationWindow {
         id: actionLibraryNewEmptyPlaylist
         objectName: "library.newEmptyPlaylist"
         text: root.tr("menu.newEmptyPlaylist")
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdLibraryNewEmptyPlaylist()
     }
 
@@ -2990,6 +2979,7 @@ Kirigami.ApplicationWindow {
         id: actionLibraryOpenCollectionsPanel
         objectName: "library.openCollectionsPanel"
         text: root.tr("collections.openPanel")
+        shortcut: root.actionShortcut(objectName)
         enabled: root.useCollectionsDrawerFallback || root.showCollectionsSidebar
         onTriggered: root.cmdOpenCollectionsPanel()
     }
@@ -2998,6 +2988,7 @@ Kirigami.ApplicationWindow {
         id: actionLibraryCreateSmartCollection
         objectName: "library.createSmartCollection"
         text: root.tr("collections.create")
+        shortcut: root.actionShortcut(objectName)
         enabled: smartCollectionsEngine && smartCollectionsEngine.enabled
         onTriggered: root.cmdLibraryCreateSmartCollection()
     }
@@ -3006,6 +2997,7 @@ Kirigami.ApplicationWindow {
         id: actionHelpAbout
         objectName: "help.about"
         text: root.tr("help.about")
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdOpenHelpAbout()
     }
 
@@ -3013,15 +3005,82 @@ Kirigami.ApplicationWindow {
         id: actionHelpShortcuts
         objectName: "help.shortcuts"
         text: root.tr("help.shortcuts")
-        shortcut: "F1"
+        shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdOpenHelpShortcuts()
     }
     
     // Enable drag & drop
     DropArea {
+        id: windowDropArea
         anchors.fill: parent
+        enabled: !root.isCompactSkin
+
+        function playlistDropPoint(dropEvent) {
+            if (root.isCompactSkin
+                    || !playlistTable
+                    || !playlistTable.updateExternalDropAtItemPoint) {
+                return null
+            }
+            return windowDropArea.mapToItem(playlistTable, dropEvent.x, dropEvent.y)
+        }
+
+        function acceptDropEvent(dropEvent) {
+            if (dropEvent.acceptProposedAction) {
+                dropEvent.acceptProposedAction()
+            } else if (dropEvent.accept) {
+                dropEvent.accept(Qt.CopyAction)
+            } else {
+                dropEvent.accepted = true
+            }
+        }
+
+        onEntered: (drag) => {
+            if (!drag.hasUrls) {
+                return
+            }
+            const point = windowDropArea.playlistDropPoint(drag)
+            if (point && playlistTable.updateExternalDropAtItemPoint(point.x, point.y)) {
+                windowDropArea.acceptDropEvent(drag)
+            }
+        }
+        onPositionChanged: (drag) => {
+            if (!drag.hasUrls) {
+                if (playlistTable && playlistTable.clearExternalDropIndicator) {
+                    playlistTable.clearExternalDropIndicator()
+                }
+                return
+            }
+            const point = windowDropArea.playlistDropPoint(drag)
+            if (point && playlistTable.updateExternalDropAtItemPoint(point.x, point.y)) {
+                windowDropArea.acceptDropEvent(drag)
+            } else if (playlistTable && playlistTable.clearExternalDropIndicator) {
+                playlistTable.clearExternalDropIndicator()
+            }
+        }
+        onExited: {
+            if (playlistTable && playlistTable.clearExternalDropIndicator) {
+                playlistTable.clearExternalDropIndicator()
+            }
+        }
         onDropped: (drop) => {
             if (drop.hasUrls) {
+                const point = windowDropArea.playlistDropPoint(drop)
+                if (point && playlistTable.externalDropContainsItemPoint(point.x, point.y)) {
+                    const insertIndex = playlistTable.externalDropIndexAtItemPoint(point.x, point.y)
+                    if (insertIndex >= 0) {
+                        windowDropArea.acceptDropEvent(drop)
+                        root.ensurePlaylistModeForMutation()
+                        trackModel.insertUrlsAt(insertIndex, drop.urls)
+                        if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
+                            playbackController.requestPlayIndex(0, "playlist.drop_autoplay")
+                        }
+                        playlistTable.clearExternalDropIndicator()
+                        return
+                    }
+                }
+                if (playlistTable && playlistTable.clearExternalDropIndicator) {
+                    playlistTable.clearExternalDropIndicator()
+                }
                 root.ensurePlaylistModeForMutation()
                 trackModel.addUrls(drop.urls)
                 if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
@@ -3037,10 +3096,29 @@ Kirigami.ApplicationWindow {
     property int _seekBurstDirection: 0   // -1 back, 1 forward
     property double _seekBurstLastAtMs: 0
 
+    function keyboardSeekBaseStepMs() {
+        const baseStepMs = Math.max(1, Math.min(60, appSettings.keyboardSeekStepSeconds)) * 1000
+        return baseStepMs
+    }
+
     function seekStepForBurst(count) {
-        if (count < 4) return 5000
-        if (count < 10) return 10000
-        return 20000
+        const baseStepMs = root.keyboardSeekBaseStepMs()
+        if (count < 4) return baseStepMs
+        if (count < 10) return baseStepMs * 2
+        return baseStepMs * 4
+    }
+
+    function keyboardSeekRelative(direction, stepMs) {
+        if (direction < 0
+                && appSettings.keyboardSeekBackwardToPreviousTrack
+                && audioEngine
+                && audioEngine.duration > 0
+                && audioEngine.position - stepMs < 0
+                && playbackController.canGoPrevious) {
+            playbackController.skipToPreviousTrack()
+            return
+        }
+        playbackController.seekRelative(direction * stepMs)
     }
 
     function triggerAcceleratedSeek(direction) {
@@ -3054,7 +3132,7 @@ Kirigami.ApplicationWindow {
         const stepMs = root.seekStepForBurst(root._seekBurstCount)
         root._seekBurstCount += 1
         root._seekBurstLastAtMs = nowMs
-        playbackController.seekRelative(direction * stepMs)
+        root.keyboardSeekRelative(direction, stepMs)
     }
 
     function showWaveformKeyboardBadge(text) {
@@ -3155,19 +3233,19 @@ Kirigami.ApplicationWindow {
     Connections {
         target: globalKeyMonitor
 
-        function onPlainSpacePressed() {
+        function onTapHoldShortcutPressed() {
             if (!root.spaceHoldShortcutPressed) {
                 root.armSpaceHoldShortcut()
             }
         }
 
-        function onPlainSpaceReleased() {
+        function onTapHoldShortcutReleased() {
             if (root.spaceHoldShortcutPressed) {
                 root.releaseSpaceHoldShortcut()
             }
         }
 
-        function onPlainSpaceCanceled() {
+        function onTapHoldShortcutCanceled() {
             if (root.spaceHoldShortcutPressed) {
                 root.cancelSpaceHoldShortcut()
             }
@@ -3185,33 +3263,62 @@ Kirigami.ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Left"
+        sequence: root.shortcutSequence("playback.seekBackward")
         autoRepeat: true
-        enabled: !root.isCompactSkin
+        enabled: root.shortcutActive("playback.seekBackward") && !root.isCompactSkin
         onActivated: {
             root.triggerAcceleratedSeek(-1)
         }
     }
     Shortcut {
-        sequence: "Right"
+        sequence: root.shortcutSequence("playback.seekForward")
         autoRepeat: true
-        enabled: !root.isCompactSkin
+        enabled: root.shortcutActive("playback.seekForward") && !root.isCompactSkin
         onActivated: {
             root.triggerAcceleratedSeek(1)
         }
     }
     Shortcut {
-        sequence: "F11"
+        sequence: root.shortcutSequence("playlist.scrollToBeginning")
+        enabled: root.shortcutActive("playlist.scrollToBeginning") && root.normalPlaylistShortcutsActive()
+        onActivated: playlistTable.scrollToBeginning()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playlist.scrollToEnd")
+        enabled: root.shortcutActive("playlist.scrollToEnd") && root.normalPlaylistShortcutsActive()
+        onActivated: playlistTable.scrollToEnd()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playlist.pageUp")
+        autoRepeat: true
+        enabled: root.shortcutActive("playlist.pageUp") && root.normalPlaylistShortcutsActive()
+        onActivated: playlistTable.scrollPage(-1)
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playlist.pageDown")
+        autoRepeat: true
+        enabled: root.shortcutActive("playlist.pageDown") && root.normalPlaylistShortcutsActive()
+        onActivated: playlistTable.scrollPage(1)
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("view.toggleFullscreen")
+        enabled: root.shortcutActive("view.toggleFullscreen")
         onActivated: root.cycleFullscreenMode()
     }
     Shortcut {
-        sequence: "Escape"
-        enabled: root.fullscreenMode
+        sequence: root.shortcutSequence("view.exitFullscreen")
+        enabled: root.shortcutActive("view.exitFullscreen") && root.fullscreenMode
         onActivated: root.exitFullscreenMode()
     }
     Shortcut {
-        sequence: "["
-        enabled: audioEngine.rateAvailable
+        sequence: root.shortcutSequence("playback.toggleMute")
+        enabled: root.shortcutActive("playback.toggleMute")
+                 && !root.searchFieldHasActiveFocus()
+        onActivated: audioEngine.toggleMute()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playback.speedDown")
+        enabled: root.shortcutActive("playback.speedDown") && audioEngine.rateAvailable
         onActivated: {
             const nextRate = Math.max(0.25, Math.round((audioEngine.playbackRate - 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
@@ -3219,8 +3326,8 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "]"
-        enabled: audioEngine.rateAvailable
+        sequence: root.shortcutSequence("playback.speedUp")
+        enabled: root.shortcutActive("playback.speedUp") && audioEngine.rateAvailable
         onActivated: {
             const nextRate = Math.min(2.0, Math.round((audioEngine.playbackRate + 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
@@ -3228,16 +3335,16 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "Backspace"
-        enabled: audioEngine.rateAvailable
+        sequence: root.shortcutSequence("playback.speedReset")
+        enabled: root.shortcutActive("playback.speedReset") && audioEngine.rateAvailable
         onActivated: {
             audioEngine.playbackRate = 1.0
             root.showSpeedShortcutBadge(1.0)
         }
     }
     Shortcut {
-        sequence: "-"
-        enabled: audioEngine.pitchAvailable
+        sequence: root.shortcutSequence("playback.pitchDown")
+        enabled: root.shortcutActive("playback.pitchDown") && audioEngine.pitchAvailable
         onActivated: {
             const nextPitch = Math.max(-6, audioEngine.pitchSemitones - 1)
             audioEngine.pitchSemitones = nextPitch
@@ -3245,8 +3352,8 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "="
-        enabled: audioEngine.pitchAvailable
+        sequence: root.shortcutSequence("playback.pitchUp")
+        enabled: root.shortcutActive("playback.pitchUp") && audioEngine.pitchAvailable
         onActivated: {
             const nextPitch = Math.min(6, audioEngine.pitchSemitones + 1)
             audioEngine.pitchSemitones = nextPitch
@@ -3254,15 +3361,16 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "0"
-        enabled: audioEngine.pitchAvailable
+        sequence: root.shortcutSequence("playback.pitchReset")
+        enabled: root.shortcutActive("playback.pitchReset") && audioEngine.pitchAvailable
         onActivated: {
             audioEngine.pitchSemitones = 0
             root.showPitchShortcutBadge(0)
         }
     }
     Shortcut {
-        sequence: "Ctrl+Shift+P"
+        sequence: root.shortcutSequence("view.profilerOverlay")
+        enabled: root.shortcutActive("view.profilerOverlay")
         onActivated: {
             if (!performanceProfiler.enabled) {
                 performanceProfiler.enabled = true
@@ -3271,7 +3379,8 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "Ctrl+Shift+E"
+        sequence: root.shortcutSequence("view.profilerEnable")
+        enabled: root.shortcutActive("view.profilerEnable")
         onActivated: {
             performanceProfiler.enabled = !performanceProfiler.enabled
             if (performanceProfiler.enabled) {
@@ -3280,28 +3389,31 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "Ctrl+Shift+G"
+        sequence: root.shortcutSequence("playback.openEqualizer")
         context: Qt.ApplicationShortcut
+        enabled: root.shortcutActive("playback.openEqualizer")
         onActivated: root.cmdPlaybackOpenEqualizer()
     }
     Shortcut {
-        sequence: "Ctrl+Shift+I"
+        sequence: root.shortcutSequence("equalizer.importPreset")
         context: Qt.ApplicationShortcut
+        enabled: root.shortcutActive("equalizer.importPreset")
         onActivated: root.cmdEqualizerImportPresetShortcut()
     }
     Shortcut {
-        sequence: "Ctrl+Shift+X"
+        sequence: root.shortcutSequence("equalizer.exportPreset")
         context: Qt.ApplicationShortcut
+        enabled: root.shortcutActive("equalizer.exportPreset")
         onActivated: root.cmdEqualizerExportPresetShortcut()
     }
     Shortcut {
-        sequence: "Ctrl+Shift+R"
-        enabled: performanceProfiler.enabled
+        sequence: root.shortcutSequence("view.profilerReset")
+        enabled: root.shortcutActive("view.profilerReset") && performanceProfiler.enabled
         onActivated: performanceProfiler.reset()
     }
     Shortcut {
-        sequence: "Ctrl+Shift+J"
-        enabled: performanceProfiler.enabled
+        sequence: root.shortcutSequence("view.profilerExportJson")
+        enabled: root.shortcutActive("view.profilerExportJson") && performanceProfiler.enabled
         onActivated: {
             const path = performanceProfiler.exportSnapshotJson()
             if (path && path.length > 0) {
@@ -3312,8 +3424,8 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "Ctrl+Shift+C"
-        enabled: performanceProfiler.enabled
+        sequence: root.shortcutSequence("view.profilerExportCsv")
+        enabled: root.shortcutActive("view.profilerExportCsv") && performanceProfiler.enabled
         onActivated: {
             const path = performanceProfiler.exportSnapshotCsv()
             if (path && path.length > 0) {
@@ -3324,8 +3436,8 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "Ctrl+Shift+B"
-        enabled: performanceProfiler.enabled
+        sequence: root.shortcutSequence("view.profilerExportBundle")
+        enabled: root.shortcutActive("view.profilerExportBundle") && performanceProfiler.enabled
         onActivated: {
             const path = performanceProfiler.exportSnapshotBundle()
             if (path && path.length > 0) {
@@ -3442,6 +3554,9 @@ Kirigami.ApplicationWindow {
                 function onCreateSmartCollectionRequested() {
                     smartCollectionDialog.openForCreate()
                 }
+                function onEqualizerRequested() {
+                    root.cmdPlaybackOpenEqualizer()
+                }
                 function onHelpAboutRequested() {
                     root.cmdOpenHelpAbout()
                 }
@@ -3449,6 +3564,32 @@ Kirigami.ApplicationWindow {
                     root.cmdOpenHelpShortcuts()
                 }
             }
+        }
+
+        Binding {
+            target: playbackController
+            property: "searchPlaybackEnabled"
+            value: appSettings.playSearchResultsInOrder
+        }
+
+        Binding {
+            target: playbackController
+            property: "searchPlaybackQuery"
+            value: root.isCompactSkin && compactSkinLoader.item
+                   ? compactSkinLoader.item.normalizedSearchQuery
+                   : String(headerBar.submittedSearchText || "").trim().toLowerCase()
+        }
+
+        Binding {
+            target: playbackController
+            property: "searchPlaybackFieldMask"
+            value: root.isCompactSkin ? 0 : headerBar.searchFieldMask
+        }
+
+        Binding {
+            target: playbackController
+            property: "searchPlaybackQuickFilterMask"
+            value: root.isCompactSkin ? 0 : headerBar.searchQuickFilterMask
         }
 
         // Normal skin content
@@ -3600,6 +3741,13 @@ Kirigami.ApplicationWindow {
                         root.clearPendingPresetPickerFlow()
                         root.pendingSelectedExportPaths = filePaths
                         xdgPortalFilePicker.saveFile(root.tr("dialogs.exportPlaylist"), "playlist_selected.m3u")
+                    }
+                    onExternalUrlsDropped: function(urls, insertIndex) {
+                        root.ensurePlaylistModeForMutation()
+                        trackModel.insertUrlsAt(insertIndex, urls)
+                        if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
+                            playbackController.requestPlayIndex(0, "playlist.drop_autoplay")
+                        }
                     }
                 }
 
@@ -4117,6 +4265,39 @@ Kirigami.ApplicationWindow {
         onPasteUrlRequested: root.pasteClipboardUrlIntoYtDlpImportDialog()
     }
 
+    OpenUrlDialog {
+        id: openUrlDialog
+        onAccepted: {
+            const urlValue = openUrlDialog.url
+            const action = openUrlDialog.targetAction
+            const urls = [urlValue]
+
+            if (action === "playNow") {
+                playbackController.clearQueue()
+                trackModel.addUrls(urls)
+                if (trackModel.count > 0) {
+                    playbackController.playIndex(0)
+                }
+            } else if (action === "addToCurrent") {
+                root.ensurePlaylistModeForMutation()
+                trackModel.addUrls(urls)
+                if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
+                    playbackController.playIndex(0)
+                }
+            } else if (action === "addToNew") {
+                const newName = makeUniquePlaylistName(root.tr("playlists.newStreamPlaylistName"))
+                const newPlaylistId = playlistProfilesManager.savePlaylist(newName, [], -1)
+                if (newPlaylistId > 0) {
+                    applyPlaylistProfile(newPlaylistId, newName)
+                    trackModel.addUrls(urls)
+                    if (trackModel.count > 0) {
+                        playbackController.playIndex(0)
+                    }
+                }
+            }
+        }
+    }
+
     Frame {
         id: ytDlpImportSessionBanner
         parent: Overlay.overlay
@@ -4352,6 +4533,20 @@ Kirigami.ApplicationWindow {
         id: aboutDialog
     }
 
+    UpdateAvailableDialog {
+        id: updateAvailableDialog
+    }
+
+    Connections {
+        target: updateChecker
+
+        function onUpdateFound() {
+            if (!updateAvailableDialog.visible) {
+                updateAvailableDialog.open()
+            }
+        }
+    }
+
     Connections {
         target: aboutDialog
         function onClosed() {
@@ -4361,7 +4556,6 @@ Kirigami.ApplicationWindow {
 
     KeyboardShortcutsDialog {
         id: shortcutsDialog
-        shortcutsModel: root.shortcutReferenceModel
     }
 
     Connections {
@@ -4417,19 +4611,19 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    MessageDialog {
+    SelectableMessageDialog {
         id: playbackErrorDialog
         title: root.tr("main.playbackError")
         text: ""
     }
 
-    MessageDialog {
+    SelectableMessageDialog {
         id: waveformErrorDialog
         title: root.tr("main.waveformError")
         text: ""
     }
 
-    MessageDialog {
+    SelectableMessageDialog {
         id: exportStatusDialog
         title: root.tr("main.export")
         text: ""

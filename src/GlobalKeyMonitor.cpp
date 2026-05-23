@@ -4,6 +4,7 @@
 #include <QEvent>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QMetaObject>
 #include <QVariant>
 #include <QWindow>
@@ -49,8 +50,32 @@ void GlobalKeyMonitor::setMainWindow(QWindow *window)
         return;
     }
 
-    cancelTrackedSpacePress();
+    cancelTrackedTapHoldPress();
     m_mainWindow = window;
+}
+
+void GlobalKeyMonitor::setTapHoldShortcutSequence(const QString &sequence)
+{
+    QKeySequence keySequence = QKeySequence::fromString(sequence.trimmed(), QKeySequence::PortableText);
+    if (keySequence.isEmpty()) {
+        keySequence = QKeySequence::fromString(sequence.trimmed(), QKeySequence::NativeText);
+    }
+
+    int nextKey = 0;
+    Qt::KeyboardModifiers nextModifiers = Qt::NoModifier;
+    if (!keySequence.isEmpty() && keySequence.count() == 1) {
+        const QKeyCombination combination = keySequence[0];
+        nextKey = combination.key();
+        nextModifiers = shortcutRelevantModifiers(combination.keyboardModifiers());
+    }
+
+    if (m_tapHoldKey == nextKey && m_tapHoldModifiers == nextModifiers) {
+        return;
+    }
+
+    cancelTrackedTapHoldPress();
+    m_tapHoldKey = nextKey;
+    m_tapHoldModifiers = nextModifiers;
 }
 
 bool GlobalKeyMonitor::eventFilter(QObject *watched, QEvent *event)
@@ -63,12 +88,24 @@ bool GlobalKeyMonitor::eventFilter(QObject *watched, QEvent *event)
 
     if (event->type() == QEvent::ApplicationDeactivate
         || event->type() == QEvent::WindowDeactivate) {
-        cancelTrackedSpacePress();
+        cancelTrackedTapHoldPress();
         return QObject::eventFilter(watched, event);
     }
 
     auto *keyEvent = dynamic_cast<QKeyEvent *>(event);
-    if (!keyEvent || !shouldHandlePlainSpace(keyEvent)) {
+    if (!keyEvent) {
+        return QObject::eventFilter(watched, event);
+    }
+
+    // When a tap-hold press is active, suppress auto-repeat events for the
+    // same key so they never reach focused controls (e.g. ToolButtons that
+    // would otherwise activate on Space).
+    if (m_tapHoldPressed && isAutoRepeatOfTrackedKey(keyEvent)) {
+        keyEvent->accept();
+        return true;
+    }
+
+    if (!shouldHandleTapHoldShortcut(keyEvent)) {
         return QObject::eventFilter(watched, event);
     }
 
@@ -77,16 +114,18 @@ bool GlobalKeyMonitor::eventFilter(QObject *watched, QEvent *event)
         keyEvent->accept();
         return true;
     case QEvent::KeyPress:
-        if (!m_plainSpacePressed) {
-            m_plainSpacePressed = true;
+        if (!m_tapHoldPressed) {
+            m_tapHoldPressed = true;
             emit plainSpacePressed();
+            emit tapHoldShortcutPressed();
         }
         keyEvent->accept();
         return true;
     case QEvent::KeyRelease:
-        if (m_plainSpacePressed) {
-            m_plainSpacePressed = false;
+        if (m_tapHoldPressed) {
+            m_tapHoldPressed = false;
             emit plainSpaceReleased();
+            emit tapHoldShortcutReleased();
         }
         keyEvent->accept();
         return true;
@@ -97,17 +136,33 @@ bool GlobalKeyMonitor::eventFilter(QObject *watched, QEvent *event)
     return QObject::eventFilter(watched, event);
 }
 
-bool GlobalKeyMonitor::isPlainSpaceEvent(const QKeyEvent *event)
+Qt::KeyboardModifiers GlobalKeyMonitor::shortcutRelevantModifiers(Qt::KeyboardModifiers modifiers)
 {
-    if (!event || event->key() != Qt::Key_Space || event->isAutoRepeat()) {
+    return modifiers & (Qt::ControlModifier
+                        | Qt::ShiftModifier
+                        | Qt::AltModifier
+                        | Qt::MetaModifier
+                        | Qt::KeypadModifier);
+}
+
+bool GlobalKeyMonitor::isTapHoldShortcutEvent(const QKeyEvent *event) const
+{
+    if (!event || m_tapHoldKey == 0 || event->isAutoRepeat()) {
         return false;
     }
 
-    const Qt::KeyboardModifiers modifiers = event->modifiers();
-    return (modifiers & Qt::ControlModifier) == 0
-        && (modifiers & Qt::ShiftModifier) == 0
-        && (modifiers & Qt::AltModifier) == 0
-        && (modifiers & Qt::MetaModifier) == 0;
+    return event->key() == m_tapHoldKey
+        && shortcutRelevantModifiers(event->modifiers()) == m_tapHoldModifiers;
+}
+
+bool GlobalKeyMonitor::isAutoRepeatOfTrackedKey(const QKeyEvent *event) const
+{
+    if (!event || m_tapHoldKey == 0 || !event->isAutoRepeat()) {
+        return false;
+    }
+
+    return event->key() == m_tapHoldKey
+        && shortcutRelevantModifiers(event->modifiers()) == m_tapHoldModifiers;
 }
 
 bool GlobalKeyMonitor::focusObjectAcceptsTextInput(QObject *object)
@@ -137,9 +192,9 @@ bool GlobalKeyMonitor::focusObjectAcceptsTextInput(QObject *object)
     return false;
 }
 
-bool GlobalKeyMonitor::shouldHandlePlainSpace(const QKeyEvent *event) const
+bool GlobalKeyMonitor::shouldHandleTapHoldShortcut(const QKeyEvent *event) const
 {
-    if (!m_mainWindow || !isPlainSpaceEvent(event)) {
+    if (!m_mainWindow || !isTapHoldShortcutEvent(event)) {
         return false;
     }
 
@@ -150,12 +205,13 @@ bool GlobalKeyMonitor::shouldHandlePlainSpace(const QKeyEvent *event) const
     return !focusObjectAcceptsTextInput(QGuiApplication::focusObject());
 }
 
-void GlobalKeyMonitor::cancelTrackedSpacePress()
+void GlobalKeyMonitor::cancelTrackedTapHoldPress()
 {
-    if (!m_plainSpacePressed) {
+    if (!m_tapHoldPressed) {
         return;
     }
 
-    m_plainSpacePressed = false;
+    m_tapHoldPressed = false;
     emit plainSpaceCanceled();
+    emit tapHoldShortcutCanceled();
 }

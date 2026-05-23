@@ -15,6 +15,7 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <gst/gst.h>
+#include <gst/gstchildproxy.h>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 #include <cmath>
@@ -433,6 +434,7 @@ bool renderTrackerModuleToWaveFile(const QString &sourcePath,
 AudioConverterService::AudioConverterService(QObject *parent)
     : QObject(parent)
 {
+    m_equalizerBandGains = normalizeEqualizerBandGains({});
     setStatusPresentation(QStringLiteral("audioConverter.runtimeReady"),
                           {},
                           QStringLiteral("Ready to configure audio conversion."));
@@ -571,6 +573,15 @@ bool AudioConverterService::startConversion()
     if (!WaveFlux::isTrackerModuleSource(m_sourceFile) || m_sourceDurationMs <= 0) {
         m_sourceDurationMs = probeMetadataDurationMs(m_sourceFile);
     }
+    m_progressStartMs = 0;
+    m_progressDurationMs = m_sourceDurationMs;
+    if (m_trimEnabled) {
+        m_progressStartMs = qMax<qint64>(0, m_trimStartMs);
+        const qint64 effectiveEndMs = m_trimEndMs > 0 ? m_trimEndMs : m_sourceDurationMs;
+        if (effectiveEndMs > m_progressStartMs) {
+            m_progressDurationMs = effectiveEndMs - m_progressStartMs;
+        }
+    }
     setProgress(m_pendingTrackerRenderFile.isEmpty() ? 0.0 : 0.15);
     setErrorPresentation(QString());
     setStatusPresentation(QStringLiteral("audioConverter.runtimeStarted"),
@@ -579,7 +590,8 @@ bool AudioConverterService::startConversion()
     setIsRunning(true);
     emit conversionStarted();
 
-    const GstStateChangeReturn stateResult = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
+    const GstState targetInitialState = m_trimEnabled ? GST_STATE_PAUSED : GST_STATE_PLAYING;
+    const GstStateChangeReturn stateResult = gst_element_set_state(m_pipeline, targetInitialState);
     if (stateResult == GST_STATE_CHANGE_FAILURE) {
         failConversion(QStringLiteral("audioConverter.runtimeFailedStartPlayback"),
                        {},
@@ -589,6 +601,42 @@ bool AudioConverterService::startConversion()
     }
 
     refreshSourceDurationFromPipeline();
+    if (m_trimEnabled) {
+        GstState currentState = GST_STATE_NULL;
+        GstState pendingState = GST_STATE_NULL;
+        const GstStateChangeReturn prerollResult =
+            gst_element_get_state(m_pipeline,
+                                  &currentState,
+                                  &pendingState,
+                                  5 * GST_SECOND);
+        if (prerollResult == GST_STATE_CHANGE_FAILURE) {
+            failConversion(QStringLiteral("audioConverter.runtimeFailedStartPlayback"),
+                           {},
+                           QStringLiteral("runtime-failed-trim-preroll"),
+                           QStringLiteral("Failed to preroll audio conversion pipeline for trimming."));
+            return false;
+        }
+
+        QString trimError;
+        if (!applyTrimSegmentSeek(&trimError)) {
+            failConversion(QStringLiteral("audioConverter.runtimeFailedStartPlayback"),
+                           {},
+                           QStringLiteral("runtime-failed-trim-seek"),
+                           trimError.isEmpty()
+                               ? localizedConverterText(QStringLiteral("audioConverter.errorTrimSeekFailed"))
+                               : trimError);
+            return false;
+        }
+
+        const GstStateChangeReturn playResult = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
+        if (playResult == GST_STATE_CHANGE_FAILURE) {
+            failConversion(QStringLiteral("audioConverter.runtimeFailedStartPlayback"),
+                           {},
+                           QStringLiteral("runtime-failed-start-playback"),
+                           QStringLiteral("Failed to start trimmed audio conversion pipeline."));
+            return false;
+        }
+    }
 
     m_busPollTimer.start();
     m_progressTimer.start();
@@ -812,6 +860,72 @@ void AudioConverterService::setPitchSemitones(int pitchSemitones)
     emit preflightChanged();
 }
 
+void AudioConverterService::setApplyEqualizer(bool applyEqualizer)
+{
+    if (m_applyEqualizer == applyEqualizer) {
+        return;
+    }
+
+    m_applyEqualizer = applyEqualizer;
+    emit applyEqualizerChanged();
+    emit preflightChanged();
+}
+
+void AudioConverterService::setEqualizerBandGains(const QVariantList &gains)
+{
+    const QVariantList normalized = normalizeEqualizerBandGains(gains);
+    if (m_equalizerBandGains.size() == normalized.size()) {
+        bool equal = true;
+        for (int i = 0; i < normalized.size(); ++i) {
+            if (qAbs(m_equalizerBandGains.at(i).toDouble() - normalized.at(i).toDouble()) > 0.01) {
+                equal = false;
+                break;
+            }
+        }
+        if (equal) {
+            return;
+        }
+    }
+
+    m_equalizerBandGains = normalized;
+    emit equalizerBandGainsChanged();
+}
+
+void AudioConverterService::setTrimEnabled(bool enabled)
+{
+    if (m_trimEnabled == enabled) {
+        return;
+    }
+
+    m_trimEnabled = enabled;
+    emit trimEnabledChanged();
+    emit preflightChanged();
+}
+
+void AudioConverterService::setTrimStartMs(qint64 startMs)
+{
+    const qint64 normalized = qMax<qint64>(0, startMs);
+    if (m_trimStartMs == normalized) {
+        return;
+    }
+
+    m_trimStartMs = normalized;
+    emit trimStartMsChanged();
+    emit preflightChanged();
+}
+
+void AudioConverterService::setTrimEndMs(qint64 endMs)
+{
+    const qint64 normalized = qMax<qint64>(0, endMs);
+    if (m_trimEndMs == normalized) {
+        return;
+    }
+
+    m_trimEndMs = normalized;
+    emit trimEndMsChanged();
+    emit preflightChanged();
+}
+
 void AudioConverterService::setOverwriteExisting(bool overwriteExisting)
 {
     if (m_overwriteExisting == overwriteExisting) {
@@ -849,6 +963,7 @@ void AudioConverterService::teardownConversionPipeline()
     m_convertElement = nullptr;
     m_resampleElement = nullptr;
     m_pitchElement = nullptr;
+    m_equalizerElement = nullptr;
     m_postConvertElement = nullptr;
     m_capsFilterElement = nullptr;
     m_encoderElement = nullptr;
@@ -945,6 +1060,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
         || !ensureFactory("pitch", QStringLiteral("pitch"))
         || !ensureFactory("capsfilter", QStringLiteral("capsfilter"))
         || !ensureFactory("audioconvert", QStringLiteral("post-audioconvert"))
+        || (m_applyEqualizer && !ensureFactory("equalizer-nbands", QStringLiteral("equalizer-nbands")))
         || !ensureFactory(profile->gstreamerMuxer, QString::fromLatin1(profile->gstreamerMuxer))
         || (!QString::fromLatin1(profile->gstreamerEncoder).isEmpty()
             && QString::fromLatin1(profile->gstreamerEncoder) != QStringLiteral("identity")
@@ -968,6 +1084,9 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     m_convertElement = gst_element_factory_make("audioconvert", "converter-convert");
     m_resampleElement = gst_element_factory_make("audioresample", "converter-resample");
     m_pitchElement = gst_element_factory_make("pitch", "converter-pitch");
+    m_equalizerElement = m_applyEqualizer
+        ? gst_element_factory_make("equalizer-nbands", "converter-equalizer")
+        : nullptr;
     m_postConvertElement = gst_element_factory_make("audioconvert", "converter-post-convert");
     m_capsFilterElement = gst_element_factory_make("capsfilter", "converter-caps");
     m_muxerElement = QString::fromLatin1(profile->gstreamerMuxer).isEmpty()
@@ -983,6 +1102,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
 
     if (!m_pipeline || !m_decodeBin || !m_convertElement || !m_resampleElement
         || !m_pitchElement || !m_postConvertElement || !m_capsFilterElement || !m_sinkElement
+        || (m_applyEqualizer && !m_equalizerElement)
         || (!QString::fromLatin1(profile->gstreamerMuxer).isEmpty() && !m_muxerElement)
         || (QString::fromLatin1(profile->gstreamerEncoder) != QStringLiteral("identity") && !m_encoderElement)) {
         if (errorMessage) {
@@ -1002,6 +1122,16 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     if (hasElementProperty(m_pitchElement, "pitch")) {
         const double pitchRatio = std::pow(2.0, m_pitchSemitones / 12.0);
         g_object_set(m_pitchElement, "pitch", pitchRatio, nullptr);
+    }
+    if (m_equalizerElement) {
+        g_object_set(m_equalizerElement, "num-bands", static_cast<guint>(m_equalizerBandGains.size()), nullptr);
+        for (int i = 0; i < m_equalizerBandGains.size(); ++i) {
+            const QByteArray gainProperty = QByteArray("band") + QByteArray::number(i) + QByteArray("::gain");
+            gst_child_proxy_set(GST_CHILD_PROXY(m_equalizerElement),
+                                gainProperty.constData(),
+                                m_equalizerBandGains.at(i).toDouble(),
+                                nullptr);
+        }
     }
 
     GstCaps *caps = gst_caps_new_simple("audio/x-raw",
@@ -1037,6 +1167,9 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     gst_bin_add(GST_BIN(m_pipeline), m_convertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_resampleElement);
     gst_bin_add(GST_BIN(m_pipeline), m_pitchElement);
+    if (m_equalizerElement) {
+        gst_bin_add(GST_BIN(m_pipeline), m_equalizerElement);
+    }
     gst_bin_add(GST_BIN(m_pipeline), m_postConvertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_capsFilterElement);
     if (m_encoderElement) {
@@ -1061,9 +1194,16 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                                QStringLiteral("Failed to link pitch -> post-convert"),
                                errorMessage)
         && linkWithDiagnostics(m_postConvertElement,
-                               m_capsFilterElement,
-                               QStringLiteral("Failed to link post-convert -> caps filter"),
-                               errorMessage);
+                               m_applyEqualizer ? m_equalizerElement : m_capsFilterElement,
+                               m_applyEqualizer
+                                   ? QStringLiteral("Failed to link post-convert -> equalizer")
+                                   : QStringLiteral("Failed to link post-convert -> caps filter"),
+                               errorMessage)
+        && (!m_applyEqualizer
+            || linkWithDiagnostics(m_equalizerElement,
+                                   m_capsFilterElement,
+                                   QStringLiteral("Failed to link equalizer -> caps filter"),
+                                   errorMessage));
     if (!linkOk) {
         teardownConversionPipeline();
         cleanupTemporaryTrackerSource();
@@ -1357,6 +1497,40 @@ void AudioConverterService::failConversion(const QString &messageKey,
     }
 }
 
+bool AudioConverterService::applyTrimSegmentSeek(QString *errorMessage)
+{
+    if (!m_pipeline || !m_trimEnabled) {
+        return true;
+    }
+
+    const qint64 startMs = qMax<qint64>(0, m_trimStartMs);
+    qint64 stopMs = qMax<qint64>(0, m_trimEndMs);
+    if (stopMs <= 0 && m_sourceDurationMs > 0) {
+        stopMs = m_sourceDurationMs;
+    }
+    if (stopMs > 0 && stopMs <= startMs) {
+        if (errorMessage) {
+            *errorMessage = localizedConverterText(QStringLiteral("audioConverter.preflightTrimInvalid"));
+        }
+        return false;
+    }
+
+    const GstSeekType stopType = stopMs > 0 ? GST_SEEK_TYPE_SET : GST_SEEK_TYPE_NONE;
+    const gint64 stopNs = stopMs > 0 ? static_cast<gint64>(stopMs) * GST_MSECOND : GST_CLOCK_TIME_NONE;
+    const gboolean ok = gst_element_seek(m_pipeline,
+                                         1.0,
+                                         GST_FORMAT_TIME,
+                                         static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                                         GST_SEEK_TYPE_SET,
+                                         static_cast<gint64>(startMs) * GST_MSECOND,
+                                         stopType,
+                                         stopNs);
+    if (!ok && errorMessage) {
+        *errorMessage = localizedConverterText(QStringLiteral("audioConverter.errorTrimSeekFailed"));
+    }
+    return ok;
+}
+
 void AudioConverterService::updateProgressFromPipeline()
 {
     if (!m_pipeline) {
@@ -1377,7 +1551,14 @@ void AudioConverterService::updateProgressFromPipeline()
         return;
     }
 
-    setProgress(static_cast<double>(positionMs) / static_cast<double>(m_sourceDurationMs));
+    const qint64 denominator = m_progressDurationMs > 0 ? m_progressDurationMs : m_sourceDurationMs;
+    const qint64 adjustedPositionMs = m_progressDurationMs > 0
+        ? (positionMs >= m_progressStartMs ? positionMs - m_progressStartMs : positionMs)
+        : positionMs;
+    if (denominator <= 0) {
+        return;
+    }
+    setProgress(static_cast<double>(adjustedPositionMs) / static_cast<double>(denominator));
 }
 
 bool AudioConverterService::refreshSourceDurationFromPipeline()
@@ -1582,6 +1763,17 @@ int AudioConverterService::normalizePitchSemitones(int pitchSemitones)
     return qBound(-24, pitchSemitones, 24);
 }
 
+QVariantList AudioConverterService::normalizeEqualizerBandGains(const QVariantList &gains)
+{
+    QVariantList normalized;
+    normalized.reserve(10);
+    for (int i = 0; i < 10; ++i) {
+        const double source = i < gains.size() ? gains.at(i).toDouble() : 0.0;
+        normalized.push_back(qBound(-24.0, source, 12.0));
+    }
+    return normalized;
+}
+
 const AudioConverterService::FormatProfile *AudioConverterService::findFormatProfile(const QString &format)
 {
     const QString normalized = normalizeFormat(format);
@@ -1665,7 +1857,7 @@ QString AudioConverterService::uniqueOutputPath(const QString &path)
     return candidate;
 }
 
-QStringList AudioConverterService::requiredGStreamerElements(const FormatProfile *profile)
+QStringList AudioConverterService::requiredGStreamerElements(const FormatProfile *profile, bool includeEqualizer)
 {
     QStringList elements = {
         QStringLiteral("uridecodebin"),
@@ -1675,6 +1867,10 @@ QStringList AudioConverterService::requiredGStreamerElements(const FormatProfile
         QStringLiteral("capsfilter"),
         QStringLiteral("filesink")
     };
+
+    if (includeEqualizer) {
+        elements.push_back(QStringLiteral("equalizer-nbands"));
+    }
 
     if (profile) {
         const QString muxer = QString::fromLatin1(profile->gstreamerMuxer).trimmed();
@@ -1725,7 +1921,7 @@ QVariantMap AudioConverterService::buildPreflight() const
     const QString outputPath = normalizeLocalPath(m_outputFile);
     const bool sameAsSource = !sourcePath.isEmpty() && sourcePath == outputPath;
     const FormatProfile *profile = findFormatProfile(m_format);
-    const QStringList requiredElements = requiredGStreamerElements(profile);
+    const QStringList requiredElements = requiredGStreamerElements(profile, m_applyEqualizer);
     const QStringList missingElements = missingGStreamerElements(requiredElements);
 
     result.insert(QStringLiteral("canStart"), false);
@@ -1757,6 +1953,11 @@ QVariantMap AudioConverterService::buildPreflight() const
     summary.insert(QStringLiteral("channelMode"), m_channelMode);
     summary.insert(QStringLiteral("playbackRate"), m_playbackRate);
     summary.insert(QStringLiteral("pitchSemitones"), m_pitchSemitones);
+    summary.insert(QStringLiteral("applyEqualizer"), m_applyEqualizer);
+    summary.insert(QStringLiteral("equalizerBandGains"), m_equalizerBandGains);
+    summary.insert(QStringLiteral("trimEnabled"), m_trimEnabled);
+    summary.insert(QStringLiteral("trimStartMs"), m_trimStartMs);
+    summary.insert(QStringLiteral("trimEndMs"), m_trimEndMs);
     summary.insert(QStringLiteral("codecLabel"), profile ? QString::fromLatin1(profile->codecLabel) : QString());
     summary.insert(QStringLiteral("containerLabel"), profile ? QString::fromLatin1(profile->containerLabel) : QString());
     result.insert(QStringLiteral("estimatedTransformSummary"), summary);
@@ -1847,6 +2048,28 @@ QVariantMap AudioConverterService::buildPreflight() const
         return result;
     }
 
+    if (m_trimEnabled) {
+        qint64 sourceDurationMs = m_sourceDurationMs;
+        if (sourceDurationMs <= 0) {
+            sourceDurationMs = probeMetadataDurationMs(sourcePath);
+        }
+        const qint64 startMs = qMax<qint64>(0, m_trimStartMs);
+        const qint64 endMs = qMax<qint64>(0, m_trimEndMs);
+        const bool invalidKnownDuration = sourceDurationMs > 0
+            && (startMs >= sourceDurationMs || (endMs > 0 && endMs > sourceDurationMs));
+        const bool invalidRange = (endMs > 0 && endMs - startMs < 1000)
+            || (sourceDurationMs > 0 && endMs <= 0 && sourceDurationMs - startMs < 1000);
+        if (invalidKnownDuration || invalidRange) {
+            setMessage(QStringLiteral("error"),
+                       QStringLiteral("audioConverter.preflightTrimInvalid"),
+                       QVariantList(),
+                       false,
+                       false,
+                       true);
+            return result;
+        }
+    }
+
     if (outputInfo.exists()) {
         if (!outputInfo.isWritable()) {
             setMessage(QStringLiteral("error"),
@@ -1912,6 +2135,9 @@ QString AudioConverterService::preflightMessageText(const QVariantMap &preflight
     }
     if (key == QStringLiteral("audioConverter.preflightMissingPlugins")) {
         return AppSettingsManager::translateForCurrentLanguage(key).arg(arg0, arg1);
+    }
+    if (key == QStringLiteral("audioConverter.preflightTrimInvalid")) {
+        return AppSettingsManager::translateForCurrentLanguage(key);
     }
     return QString();
 }

@@ -14,11 +14,11 @@ Rectangle {
     readonly property bool showOverflowMenuButton: !mobileOnly && secondaryActionsInOverflow
     readonly property bool compactTimeReadout: width < 900
     readonly property bool minimalTimeReadout: width < 760
-    readonly property bool showVolumePercent: width >= 840
     readonly property bool showSpeedPitchInline: !mobileOnly
                                                  && appSettings.showSpeedPitchControls
                                                  && !secondaryActionsInOverflow
     readonly property bool isPlaying: audioEngine ? audioEngine.state === 1 : false
+    readonly property bool canSeekCurrentTrack: audioEngine && audioEngine.duration > 0
     property bool fullscreenMode: false
     property color panelColor: themeManager.backgroundColor
     property color panelBorderColor: themeManager.borderColor
@@ -47,6 +47,18 @@ Rectangle {
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
     }
 
+    function formatVolume(value) {
+        const volume = Math.max(0, Math.min(1.25, Number(value) || 0))
+        if (appSettings.displayVolumeInDecibels) {
+            if (volume <= 0.000001) {
+                return "-∞ dB"
+            }
+            const db = (10 / 0.3) * (Math.log(volume) / Math.LN10)
+            return db.toFixed(1) + " dB"
+        }
+        return Math.round(volume * 100) + "%"
+    }
+
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
@@ -73,6 +85,13 @@ Rectangle {
         } else {
             queuePopup.open()
         }
+    }
+
+    function seekRelative(deltaMs) {
+        if (!root.canSeekCurrentTrack) {
+            return
+        }
+        playbackController.seekRelative(deltaMs)
     }
 
     function queueOpenText() {
@@ -149,11 +168,39 @@ Rectangle {
             }
 
             ToolButton {
+                id: previousButton
                 icon.source: IconResolver.themed("media-skip-backward", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                 display: AbstractButton.IconOnly
-                onClicked: playbackController.previousTrack()
-                enabled: playbackController.canGoPrevious
+                property bool holdSeekTriggered: false
+                onPressed: {
+                    holdSeekTriggered = false
+                    previousHoldSeekTimer.restart()
+                }
+                onReleased: previousHoldSeekTimer.stop()
+                onCanceled: previousHoldSeekTimer.stop()
+                onClicked: {
+                    if (holdSeekTriggered) {
+                        holdSeekTriggered = false
+                        return
+                    }
+                    if (playbackController.canGoPrevious) {
+                        playbackController.previousTrack()
+                    }
+                }
+                enabled: playbackController.canGoPrevious || root.canSeekCurrentTrack
+                ToolTip.text: root.tr("player.previousHoldSeekTooltip")
+                ToolTip.visible: hovered
+
+                Timer {
+                    id: previousHoldSeekTimer
+                    interval: 450
+                    repeat: true
+                    onTriggered: {
+                        previousButton.holdSeekTriggered = true
+                        root.seekRelative(-10000)
+                    }
+                }
             }
         }
 
@@ -180,6 +227,20 @@ Rectangle {
             }
         }
 
+        ToolButton {
+            id: stopButton
+            icon.source: IconResolver.themed("media-playback-stop", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            display: AbstractButton.IconOnly
+            implicitWidth: root.compactButtons ? 28 : 32
+            implicitHeight: root.compactButtons ? 28 : 32
+            enabled: audioEngine && audioEngine.state !== 0
+            opacity: enabled ? 1.0 : 0.48
+            onClicked: audioEngine.stop()
+            ToolTip.text: root.tr("player.stop")
+            ToolTip.visible: hovered
+        }
+
         Item { Layout.fillWidth: true; visible: root.mobileOnly }
 
         RowLayout {
@@ -187,11 +248,39 @@ Rectangle {
             spacing: 6
 
             ToolButton {
+                id: nextButton
                 icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                 display: AbstractButton.IconOnly
-                onClicked: playbackController.nextTrack()
-                enabled: playbackController.canGoNext
+                property bool holdSeekTriggered: false
+                onPressed: {
+                    holdSeekTriggered = false
+                    nextHoldSeekTimer.restart()
+                }
+                onReleased: nextHoldSeekTimer.stop()
+                onCanceled: nextHoldSeekTimer.stop()
+                onClicked: {
+                    if (holdSeekTriggered) {
+                        holdSeekTriggered = false
+                        return
+                    }
+                    if (playbackController.canGoNext) {
+                        playbackController.nextTrack()
+                    }
+                }
+                enabled: playbackController.canGoNext || root.canSeekCurrentTrack
+                ToolTip.text: root.tr("player.nextHoldSeekTooltip")
+                ToolTip.visible: hovered
+
+                Timer {
+                    id: nextHoldSeekTimer
+                    interval: 450
+                    repeat: true
+                    onTriggered: {
+                        nextButton.holdSeekTriggered = true
+                        root.seekRelative(10000)
+                    }
+                }
             }
 
             ToolButton {
@@ -248,47 +337,9 @@ Rectangle {
             visible: !root.mobileOnly
             spacing: 8
 
-            ToolButton {
-                icon.source: IconResolver.themed("audio-volume-low", themeManager.darkMode)
-                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                display: AbstractButton.IconOnly
-                opacity: 0.8
-                onClicked: if (audioEngine) audioEngine.volume = 0
-                ToolTip.text: tr("player.mute")
-                ToolTip.visible: hovered
-            }
-
-            AccentSlider {
-                id: volumeSlider
-                from: 0
-                to: 1
-                value: audioEngine ? audioEngine.volume : 0.5
-                Layout.fillWidth: true
-                Layout.minimumWidth: 60
-                Layout.maximumWidth: root.compactButtons ? 100 : (root.secondaryActionsInOverflow ? 124 : 160)
-                onMoved: {
-                    if (audioEngine) audioEngine.volume = value
-                }
-            }
-
-            Label {
-                visible: root.showVolumePercent
-                text: Math.round(audioEngine.volume * 100) + "%"
-                color: themeManager.textSecondaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: 11
-                Layout.minimumWidth: 32
-                horizontalAlignment: Text.AlignRight
-            }
-
-            ToolButton {
-                icon.source: IconResolver.themed("audio-volume-high", themeManager.darkMode)
-                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                display: AbstractButton.IconOnly
-                opacity: 0.8
-                onClicked: if (audioEngine) audioEngine.volume = 1.0
-                ToolTip.text: tr("player.maxVolume")
-                ToolTip.visible: hovered
+            VolumeStrip {
+                stripWidth: root.compactButtons ? 72 : (root.secondaryActionsInOverflow ? 84 : 96)
+                compactMode: root.compactButtons
             }
 
             Item {
@@ -403,51 +454,22 @@ Rectangle {
                 }
             }
 
-            Label {
-                text: tr("player.speed")
-                color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: 9
-                visible: !root.compactButtons
-            }
-
-            Label {
-                readonly property real rate: audioEngine ? audioEngine.playbackRate : 1.0
-                text: rate.toFixed(2) + "x"
-                color: rate !== 1.0 ? themeManager.primaryColor : themeManager.textSecondaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: 10
-                font.bold: rate !== 1.0
-                Layout.minimumWidth: 32
-                horizontalAlignment: Text.AlignRight
-            }
-
-            AccentSlider {
-                id: speedSlider
-                from: 0.25
-                to: 2.0
-                stepSize: 0.05
+            PlaybackAdjustStrip {
+                title: root.tr("player.speed")
                 value: audioEngine ? audioEngine.playbackRate : 1.0
-                Layout.fillWidth: true
-                Layout.minimumWidth: 40
-                Layout.maximumWidth: root.compactButtons ? 60 : 80
-                onMoved: {
-                    if (audioEngine) audioEngine.playbackRate = value
+                valueText: value.toFixed(2) + "x"
+                resetText: "1x"
+                resetTooltip: root.tr("player.resetSpeed")
+                minimumValue: 0.25
+                maximumValue: 2.0
+                neutralValue: 1.0
+                stepSize: 0.05
+                stripWidth: root.compactButtons ? 60 : 82
+                compactMode: root.compactButtons
+                onValueEdited: function(nextValue) {
+                    if (audioEngine) audioEngine.playbackRate = nextValue
                 }
-            }
-
-            ToolButton {
-                text: "1x"
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: 9
-                implicitWidth: 24
-                implicitHeight: 24
-                readonly property real rate: audioEngine ? audioEngine.playbackRate : 1.0
-                opacity: rate !== 1.0 ? 1.0 : 0.5
-                enabled: rate !== 1.0
-                onClicked: if (audioEngine) audioEngine.playbackRate = 1.0
-                ToolTip.text: tr("player.resetSpeed")
-                ToolTip.visible: hovered
+                onResetRequested: if (audioEngine) audioEngine.playbackRate = 1.0
             }
         }
 
@@ -466,51 +488,22 @@ Rectangle {
                 }
             }
 
-            Label {
-                text: tr("player.pitch")
-                color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: 9
-                visible: !root.compactButtons
-            }
-
-            Label {
-                readonly property int pitch: audioEngine ? audioEngine.pitchSemitones : 0
-                text: (pitch >= 0 ? "+" : "") + pitch
-                color: pitch !== 0 ? themeManager.primaryColor : themeManager.textSecondaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: 10
-                font.bold: pitch !== 0
-                Layout.minimumWidth: 24
-                horizontalAlignment: Text.AlignRight
-            }
-
-            AccentSlider {
-                id: pitchSlider
-                from: -6
-                to: 6
-                stepSize: 1
+            PlaybackAdjustStrip {
+                title: root.tr("player.pitch")
                 value: audioEngine ? audioEngine.pitchSemitones : 0
-                Layout.fillWidth: true
-                Layout.minimumWidth: 40
-                Layout.maximumWidth: root.compactButtons ? 60 : 80
-                onMoved: {
-                    if (audioEngine) audioEngine.pitchSemitones = Math.round(value)
+                valueText: (value >= 0 ? "+" : "") + Math.round(value)
+                resetText: "0"
+                resetTooltip: root.tr("player.resetPitch")
+                minimumValue: -6
+                maximumValue: 6
+                neutralValue: 0
+                stepSize: 1
+                stripWidth: root.compactButtons ? 60 : 82
+                compactMode: root.compactButtons
+                onValueEdited: function(nextValue) {
+                    if (audioEngine) audioEngine.pitchSemitones = Math.round(nextValue)
                 }
-            }
-
-            ToolButton {
-                text: "0"
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: 9
-                implicitWidth: 24
-                implicitHeight: 24
-                readonly property int pitch: audioEngine ? audioEngine.pitchSemitones : 0
-                opacity: pitch !== 0 ? 1.0 : 0.5
-                enabled: pitch !== 0
-                onClicked: if (audioEngine) audioEngine.pitchSemitones = 0
-                ToolTip.text: tr("player.resetPitch")
-                ToolTip.visible: hovered
+                onResetRequested: if (audioEngine) audioEngine.pitchSemitones = 0
             }
         }
     }

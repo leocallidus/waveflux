@@ -16,6 +16,8 @@
 #include <taglib/id3v2tag.h>
 #include <taglib/mpegfile.h>
 #include <taglib/tag.h>
+#include <taglib/tfile.h>
+#include <taglib/tpropertymap.h>
 
 namespace {
 TagLib::String toTagLibString(const QString &value)
@@ -27,6 +29,61 @@ TagLib::String toTagLibString(const QString &value)
 QString toQString(const TagLib::String &value)
 {
     return QString::fromUtf8(value.toCString(true));
+}
+
+int propertyToRoundedPositiveInt(const TagLib::PropertyMap &properties, const char *key)
+{
+    const auto values = properties[TagLib::String(key)];
+    if (values.isEmpty()) {
+        return 0;
+    }
+
+    bool ok = false;
+    const double value = QString::fromUtf8(values.front().toCString(true)).trimmed().toDouble(&ok);
+    if (!ok || value <= 0.0) {
+        return 0;
+    }
+    return qRound(value);
+}
+
+int bpmFromFile(TagLib::File *file)
+{
+    if (!file) {
+        return 0;
+    }
+
+    const TagLib::PropertyMap properties = file->properties();
+    int bpm = propertyToRoundedPositiveInt(properties, "BPM");
+    if (bpm <= 0) {
+        bpm = propertyToRoundedPositiveInt(properties, "TBPM");
+    }
+    if (bpm <= 0) {
+        bpm = propertyToRoundedPositiveInt(properties, "TEMPO");
+    }
+    if (bpm <= 0) {
+        bpm = propertyToRoundedPositiveInt(properties, "BEATS_PER_MINUTE");
+    }
+    return bpm;
+}
+
+void applyBpmProperty(TagLib::File *file, int bpm)
+{
+    if (!file) {
+        return;
+    }
+
+    TagLib::PropertyMap properties = file->properties();
+    properties.erase(TagLib::String("BPM"));
+    properties.erase(TagLib::String("TBPM"));
+    properties.erase(TagLib::String("TEMPO"));
+    properties.erase(TagLib::String("BEATS_PER_MINUTE"));
+
+    const int normalizedBpm = qMax(0, bpm);
+    if (normalizedBpm > 0) {
+        properties.insert(TagLib::String("BPM"),
+                          TagLib::StringList(toTagLibString(QString::number(normalizedBpm))));
+    }
+    file->setProperties(properties);
 }
 
 QString normalizeLocalPath(const QString &pathOrUrl)
@@ -397,6 +454,16 @@ void TagEditor::setTrackNumber(int track)
     }
 }
 
+void TagEditor::setBpm(int bpm)
+{
+    const int normalized = qBound(0, bpm, 999);
+    if (m_bpm != normalized) {
+        m_bpm = normalized;
+        emit bpmChanged();
+        markChanged();
+    }
+}
+
 void TagEditor::setCoverImagePath(const QString &coverImagePath)
 {
     const QString normalizedPath = normalizeLocalPath(coverImagePath);
@@ -465,6 +532,7 @@ void TagEditor::loadTags()
     m_genre = toQString(tag->genre());
     m_year = tag->year();
     m_trackNumber = tag->track();
+    m_bpm = bpmFromFile(file.file());
     m_coverImagePath.clear();
     m_coverPreviewSource = embeddedCoverPreviewSource(m_filePath);
     m_removeCover = false;
@@ -476,6 +544,7 @@ void TagEditor::loadTags()
     m_originalGenre = m_genre;
     m_originalYear = m_year;
     m_originalTrackNumber = m_trackNumber;
+    m_originalBpm = m_bpm;
     m_originalCoverImagePath = m_coverImagePath;
     m_originalCoverPreviewSource = m_coverPreviewSource;
     m_originalRemoveCover = m_removeCover;
@@ -488,6 +557,7 @@ void TagEditor::loadTags()
     emit genreChanged();
     emit yearChanged();
     emit trackNumberChanged();
+    emit bpmChanged();
     emit coverImagePathChanged();
     emit coverPreviewSourceChanged();
     emit removeCoverChanged();
@@ -528,6 +598,7 @@ bool TagEditor::saveTags()
             return false;
         }
 
+        applyBpmProperty(file.get(), m_bpm);
         applyCommonTags(tag, m_title, m_artist, m_album, m_genre, m_year, m_trackNumber);
         if (!applyMp3Cover(file.get(), imageData, imageMimeType, m_removeCover, &coverError)) {
             emit saveFailed(coverError.isEmpty() ? QStringLiteral("Failed to update MP3 cover") : coverError);
@@ -555,6 +626,7 @@ bool TagEditor::saveTags()
             return false;
         }
 
+        applyBpmProperty(file.get(), m_bpm);
         applyCommonTags(tag, m_title, m_artist, m_album, m_genre, m_year, m_trackNumber);
         if (!applyFlacCover(file.get(), imageData, imageMimeType, m_removeCover, &coverError)) {
             emit saveFailed(coverError.isEmpty() ? QStringLiteral("Failed to update FLAC cover") : coverError);
@@ -575,6 +647,7 @@ bool TagEditor::saveTags()
             return false;
         }
 
+        applyBpmProperty(file.file(), m_bpm);
         applyCommonTags(file.tag(), m_title, m_artist, m_album, m_genre, m_year, m_trackNumber);
         if (!file.save()) {
             emit saveFailed("Failed to save tags");
@@ -589,6 +662,7 @@ bool TagEditor::saveTags()
     m_originalGenre = m_genre;
     m_originalYear = m_year;
     m_originalTrackNumber = m_trackNumber;
+    m_originalBpm = m_bpm;
     m_originalCoverImagePath = m_coverImagePath;
     m_originalCoverPreviewSource = m_removeCover ? QString() : m_coverPreviewSource;
     m_originalRemoveCover = m_removeCover;
@@ -612,14 +686,16 @@ bool TagEditor::saveTagsForFiles(const QStringList &filePaths,
                                  bool applyYear,
                                  int year,
                                  bool applyTrackNumber,
-                                 int trackNumber)
+                                 int trackNumber,
+                                 bool applyBpm,
+                                 int bpm)
 {
     if (filePaths.isEmpty()) {
         emit saveFailed("No files selected");
         return false;
     }
 
-    if (!applyTitle && !applyArtist && !applyAlbum && !applyGenre && !applyYear && !applyTrackNumber) {
+    if (!applyTitle && !applyArtist && !applyAlbum && !applyGenre && !applyYear && !applyTrackNumber && !applyBpm) {
         emit saveFailed("No tag fields selected");
         return false;
     }
@@ -643,6 +719,10 @@ bool TagEditor::saveTagsForFiles(const QStringList &filePaths,
         }
 
         TagLib::Tag *tag = file.tag();
+        if (applyBpm) {
+            applyBpmProperty(file.file(), qBound(0, bpm, 999));
+        }
+
         if (applyTitle) {
             tag->setTitle(toTagLibString(title));
         }
@@ -699,6 +779,7 @@ void TagEditor::revertChanges()
     m_genre = m_originalGenre;
     m_year = m_originalYear;
     m_trackNumber = m_originalTrackNumber;
+    m_bpm = m_originalBpm;
     m_coverImagePath = m_originalCoverImagePath;
     m_coverPreviewSource = m_originalCoverPreviewSource;
     m_removeCover = m_originalRemoveCover;
@@ -711,6 +792,7 @@ void TagEditor::revertChanges()
     emit genreChanged();
     emit yearChanged();
     emit trackNumberChanged();
+    emit bpmChanged();
     emit coverImagePathChanged();
     emit coverPreviewSourceChanged();
     emit removeCoverChanged();

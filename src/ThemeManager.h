@@ -23,6 +23,7 @@ class ThemeManager : public QObject
     Q_OBJECT
     
     Q_PROPERTY(QColor waveformColor READ waveformColor WRITE setWaveformColor NOTIFY waveformColorChanged)
+    Q_PROPERTY(QColor waveformBackgroundColor READ waveformBackgroundColor WRITE setWaveformBackgroundColor NOTIFY waveformBackgroundColorChanged)
     Q_PROPERTY(QColor progressColor READ progressColor WRITE setProgressColor NOTIFY progressColorChanged)
     Q_PROPERTY(QColor primaryColor READ primaryColor WRITE setPrimaryColor NOTIFY primaryColorChanged)
     Q_PROPERTY(QColor backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY backgroundColorChanged)
@@ -50,6 +51,9 @@ public:
     
     QColor waveformColor() const { return m_waveformColor; }
     void setWaveformColor(const QColor &color);
+
+    QColor waveformBackgroundColor() const { return m_waveformBackgroundColor; }
+    void setWaveformBackgroundColor(const QColor &color);
     
     QColor progressColor() const { return m_progressColor; }
     void setProgressColor(const QColor &color);
@@ -99,6 +103,7 @@ public:
     
 signals:
     void waveformColorChanged();
+    void waveformBackgroundColorChanged();
     void progressColorChanged();
     void primaryColorChanged();
     void backgroundColorChanged();
@@ -121,6 +126,7 @@ private:
     QSettings m_settings;
     
     QColor m_waveformColor;
+    QColor m_waveformBackgroundColor;
     QColor m_progressColor;
     QColor m_primaryColor;
     QColor m_backgroundColor;

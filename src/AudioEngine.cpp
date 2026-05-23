@@ -1898,8 +1898,11 @@ void AudioEngine::performSeek(qint64 positionMs)
 
 void AudioEngine::setVolume(double volume)
 {
-    const double clamped = qBound(0.0, volume, 1.0);
+    const double clamped = qBound(0.0, volume, 1.25);
     const bool changed = !qFuzzyCompare(m_volume, clamped);
+    if (clamped > 0.000001) {
+        m_volumeBeforeMute = clamped;
+    }
     m_volume = clamped;
 
     if (m_pipeline) {
@@ -1919,6 +1922,16 @@ void AudioEngine::setVolume(double volume)
     if (changed) {
         emit volumeChanged(m_volume);
     }
+}
+
+void AudioEngine::toggleMute()
+{
+    if (m_volume > 0.000001) {
+        setVolume(0.0);
+        return;
+    }
+
+    setVolume(qBound(0.01, m_volumeBeforeMute, 1.25));
 }
 
 void AudioEngine::setPlaybackRate(double rate)

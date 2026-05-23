@@ -18,6 +18,8 @@ public:
     void initialize(TrackModel *trackModel,
                     AudioEngine *audioEngine,
                     PlaybackController *playbackController);
+    void setRestorePlaybackPositionOnStartup(bool enabled);
+    void setRestorePlaybackPausedOnStartup(bool enabled);
     void restoreSession();
 
 public slots:
@@ -40,6 +42,8 @@ private:
     QTimer m_debounceTimer;
     qint64 m_lastSavedPositionMs = -1;
     bool m_restoring = false;
+    bool m_restorePlaybackPositionOnStartup = true;
+    bool m_restorePlaybackPausedOnStartup = false;
 
     static constexpr int kSessionVersion = 1;
     static constexpr int kDebounceMs = 800;

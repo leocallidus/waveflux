@@ -50,6 +50,7 @@ public:
                                       bool enabled,
                                       bool pinned);
     Q_INVOKABLE bool deleteCollection(int id);
+    Q_INVOKABLE bool deleteAllCollections();
     Q_INVOKABLE QVariantList resolveCollectionTracks(int id, int overrideLimit = -1) const;
     Q_INVOKABLE QVariantMap loadContextPlaybackProgress() const;
     Q_INVOKABLE bool saveContextPlaybackProgress(const QVariantMap &payload);

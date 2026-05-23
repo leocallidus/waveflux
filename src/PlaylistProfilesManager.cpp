@@ -285,6 +285,28 @@ bool PlaylistProfilesManager::deletePlaylist(int playlistId)
     return true;
 }
 
+bool PlaylistProfilesManager::deleteAllPlaylists()
+{
+    if (!ensureLoaded()) {
+        return false;
+    }
+
+    if (m_profiles.isEmpty()) {
+        setLastError(QString());
+        return true;
+    }
+
+    m_profiles.clear();
+    m_nextId = 1;
+    if (!persistToDisk()) {
+        return false;
+    }
+
+    setLastError(QString());
+    emit playlistsChanged();
+    return true;
+}
+
 bool PlaylistProfilesManager::ensureLoaded() const
 {
     if (m_loaded) {

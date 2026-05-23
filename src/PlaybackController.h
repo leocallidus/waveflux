@@ -30,6 +30,10 @@ class PlaybackController : public QObject
     Q_PROPERTY(quint32 shuffleSeed READ shuffleSeed WRITE setShuffleSeed NOTIFY shuffleSeedChanged)
     Q_PROPERTY(bool repeatableShuffle READ repeatableShuffle WRITE setRepeatableShuffle NOTIFY repeatableShuffleChanged)
     Q_PROPERTY(int restartThresholdMs READ restartThresholdMs WRITE setRestartThresholdMs NOTIFY restartThresholdMsChanged)
+    Q_PROPERTY(bool searchPlaybackEnabled READ searchPlaybackEnabled WRITE setSearchPlaybackEnabled NOTIFY searchPlaybackFilterChanged)
+    Q_PROPERTY(QString searchPlaybackQuery READ searchPlaybackQuery WRITE setSearchPlaybackQuery NOTIFY searchPlaybackFilterChanged)
+    Q_PROPERTY(int searchPlaybackFieldMask READ searchPlaybackFieldMask WRITE setSearchPlaybackFieldMask NOTIFY searchPlaybackFilterChanged)
+    Q_PROPERTY(int searchPlaybackQuickFilterMask READ searchPlaybackQuickFilterMask WRITE setSearchPlaybackQuickFilterMask NOTIFY searchPlaybackFilterChanged)
     Q_PROPERTY(int activeTrackIndex READ activeTrackIndex NOTIFY activeTrackIndexChanged)
     Q_PROPERTY(int pendingTrackIndex READ pendingTrackIndex NOTIFY pendingTrackIndexChanged)
     Q_PROPERTY(TransitionState transitionState READ transitionState NOTIFY transitionStateChanged)
@@ -72,6 +76,10 @@ public:
     quint32 shuffleSeed() const { return m_shuffleSeed; }
     bool repeatableShuffle() const { return m_repeatableShuffle; }
     int restartThresholdMs() const { return m_restartThresholdMs; }
+    bool searchPlaybackEnabled() const { return m_searchPlaybackEnabled; }
+    QString searchPlaybackQuery() const { return m_searchPlaybackQuery; }
+    int searchPlaybackFieldMask() const { return m_searchPlaybackFieldMask; }
+    int searchPlaybackQuickFilterMask() const { return m_searchPlaybackQuickFilterMask; }
     int activeTrackIndex() const { return m_activeTrackIndex; }
     int pendingTrackIndex() const { return m_pendingTrackIndex; }
     TransitionState transitionState() const { return m_transitionState; }
@@ -84,6 +92,7 @@ public slots:
     void toggleShuffle();
     void nextTrack();
     void previousTrack();
+    void skipToPreviousTrack();
     void handleTrackEnded();
     void prepareGaplessTransition();
     void setTrackLoadTimeoutMs(int timeoutMs);
@@ -92,6 +101,10 @@ public slots:
     void setShuffleSeed(quint32 seed);
     void setRepeatableShuffle(bool enabled);
     void setRestartThresholdMs(int thresholdMs);
+    void setSearchPlaybackEnabled(bool enabled);
+    void setSearchPlaybackQuery(const QString &query);
+    void setSearchPlaybackFieldMask(int fieldMask);
+    void setSearchPlaybackQuickFilterMask(int quickFilterMask);
     void setDetailedDiagnosticsEnabled(bool enabled);
     Q_INVOKABLE void seekRelative(qint64 deltaMs);
     Q_INVOKABLE void requestPlayIndex(int index, const QString &reason = QString());
@@ -118,10 +131,12 @@ signals:
     void shuffleSeedChanged();
     void repeatableShuffleChanged();
     void restartThresholdMsChanged();
+    void searchPlaybackFilterChanged();
     void activeTrackIndexChanged();
     void pendingTrackIndexChanged();
     void transitionStateChanged();
     void detailedDiagnosticsEnabledChanged();
+    void playbackSequenceFinished();
 
 private:
     enum class SessionEndReason {
@@ -169,12 +184,19 @@ private:
     int currentShufflePosition() const;
     int calculateNextIndex(bool advanceShuffleState);
     int calculatePreviousIndex();
+    bool searchPlaybackFilterActive() const;
+    bool trackMatchesSearchPlaybackFilter(int index) const;
+    int searchPlaybackMatchCount() const;
+    int nextSearchPlaybackIndex(int current) const;
+    int previousSearchPlaybackIndex(int current) const;
     void navigateToNextTrackInternal(SessionEndReason reason);
     void navigateToPreviousTrackInternal(SessionEndReason reason);
     void startTrackLoadWatch();
     void clearTrackLoadWatch();
     void onLoadSuccess();
     void onLoadFailure(const QString &message);
+    void handleRowsInserted(int first, int last);
+    void handleRowsAboutToBeRemoved(int first, int last);
     void setConsecutiveErrors(int value);
     void setLastError(const QString &message);
     void onCurrentFileChanged(const QString &filePath);
@@ -240,6 +262,10 @@ private:
     quint32 m_shuffleSeed = 0xC4E5D2A1u;
     bool m_repeatableShuffle = true;
     int m_restartThresholdMs = 3000;
+    bool m_searchPlaybackEnabled = false;
+    QString m_searchPlaybackQuery;
+    int m_searchPlaybackFieldMask = TrackModel::SearchFieldAll;
+    int m_searchPlaybackQuickFilterMask = TrackModel::SearchQuickFilterNone;
     int m_activeTrackIndex = -1;
     int m_pendingTrackIndex = -1;
     TransitionState m_transitionState = TransitionIdle;

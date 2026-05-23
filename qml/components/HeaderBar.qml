@@ -107,28 +107,54 @@ Rectangle {
         return key === Qt.Key_Escape && root.fullscreenMode
     }
 
-    function openMenu(menuKey) {
+    function openAnchoredMenu(menu, sourceButton, isHover) {
+        if (!menu || !sourceButton) {
+            return
+        }
+
+        if (menu.visible) {
+            if (!isHover) {
+                menu.close()
+            }
+            return
+        }
+
+        const menus = [fileMenu, editMenu, viewMenu, playbackMenu, libraryMenu, helpMenu, searchFilterMenu]
+        for (let i = 0; i < menus.length; i++) {
+            if (menus[i] && menus[i].visible && menus[i] !== menu) {
+                menus[i].close()
+            }
+        }
+
+        const popupWidth = Math.max(menu.implicitWidth, menu.width)
+        const anchorPoint = sourceButton.mapToItem(root, 0, sourceButton.height)
+        menu.x = Math.max(0, Math.min(root.width - popupWidth, Math.round(anchorPoint.x)))
+        menu.y = Math.round(anchorPoint.y - 1)
+        menu.open()
+    }
+
+    function openMenu(menuKey, sourceButton, isHover) {
         switch (menuKey) {
         case "file":
-            fileMenu.popup()
+            root.openAnchoredMenu(fileMenu, sourceButton, isHover)
             break
         case "edit":
-            editMenu.popup()
+            root.openAnchoredMenu(editMenu, sourceButton, isHover)
             break
         case "view":
-            viewMenu.popup()
+            root.openAnchoredMenu(viewMenu, sourceButton, isHover)
             break
         case "playback":
-            playbackMenu.popup()
+            root.openAnchoredMenu(playbackMenu, sourceButton, isHover)
             break
         case "library":
-            libraryMenu.popup()
+            root.openAnchoredMenu(libraryMenu, sourceButton, isHover)
             break
         case "help":
-            helpMenu.popup()
+            root.openAnchoredMenu(helpMenu, sourceButton, isHover)
             break
         default:
-            fileMenu.popup()
+            root.openAnchoredMenu(fileMenu, sourceButton, isHover)
             break
         }
     }
@@ -177,27 +203,51 @@ Rectangle {
     component HeaderMenuButton: ToolButton {
         id: control
         display: AbstractButton.TextOnly
+        property string menuAction: ""
         hoverEnabled: true
         padding: 10
         leftPadding: 12
         rightPadding: 12
         implicitHeight: 28
 
+        MouseArea {
+            id: mouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: function(mouse) {
+                root.openMenu(control.menuAction, control)
+            }
+            onEntered: {
+                const menus = [fileMenu, editMenu, viewMenu, playbackMenu, libraryMenu, helpMenu]
+                let anyVisible = false
+                for (let i = 0; i < menus.length; i++) {
+                    if (menus[i] && menus[i].visible) {
+                        anyVisible = true
+                        break
+                    }
+                }
+                if (anyVisible) {
+                    root.openMenu(control.menuAction, control)
+                }
+            }
+        }
+
         contentItem: Text {
             text: control.text
             color: themeManager.textColor
-            opacity: control.hovered || control.down ? 1.0 : 0.86
+            opacity: mouseArea.containsMouse || mouseArea.pressed ? 1.0 : 0.86
             font.family: themeManager.fontFamily
             font.pixelSize: 11
-            font.bold: control.hovered || control.down
+            font.bold: mouseArea.containsMouse || mouseArea.pressed
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
 
         background: Rectangle {
             radius: themeManager.borderRadiusLarge
-            color: control.down ? root.chromePressed : (control.hovered ? root.chromeHover : "transparent")
-            border.width: control.hovered || control.down ? 1 : 0
+            color: mouseArea.pressed ? root.chromePressed : (mouseArea.containsMouse ? root.chromeHover : "transparent")
+            border.width: mouseArea.containsMouse || mouseArea.pressed ? 1 : 0
             border.color: root.chromeStroke
 
             Behavior on color {
@@ -316,6 +366,32 @@ Rectangle {
                                   themeManager.primaryColor.b,
                                   themeManager.darkMode ? 0.22 : 0.14)
         }
+
+        enter: Transition {
+            NumberAnimation {
+                property: "opacity"
+                from: 0.0
+                to: 1.0
+                duration: 110
+                easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                property: "y"
+                from: control.y - 5
+                to: control.y
+                duration: 110
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        exit: Transition {
+            NumberAnimation {
+                property: "opacity"
+                to: 0.0
+                duration: 80
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     implicitHeight: themeManager.headerHeight
@@ -369,10 +445,11 @@ Rectangle {
             }
 
             HeaderIconButton {
+                id: compactMenuButton
                 visible: root.compactMenu
                 icon.source: IconResolver.themed("application-menu", themeManager.darkMode)
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                onClicked: compactMenuPopup.popup()
+                onClicked: root.openAnchoredMenu(compactMenuPopup, compactMenuButton)
                 ToolTip.text: root.tr("header.menu")
                 ToolTip.visible: hovered
             }
@@ -391,9 +468,10 @@ Rectangle {
                         { key: "menu.help", action: "help" }
                     ]
                     delegate: HeaderMenuButton {
+                        id: menuButton
                         required property var modelData
                         text: root.tr(modelData.key)
-                        onClicked: root.openMenu(modelData.action)
+                        menuAction: modelData.action
                     }
                 }
             }
@@ -450,13 +528,14 @@ Rectangle {
                 }
 
                 HeaderIconButton {
+                    id: searchFilterButton
                     anchors.right: parent.right
                     anchors.rightMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
                     icon.source: IconResolver.themed("view-filter", themeManager.darkMode)
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     opacity: root.searchFiltersActive ? 1.0 : 0.72
-                    onClicked: searchFilterMenu.popup()
+                    onClicked: root.openAnchoredMenu(searchFilterMenu, searchFilterButton)
                     ToolTip.text: root.tr("header.quickFilters")
                     ToolTip.visible: hovered
                 }
@@ -606,6 +685,9 @@ Rectangle {
         }
         FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileOpenAudioConverter : null
+        }
+        FluxMenuItem {
+            action: root.menuActions ? root.menuActions.fileOpenUrl : null
         }
         FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileImportUrl : null

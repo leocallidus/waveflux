@@ -17,6 +17,11 @@ Item {
     property int queueDragIndex: -1
     property bool queuePopupWasOpenOnPress: false
     property bool collectionsPopupWasOpenOnPress: false
+    property bool externalDropActive: false
+    property int externalDropIndex: -1
+    property real externalDropY: 0
+    property real externalDropPointerY: 0
+    property int externalDropAutoScrollDirection: 0
     property bool collectionModeActive: false
     property int selectedCollectionId: -1
     property int selectedPlaylistProfileId: -1
@@ -47,6 +52,17 @@ Item {
                                               && cueSegments.length > 0
                                               && audioEngine.duration > 0
     readonly property int compactControlsRowHeight: 34
+    readonly property bool compactWaveformTinyMode: appSettings.compactWaveformHeight < 30
+    readonly property bool compactWaveformHoverPreviewVisible: !root.compactWaveformTinyMode
+    readonly property color destructiveColor: themeManager.darkMode ? "#ff6b6b" : "#b83232"
+    readonly property color destructiveFillColor: Qt.rgba(destructiveColor.r,
+                                                          destructiveColor.g,
+                                                          destructiveColor.b,
+                                                          themeManager.darkMode ? 0.13 : 0.10)
+    readonly property color destructiveHoverFillColor: Qt.rgba(destructiveColor.r,
+                                                               destructiveColor.g,
+                                                               destructiveColor.b,
+                                                               themeManager.darkMode ? 0.22 : 0.16)
     readonly property string normalizedSearchQuery: debouncedSearchQuery.trim().toLowerCase()
     readonly property int searchRevision: trackModel.searchRevision
     property int appliedSearchRevision: searchRevision
@@ -103,6 +119,22 @@ Item {
         return appSettings.translate(key)
     }
 
+    function shortcutSequence(shortcutId) {
+        const _shortcutRevision = shortcutManager ? shortcutManager.revision : 0
+        if (!shortcutManager || !shortcutId) {
+            return ""
+        }
+        return shortcutManager.effectiveSequence(shortcutId)
+    }
+
+    function shortcutActive(shortcutId) {
+        const _shortcutRevision = shortcutManager ? shortcutManager.revision : 0
+        if (!shortcutManager || !shortcutId) {
+            return false
+        }
+        return shortcutManager.shortcutEnabled(shortcutId)
+    }
+
     function searchFieldHasActiveFocus() {
         return compactSearchField && compactSearchField.activeFocus
     }
@@ -136,9 +168,17 @@ Item {
         return key >= Qt.Key_F1 && key <= Qt.Key_F35
     }
 
+    function formatSampleRateLabel(sampleRate) {
+        const rate = Number(sampleRate || 0)
+        if (rate <= 0) {
+            return ""
+        }
+        return (rate / 1000).toFixed(1) + " kHz"
+    }
+
     function shuffleTooltipText() {
         return playbackController.shuffleEnabled ? tr("player.shuffleDisable")
-                                                : tr("player.shuffleEnable")
+                                                 : tr("player.shuffleEnable")
     }
 
     function repeatTooltipText() {
@@ -157,6 +197,18 @@ Item {
         let minutes = Math.floor(totalSeconds / 60)
         let seconds = totalSeconds % 60
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
+    }
+
+    function formatVolume(value) {
+        const volume = Math.max(0, Math.min(1.25, Number(value) || 0))
+        if (appSettings.displayVolumeInDecibels) {
+            if (volume <= 0.000001) {
+                return "-∞ dB"
+            }
+            const db = (10 / 0.3) * (Math.log(volume) / Math.LN10)
+            return db.toFixed(1) + " dB"
+        }
+        return Math.round(volume * 100) + "%"
     }
 
     function isLocalTrackSource(filePath) {
@@ -252,8 +304,29 @@ Item {
     }
 
     function seekRelative(deltaMs) {
+        if (!audioEngine || audioEngine.duration <= 0) {
+            return
+        }
         const target = Math.max(0, Math.min(audioEngine.duration, audioEngine.position + deltaMs))
         audioEngine.seekWithSource(target, "qml.compact_seek_relative")
+    }
+
+    function keyboardSeekStepMs() {
+        return Math.max(1, Math.min(60, appSettings.keyboardSeekStepSeconds)) * 1000
+    }
+
+    function keyboardSeekRelative(direction) {
+        const stepMs = keyboardSeekStepMs()
+        if (direction < 0
+                && appSettings.keyboardSeekBackwardToPreviousTrack
+                && audioEngine
+                && audioEngine.duration > 0
+                && audioEngine.position - stepMs < 0
+                && playbackController.canGoPrevious) {
+            playbackController.skipToPreviousTrack()
+            return
+        }
+        root.seekRelative(direction * stepMs)
     }
 
     function toggleCollectionsPopup(ignorePressState) {
@@ -354,6 +427,67 @@ Item {
         pendingRestoredPlaylistContentY = -1
     }
 
+    function compactDropInsertionIndexAt(viewY) {
+        if (trackModel.count <= 0 || compactPlaylist.height <= 0) {
+            return 0
+        }
+        const safeY = Math.max(0, Math.min(compactPlaylist.height, Number(viewY) || 0))
+        const contentY = compactPlaylist.contentY + safeY
+        const item = compactPlaylist.itemAt(8, contentY)
+        if (item && item.index !== undefined && item.height > 0) {
+            return Math.max(0,
+                            Math.min(trackModel.count,
+                                     item.index + (contentY >= item.y + item.height * 0.5 ? 1 : 0)))
+        }
+        if (safeY <= 0) {
+            return 0
+        }
+        return trackModel.count
+    }
+
+    function updateExternalDropIndicator(viewY) {
+        const safeY = Math.max(0, Math.min(compactPlaylist.height, Number(viewY) || 0))
+        const contentY = compactPlaylist.contentY + safeY
+        const item = compactPlaylist.itemAt(8, contentY)
+        root.externalDropPointerY = safeY
+        if (item && item.index !== undefined && item.height > 0) {
+            const afterItem = contentY >= item.y + item.height * 0.5
+            root.externalDropIndex = Math.max(0, Math.min(trackModel.count, item.index + (afterItem ? 1 : 0)))
+            root.externalDropY = Math.max(
+                        0,
+                        Math.min(compactPlaylist.height, item.y - compactPlaylist.contentY + (afterItem ? item.height : 0)))
+        } else {
+            root.externalDropIndex = root.compactDropInsertionIndexAt(safeY)
+            root.externalDropY = safeY <= 0 ? 0 : compactPlaylist.height
+        }
+        root.externalDropActive = true
+
+        const edge = Math.min(38, Math.max(22, compactPlaylist.height * 0.18))
+        if (safeY < edge) {
+            root.externalDropAutoScrollDirection = -1
+        } else if (safeY > compactPlaylist.height - edge) {
+            root.externalDropAutoScrollDirection = 1
+        } else {
+            root.externalDropAutoScrollDirection = 0
+        }
+    }
+
+    function clearExternalDropIndicator() {
+        root.externalDropActive = false
+        root.externalDropIndex = -1
+        root.externalDropAutoScrollDirection = 0
+    }
+
+    function acceptDropEvent(drop) {
+        if (drop.acceptProposedAction) {
+            drop.acceptProposedAction()
+        } else if (drop.accept) {
+            drop.accept(Qt.CopyAction)
+        } else {
+            drop.accepted = true
+        }
+    }
+
     function searchDebounceIntervalMs() {
         const count = trackModel.count
         if (count < 1000) return 40
@@ -410,6 +544,79 @@ Item {
     function matchesTrackAt(index) {
         const _searchRevision = root.appliedSearchRevision
         return trackModel.matchesSearchAdvancedNormalized(index, root.normalizedSearchQuery, 0, 0)
+    }
+
+    function compactLogicalVisibleCount() {
+        return root.normalizedSearchQuery.length > 0 ? root.matchCount() : trackModel.count
+    }
+
+    function compactApplyCenteredContentY(visibleRow, visibleCount) {
+        if (!compactPlaylist || compactPlaylist.height <= 0) {
+            return false
+        }
+        const rowHeight = 24
+        const contentHeight = Math.max(visibleCount * rowHeight, compactPlaylist.height)
+        const centerY = (visibleRow + 0.5) * rowHeight
+        compactPlaylist.contentY = Math.max(0,
+                                            Math.min(contentHeight - compactPlaylist.height,
+                                                     centerY - compactPlaylist.height * 0.5))
+        return true
+    }
+
+    function compactLocateModelIndexFast(index) {
+        const safeIndex = Math.floor(Number(index))
+        if (!Number.isFinite(safeIndex) || safeIndex < 0 || safeIndex >= trackModel.count) {
+            return false
+        }
+        const filterActive = root.normalizedSearchQuery.length > 0
+        if (filterActive && !root.matchesTrackAt(safeIndex)) {
+            return false
+        }
+        const visibleCount = root.compactLogicalVisibleCount()
+        if (visibleCount <= 0) {
+            return false
+        }
+        const visibleRow = filterActive ? root.matchCountBefore(safeIndex) : safeIndex
+        return root.compactApplyCenteredContentY(visibleRow, visibleCount)
+    }
+
+    function firstMatchingVisibleIndex() {
+        if (trackModel.count <= 0) {
+            return -1
+        }
+        if (root.normalizedSearchQuery.length === 0) {
+            return 0
+        }
+        for (let row = 0; row < trackModel.count; ++row) {
+            if (root.matchesTrackAt(row)) {
+                return row
+            }
+        }
+        return -1
+    }
+
+    function scheduleFilterViewportSync() {
+        if (!compactPlaylist || compactPlaylist.height <= 0) {
+            return
+        }
+        filterViewportSyncTimer.restart()
+    }
+
+    function syncViewportAfterFilterChange() {
+        if (!compactPlaylist || compactPlaylist.height <= 0) {
+            return
+        }
+        if (compactPlaylist.forceLayout) {
+            compactPlaylist.forceLayout()
+        }
+
+        if (root.normalizedSearchQuery.length > 0) {
+            compactPlaylist.contentY = 0
+            return
+        }
+
+        const maxY = Math.max(0, root.compactLogicalVisibleCount() * 24 - compactPlaylist.height)
+        compactPlaylist.contentY = Math.max(0, Math.min(maxY, Number(compactPlaylist.contentY) || 0))
     }
 
     function moveTrackToTrash(filePath, originalIndex) {
@@ -520,6 +727,36 @@ Item {
         interval: 33
         repeat: false
         onTriggered: root.appliedSearchRevision = root.searchRevision
+    }
+
+    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync()
+    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync()
+
+    Timer {
+        id: filterViewportSyncTimer
+        interval: 0
+        repeat: false
+        onTriggered: {
+            root.syncViewportAfterFilterChange()
+            Qt.callLater(root.syncViewportAfterFilterChange)
+        }
+    }
+
+    Timer {
+        id: externalDropAutoScrollTimer
+        interval: 45
+        repeat: true
+        running: root.externalDropActive && root.externalDropAutoScrollDirection !== 0
+        onTriggered: {
+            const maxY = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
+            if (maxY <= 0) {
+                return
+            }
+            compactPlaylist.contentY = Math.max(
+                        0,
+                        Math.min(maxY, compactPlaylist.contentY + root.externalDropAutoScrollDirection * 18))
+            root.updateExternalDropIndicator(root.externalDropPointerY)
+        }
     }
 
     function selectOnlyIndex(index) {
@@ -756,7 +993,7 @@ Item {
                         }
                         waveformColor: themeManager.waveformColor
                         progressColor: themeManager.progressColor
-                        backgroundColor: themeManager.surfaceColor
+                        backgroundColor: themeManager.waveformBackgroundColor
 
                         onSeekRequested: (position) => {
                             if (audioEngine.duration > 0) {
@@ -873,6 +1110,27 @@ Item {
                         color: themeManager.primaryColor
                         z: 2
                     }
+
+                    TrackInfoOverlay {
+                        anchors.fill: parent
+                        showOverlay: true
+                        compactVisualMode: true
+                        minimalVisualMode: root.compactWaveformTinyMode
+                        hoverActive: compactWaveformHoverTooltip.hovered
+                        horizontalPadding: 4
+                        verticalPadding: 3
+                        z: 2.5
+                    }
+
+                    WaveformHoverTooltip {
+                        id: compactWaveformHoverTooltip
+                        anchors.fill: parent
+                        targetWaveformItem: compactWaveform
+                        showPreview: root.compactWaveformHoverPreviewVisible
+                        compactVisualMode: true
+                        denseMode: parent.height < 56
+                        z: 4
+                    }
                 }
 
                 RowLayout {
@@ -901,8 +1159,35 @@ Item {
                         display: AbstractButton.IconOnly
                         implicitWidth: 28
                         implicitHeight: 28
-                        onClicked: playbackController.previousTrack()
-                        enabled: playbackController.canGoPrevious
+                        property bool holdSeekTriggered: false
+                        onPressed: {
+                            holdSeekTriggered = false
+                            prevHoldSeekTimer.restart()
+                        }
+                        onReleased: prevHoldSeekTimer.stop()
+                        onCanceled: prevHoldSeekTimer.stop()
+                        onClicked: {
+                            if (holdSeekTriggered) {
+                                holdSeekTriggered = false
+                                return
+                            }
+                            if (playbackController.canGoPrevious) {
+                                playbackController.previousTrack()
+                            }
+                        }
+                        enabled: playbackController.canGoPrevious || (audioEngine && audioEngine.duration > 0)
+                        ToolTip.text: root.tr("player.previousHoldSeekTooltip")
+                        ToolTip.visible: hovered
+
+                        Timer {
+                            id: prevHoldSeekTimer
+                            interval: 450
+                            repeat: true
+                            onTriggered: {
+                                prevButton.holdSeekTriggered = true
+                                root.seekRelative(-10000)
+                            }
+                        }
                     }
 
                     ToolButton {
@@ -929,14 +1214,55 @@ Item {
                     }
 
                     ToolButton {
+                        id: stopButton
+                        icon.source: IconResolver.themed("media-playback-stop", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        display: AbstractButton.IconOnly
+                        implicitWidth: 26
+                        implicitHeight: 26
+                        enabled: audioEngine && audioEngine.state !== 0
+                        opacity: enabled ? 1.0 : 0.48
+                        onClicked: audioEngine.stop()
+                        ToolTip.text: root.tr("player.stop")
+                        ToolTip.visible: hovered
+                    }
+
+                    ToolButton {
                         id: nextButton
                         icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
                         icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                         display: AbstractButton.IconOnly
                         implicitWidth: 28
                         implicitHeight: 28
-                        onClicked: playbackController.nextTrack()
-                        enabled: playbackController.canGoNext
+                        property bool holdSeekTriggered: false
+                        onPressed: {
+                            holdSeekTriggered = false
+                            nextHoldSeekTimer.restart()
+                        }
+                        onReleased: nextHoldSeekTimer.stop()
+                        onCanceled: nextHoldSeekTimer.stop()
+                        onClicked: {
+                            if (holdSeekTriggered) {
+                                holdSeekTriggered = false
+                                return
+                            }
+                            if (playbackController.canGoNext) {
+                                playbackController.nextTrack()
+                            }
+                        }
+                        enabled: playbackController.canGoNext || (audioEngine && audioEngine.duration > 0)
+                        ToolTip.text: root.tr("player.nextHoldSeekTooltip")
+                        ToolTip.visible: hovered
+
+                        Timer {
+                            id: nextHoldSeekTimer
+                            interval: 450
+                            repeat: true
+                            onTriggered: {
+                                nextButton.holdSeekTriggered = true
+                                root.seekRelative(10000)
+                            }
+                        }
                     }
 
                     ToolButton {
@@ -959,6 +1285,7 @@ Item {
                     }
 
                     Rectangle {
+                        id: compactAlbumArtThumb
                         Layout.preferredWidth: 28
                         Layout.preferredHeight: 28
                         radius: 2
@@ -978,6 +1305,13 @@ Item {
                             cache: false
                             smooth: true
                             mipmap: true
+                        }
+
+                        MouseArea {
+                            id: compactAlbumArtHoverArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.NoButton
                         }
                     }
 
@@ -1010,31 +1344,10 @@ Item {
                         Layout.fillWidth: true
                     }
 
-                    ToolButton {
-                        icon.source: IconResolver.themed(audioEngine.volume < 0.01 ? "audio-volume-muted" : "audio-volume-medium", themeManager.darkMode)
-                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                        display: AbstractButton.IconOnly
-                        implicitWidth: 24
-                        implicitHeight: 24
-                        onClicked: {
-                            if (audioEngine.volume > 0) {
-                                audioEngine.volume = 0
-                            } else {
-                                audioEngine.volume = 0.7
-                            }
-                        }
-                    }
-
-                    AccentSlider {
-                        id: volumeSlider
-                        from: 0
-                        to: 1
-                        value: audioEngine ? audioEngine.volume : 0.5
-                        Layout.preferredWidth: 60
-                        Layout.maximumWidth: 88
-                        onMoved: {
-                            if (audioEngine) audioEngine.volume = value
-                        }
+                    VolumeStrip {
+                        stripWidth: 64
+                        stripHeight: 16
+                        compactMode: true
                     }
 
                     ToolButton {
@@ -1254,6 +1567,32 @@ Item {
                     }
                 }
             }
+
+            DropArea {
+                anchors.fill: parent
+                z: 40
+                onEntered: (drag) => {
+                    if (drag.hasUrls) {
+                        root.acceptDropEvent(drag)
+                    }
+                }
+                onPositionChanged: (drag) => {
+                    if (drag.hasUrls) {
+                        root.acceptDropEvent(drag)
+                    }
+                }
+                onDropped: (drop) => {
+                    if (!drop.hasUrls) {
+                        return
+                    }
+                    root.acceptDropEvent(drop)
+                    root.ensurePlaylistModeRequested()
+                    trackModel.addUrls(drop.urls)
+                    if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
+                        playbackController.requestPlayIndex(0, "compact.drop_autoplay")
+                    }
+                }
+            }
         }
 
         Popup {
@@ -1291,13 +1630,29 @@ Item {
                     }
 
                     ToolButton {
+                        id: clearQueueButton
                         icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
-                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        icon.color: enabled ? root.destructiveColor : themeManager.textMutedColor
                         display: AbstractButton.IconOnly
+                        implicitWidth: 26
+                        implicitHeight: 24
                         enabled: playbackController.queueCount > 0
                         onClicked: playbackController.clearQueue()
                         ToolTip.text: root.tr("queue.clear")
                         ToolTip.visible: hovered
+
+                        background: Rectangle {
+                            radius: themeManager.borderRadius
+                            color: !clearQueueButton.enabled ? "transparent"
+                                                              : (clearQueueButton.hovered || clearQueueButton.down
+                                                                 ? root.destructiveHoverFillColor
+                                                                 : root.destructiveFillColor)
+                            border.width: clearQueueButton.enabled ? 1 : 0
+                            border.color: Qt.rgba(root.destructiveColor.r,
+                                                  root.destructiveColor.g,
+                                                  root.destructiveColor.b,
+                                                  clearQueueButton.hovered ? 0.62 : 0.34)
+                        }
                     }
                 }
 
@@ -1393,12 +1748,25 @@ Item {
                             }
 
                             ToolButton {
+                                id: removeQueueItemButton
                                 icon.source: IconResolver.themed("list-remove", themeManager.darkMode)
-                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                icon.color: root.destructiveColor
                                 display: AbstractButton.IconOnly
                                 implicitWidth: 22
                                 implicitHeight: 22
                                 onClicked: playbackController.removeQueueAt(queueItem.index)
+
+                                background: Rectangle {
+                                    radius: themeManager.borderRadius
+                                    color: removeQueueItemButton.hovered || removeQueueItemButton.down
+                                           ? root.destructiveHoverFillColor
+                                           : "transparent"
+                                    border.width: removeQueueItemButton.hovered ? 1 : 0
+                                    border.color: Qt.rgba(root.destructiveColor.r,
+                                                          root.destructiveColor.g,
+                                                          root.destructiveColor.b,
+                                                          0.46)
+                                }
                             }
                         }
 
@@ -1570,17 +1938,71 @@ Item {
                     currentIndex: root.uiActiveIndex()
                     highlightFollowsCurrentItem: true
                     highlightMoveDuration: 100
-                    onContentHeightChanged: root.applyPendingTrackListViewState()
-                    onHeightChanged: root.applyPendingTrackListViewState()
+                    onContentHeightChanged: {
+                        root.applyPendingTrackListViewState()
+                        root.scheduleFilterViewportSync()
+                    }
+                    onHeightChanged: {
+                        root.applyPendingTrackListViewState()
+                        root.scheduleFilterViewportSync()
+                    }
 
-                    ScrollBar.vertical: ScrollBar {
-                        width: 6
-                        policy: ScrollBar.AsNeeded
+                    ScrollBar {
+                        id: compactPlaylistScrollBar
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        z: 200
+                        width: appSettings.playlistScrollBarVisible ? 8 : 0
+                        padding: 0
+                        orientation: Qt.Vertical
+                        policy: appSettings.playlistScrollBarVisible ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                        interactive: appSettings.playlistScrollBarVisible
+                        size: compactPlaylist.contentHeight > 0
+                              ? Math.min(1.0, compactPlaylist.height / compactPlaylist.contentHeight)
+                              : 1.0
+
+                        Binding on position {
+                            when: !compactPlaylistScrollBar.pressed
+                            value: compactPlaylist.contentHeight > 0
+                                   ? Math.max(0, Math.min(1.0 - compactPlaylistScrollBar.size,
+                                                          compactPlaylist.contentY / compactPlaylist.contentHeight))
+                                   : 0
+                        }
+
+                        onPositionChanged: {
+                            if (!pressed || compactPlaylist.contentHeight <= compactPlaylist.height) {
+                                return
+                            }
+                            const maxY = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
+                            compactPlaylist.contentY = Math.max(0, Math.min(maxY, position * compactPlaylist.contentHeight))
+                        }
+
+                        background: Rectangle {
+                            implicitWidth: appSettings.playlistScrollBarVisible ? 8 : 0
+                            radius: 4
+                            color: Qt.rgba(themeManager.surfaceColor.r,
+                                           themeManager.surfaceColor.g,
+                                           themeManager.surfaceColor.b,
+                                           0.55)
+                        }
+
+                        contentItem: Rectangle {
+                            implicitWidth: 8
+                            implicitHeight: 72
+                            radius: 4
+                            color: themeManager.primaryColor
+                            opacity: appSettings.playlistScrollBarVisible ? 0.88 : 0.0
+
+                            Behavior on opacity {
+                                NumberAnimation { duration: 120 }
+                            }
+                        }
                     }
 
                     delegate: Rectangle {
                     id: trackDelegate
-                    width: ListView.view.width - 6
+                    width: ListView.view.width - (appSettings.playlistScrollBarVisible ? 8 : 0)
                     readonly property bool matchesSearch: root.normalizedSearchQuery.length === 0
                                                          || root.matchesTrackAt(trackDelegate.index)
                     visible: matchesSearch
@@ -1744,6 +2166,58 @@ Item {
                     }
                 }
 
+                    DropArea {
+                        anchors.fill: parent
+                        z: 100
+                        onEntered: (drag) => {
+                            if (!drag.hasUrls) {
+                                return
+                            }
+                            root.acceptDropEvent(drag)
+                            root.updateExternalDropIndicator(drag.y)
+                        }
+                        onPositionChanged: (drag) => {
+                            if (!drag.hasUrls) {
+                                root.clearExternalDropIndicator()
+                                return
+                            }
+                            root.acceptDropEvent(drag)
+                            root.updateExternalDropIndicator(drag.y)
+                        }
+                        onExited: root.clearExternalDropIndicator()
+                        onDropped: (drop) => {
+                            if (!drop.hasUrls) {
+                                root.clearExternalDropIndicator()
+                                return
+                            }
+                            const insertIndex = root.externalDropIndex >= 0
+                                              ? root.externalDropIndex
+                                              : root.compactDropInsertionIndexAt(drop.y)
+                            root.acceptDropEvent(drop)
+                            root.ensurePlaylistModeRequested()
+                            trackModel.insertUrlsAt(insertIndex, drop.urls)
+                            if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
+                                playbackController.requestPlayIndex(0, "compact.drop_autoplay")
+                            }
+                            root.clearExternalDropIndicator()
+                        }
+                    }
+
+                    Rectangle {
+                        x: 6
+                        y: Math.max(0, Math.min(compactPlaylist.height - height,
+                                                root.externalDropY - height * 0.5))
+                        width: Math.max(0,
+                                        compactPlaylist.width
+                                        - 12
+                                        - (appSettings.playlistScrollBarVisible ? 8 : 0))
+                        height: 2
+                        radius: 1
+                        color: themeManager.primaryColor
+                        visible: root.externalDropActive
+                        z: 101
+                    }
+
                     // Empty state
                     Label {
                         anchors.centerIn: parent
@@ -1857,7 +2331,7 @@ Item {
                 AccentMenuItem {
                     text: root.tr("playlist.removeSelected")
                     icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    icon.color: root.destructiveColor
                     enabled: root.selectedCount > 0
                     onTriggered: root.removeSelectedTracks()
                 }
@@ -1867,14 +2341,14 @@ Item {
                 AccentMenuItem {
                     text: root.tr("playlist.moveToTrash")
                     icon.source: IconResolver.themed("user-trash", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    icon.color: root.destructiveColor
                     onTriggered: root.requestMoveTrackToTrash(trackContextMenu.trackIndex, trackContextMenu.trackFilePath)
                 }
 
                 AccentMenuItem {
                     text: root.tr("playlist.remove")
                     icon.source: IconResolver.themed("list-remove", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    icon.color: root.destructiveColor
                     onTriggered: trackModel.removeAt(trackContextMenu.trackIndex)
                 }
 
@@ -1883,7 +2357,7 @@ Item {
                 AccentMenuItem {
                     text: root.tr("playlist.clearQueue")
                     icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
-                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    icon.color: root.destructiveColor
                     enabled: playbackController.queueCount > 0
                     onTriggered: playbackController.clearQueue()
                 }
@@ -1924,6 +2398,54 @@ Item {
                     font.pixelSize: 10
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: compactAlbumArtPreview
+        readonly property real preferredSize: Math.min(220, Math.max(128, Math.min(root.width - 16, root.height - 16)))
+        visible: trackModel.currentAlbumArt.length > 0
+                 && compactAlbumArtHoverArea.containsMouse
+                 && root.width >= 150
+                 && root.height >= 150
+        z: 500
+        width: preferredSize
+        height: preferredSize
+        x: {
+            const point = compactAlbumArtThumb.mapToItem(root, 0, 0)
+            return Math.max(8,
+                            Math.min(root.width - width - 8,
+                                     point.x + compactAlbumArtThumb.width * 0.5 - width * 0.5))
+        }
+        y: {
+            const point = compactAlbumArtThumb.mapToItem(root, 0, 0)
+            const below = point.y + compactAlbumArtThumb.height + 8
+            if (below + height <= root.height - 8) {
+                return below
+            }
+            return Math.max(8, point.y - height - 8)
+        }
+        radius: themeManager.borderRadius
+        color: themeManager.surfaceColor
+        border.width: 1
+        border.color: themeManager.primaryColor
+        opacity: visible ? 1.0 : 0.0
+
+        Behavior on opacity {
+            NumberAnimation { duration: 110 }
+        }
+
+        Image {
+            anchors.fill: parent
+            anchors.margins: 4
+            source: trackModel.currentAlbumArt
+            sourceSize.width: Math.max(1, Math.ceil(width))
+            sourceSize.height: Math.max(1, Math.ceil(height))
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            cache: false
+            smooth: true
+            mipmap: true
         }
     }
 
@@ -1968,21 +2490,25 @@ Item {
 
     // Keyboard shortcuts
     Shortcut {
-        sequence: "Left"
-        onActivated: root.seekRelative(-5000)
+        sequence: root.shortcutSequence("compact.seekBackward")
+        enabled: root.shortcutActive("compact.seekBackward")
+        onActivated: root.keyboardSeekRelative(-1)
     }
     Shortcut {
-        sequence: "Right"
-        onActivated: root.seekRelative(5000)
+        sequence: root.shortcutSequence("compact.seekForward")
+        enabled: root.shortcutActive("compact.seekForward")
+        onActivated: root.keyboardSeekRelative(1)
     }
     Shortcut {
-        sequence: "P"
+        sequence: root.shortcutSequence("compact.togglePlaylist")
+        enabled: root.shortcutActive("compact.togglePlaylist")
         onActivated: root.playlistVisible = !root.playlistVisible
     }
 
     // Drag & drop
     DropArea {
         anchors.fill: parent
+        enabled: !root.playlistVisible
         onDropped: (drop) => {
             if (drop.hasUrls) {
                 root.ensurePlaylistModeRequested()

@@ -47,6 +47,13 @@ Dialog {
         return appSettings.translate(key)
     }
 
+    function syncEqualizerSettingsForConversion() {
+        if (!audioEngine || !batchAudioConverterService.applyEqualizer) {
+            return
+        }
+        batchAudioConverterService.equalizerBandGains = audioEngine.equalizerBandGains
+    }
+
     function boundedDialogSize(preferred, minimum, available) {
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
@@ -1161,6 +1168,19 @@ Dialog {
                             batchAudioConverterService.pitchSemitones = Math.round(value)
                         }
                     }
+
+                    CheckBox {
+                        Layout.fillWidth: true
+                        text: root.tr("audioConverter.applyCurrentEqualizer")
+                        checked: batchAudioConverterService.applyEqualizer
+                        enabled: !batchAudioConverterService.isRunning
+                        Accessible.name: text
+                        Accessible.description: root.tr("audioConverter.applyCurrentEqualizerHint")
+                        onToggled: {
+                            batchAudioConverterService.applyEqualizer = checked
+                            root.syncEqualizerSettingsForConversion()
+                        }
+                    }
                 }
 
                 SettingsSectionPage {
@@ -1705,7 +1725,10 @@ Dialog {
                     Button {
                         text: root.tr("batchAudioConverter.convertSelected")
                         enabled: !batchAudioConverterService.isRunning && root.runnableCount > 0
-                        onClicked: batchAudioConverterService.startBatch()
+                        onClicked: {
+                            root.syncEqualizerSettingsForConversion()
+                            batchAudioConverterService.startBatch()
+                        }
                     }
 
                     Button {
@@ -1752,19 +1775,13 @@ Dialog {
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
 
-        contentItem: Item {
-            implicitWidth: Math.min(Math.max(260, root.width * 0.48), 440)
-            implicitHeight: deletePresetText.paintedHeight + 16
-
-            Text {
-                id: deletePresetText
-                anchors.fill: parent
-                anchors.margins: 8
-                wrapMode: Text.WordWrap
-                color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                text: root.tr("batchAudioConverter.deletePresetMessage").arg(root.pendingDeletePresetName)
-            }
+        contentItem: Kirigami.SelectableLabel {
+            id: deletePresetText
+            width: Math.min(Math.max(260, root.width * 0.48), 440)
+            text: root.tr("batchAudioConverter.deletePresetMessage").arg(root.pendingDeletePresetName)
+            wrapMode: Text.WordWrap
+            color: themeManager.textColor
+            font.family: themeManager.fontFamily
         }
 
         onAccepted: root.confirmDeleteSelectedPreset()

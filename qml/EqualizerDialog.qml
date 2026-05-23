@@ -584,10 +584,39 @@ Dialog {
         id: contentScroll
         clip: true
         leftPadding: Kirigami.Units.smallSpacing
-        rightPadding: Kirigami.Units.smallSpacing
+        rightPadding: Kirigami.Units.smallSpacing + 12
         topPadding: Kirigami.Units.smallSpacing
         bottomPadding: Kirigami.Units.smallSpacing
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        ScrollBar.vertical: ScrollBar {
+            id: equalizerScrollBar
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            z: 200
+            width: 8
+            padding: 0
+            policy: ScrollBar.AsNeeded
+
+            background: Rectangle {
+                implicitWidth: 8
+                radius: 4
+                color: Qt.rgba(themeManager.surfaceColor.r,
+                               themeManager.surfaceColor.g,
+                               themeManager.surfaceColor.b,
+                               0.55)
+            }
+
+            contentItem: Rectangle {
+                implicitWidth: 8
+                implicitHeight: 80
+                radius: 4
+                color: themeManager.primaryColor
+                opacity: equalizerScrollBar.policy === ScrollBar.AlwaysOn
+                         || (equalizerScrollBar.active && equalizerScrollBar.size < 1.0) ? 0.88 : 0.72
+            }
+        }
 
         ColumnLayout {
             width: Math.max(1, contentScroll.availableWidth)

@@ -162,6 +162,8 @@ qint64 currentPeakResidentMemoryKbImpl()
 BatchAudioConverterService::BatchAudioConverterService(QObject *parent)
     : QObject(parent)
 {
+    m_settings.equalizerBandGains = normalizeEqualizerBandGains({});
+
     auto *worker = new AudioConverterService(this);
     m_worker = worker;
 
@@ -309,6 +311,8 @@ QVariantMap BatchAudioConverterService::settings() const
     result.insert(QStringLiteral("channelMode"), m_settings.channelMode);
     result.insert(QStringLiteral("playbackRate"), m_settings.playbackRate);
     result.insert(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones);
+    result.insert(QStringLiteral("applyEqualizer"), m_settings.applyEqualizer);
+    result.insert(QStringLiteral("equalizerBandGains"), m_settings.equalizerBandGains);
     result.insert(QStringLiteral("addResultsToPlaylist"), m_settings.addResultsToPlaylist);
     return result;
 }
@@ -358,7 +362,8 @@ QVariantMap BatchAudioConverterService::runtimeDiagnostics() const
     }
 
     const bool heavyDspProfile = !qFuzzyCompare(m_settings.playbackRate, 1.0)
-        || m_settings.pitchSemitones != 0;
+        || m_settings.pitchSemitones != 0
+        || m_settings.applyEqualizer;
     const int dspAdjustedItemCount = heavyDspProfile ? runnableItemCount : 0;
 
     QVariantMap metrics;
@@ -914,6 +919,10 @@ bool BatchAudioConverterService::applySettingsMap(const QVariantMap &settings)
     setChannelMode(settings.value(QStringLiteral("channelMode")).toString());
     setPlaybackRate(settings.value(QStringLiteral("playbackRate"), m_settings.playbackRate).toDouble());
     setPitchSemitones(settings.value(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones).toInt());
+    setApplyEqualizer(settings.value(QStringLiteral("applyEqualizer"), m_settings.applyEqualizer).toBool());
+    if (settings.contains(QStringLiteral("equalizerBandGains"))) {
+        setEqualizerBandGains(settings.value(QStringLiteral("equalizerBandGains")).toList());
+    }
     return true;
 }
 
@@ -1438,6 +1447,42 @@ void BatchAudioConverterService::setPitchSemitones(int pitchSemitones)
     emitSettingsChanged();
 }
 
+void BatchAudioConverterService::setApplyEqualizer(bool applyEqualizer)
+{
+    if (!canMutateConfiguration() || m_settings.applyEqualizer == applyEqualizer) {
+        return;
+    }
+
+    m_settings.applyEqualizer = applyEqualizer;
+    emit applyEqualizerChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setEqualizerBandGains(const QVariantList &gains)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+
+    const QVariantList normalized = normalizeEqualizerBandGains(gains);
+    if (m_settings.equalizerBandGains.size() == normalized.size()) {
+        bool equal = true;
+        for (int i = 0; i < normalized.size(); ++i) {
+            if (qAbs(m_settings.equalizerBandGains.at(i).toDouble() - normalized.at(i).toDouble()) > 0.01) {
+                equal = false;
+                break;
+            }
+        }
+        if (equal) {
+            return;
+        }
+    }
+
+    m_settings.equalizerBandGains = normalized;
+    emit equalizerBandGainsChanged();
+    emitSettingsChanged();
+}
+
 void BatchAudioConverterService::setAddResultsToPlaylist(bool addResultsToPlaylist)
 {
     if (!canMutateConfiguration()) {
@@ -1621,6 +1666,17 @@ double BatchAudioConverterService::normalizePlaybackRate(double playbackRate)
 int BatchAudioConverterService::normalizePitchSemitones(int pitchSemitones)
 {
     return qBound(-24, pitchSemitones, 24);
+}
+
+QVariantList BatchAudioConverterService::normalizeEqualizerBandGains(const QVariantList &gains)
+{
+    QVariantList normalized;
+    normalized.reserve(10);
+    for (int i = 0; i < 10; ++i) {
+        const double source = i < gains.size() ? gains.at(i).toDouble() : 0.0;
+        normalized.push_back(qBound(-24.0, source, 12.0));
+    }
+    return normalized;
 }
 
 QString BatchAudioConverterService::uniqueOutputPath(const QString &path,
@@ -1810,6 +1866,8 @@ QVariantMap BatchAudioConverterService::effectiveSettingsToVariantMap(
     result.insert(QStringLiteral("channelMode"), settings.channelMode);
     result.insert(QStringLiteral("playbackRate"), settings.playbackRate);
     result.insert(QStringLiteral("pitchSemitones"), settings.pitchSemitones);
+    result.insert(QStringLiteral("applyEqualizer"), settings.applyEqualizer);
+    result.insert(QStringLiteral("equalizerBandGains"), settings.equalizerBandGains);
     result.insert(QStringLiteral("addResultsToPlaylist"), settings.addResultsToPlaylist);
     result.insert(QStringLiteral("capturedAtMs"), settings.capturedAtMs);
     return result;
@@ -1834,6 +1892,9 @@ BatchAudioConverterService::effectiveSettingsFromVariantMap(const QVariantMap &s
     snapshot.playbackRate = normalizePlaybackRate(settings.value(QStringLiteral("playbackRate"), 1.0).toDouble());
     snapshot.pitchSemitones = normalizePitchSemitones(
         settings.value(QStringLiteral("pitchSemitones")).toInt());
+    snapshot.applyEqualizer = settings.value(QStringLiteral("applyEqualizer"), false).toBool();
+    snapshot.equalizerBandGains = normalizeEqualizerBandGains(
+        settings.value(QStringLiteral("equalizerBandGains")).toList());
     snapshot.addResultsToPlaylist = snapshot.playlistAddMode != DisabledPlaylistAddMode;
     snapshot.capturedAtMs = qMax<qint64>(0, settings.value(QStringLiteral("capturedAtMs")).toLongLong());
     return snapshot;
@@ -2039,6 +2100,8 @@ QStringList BatchAudioConverterService::settingsDiffKeys(const QVariantMap &prev
         QStringLiteral("channelMode"),
         QStringLiteral("playbackRate"),
         QStringLiteral("pitchSemitones"),
+        QStringLiteral("applyEqualizer"),
+        QStringLiteral("equalizerBandGains"),
         QStringLiteral("addResultsToPlaylist")
     };
 
@@ -2788,6 +2851,8 @@ BatchAudioConverterService::currentSettingsSnapshot() const
     snapshot.channelMode = m_settings.channelMode;
     snapshot.playbackRate = m_settings.playbackRate;
     snapshot.pitchSemitones = m_settings.pitchSemitones;
+    snapshot.applyEqualizer = m_settings.applyEqualizer;
+    snapshot.equalizerBandGains = m_settings.equalizerBandGains;
     snapshot.addResultsToPlaylist = m_settings.playlistAddMode != DisabledPlaylistAddMode;
     snapshot.capturedAtMs = nowMs();
     return snapshot;
@@ -3427,6 +3492,8 @@ void BatchAudioConverterService::startNextPendingItem()
     m_worker->setChannelMode(m_settings.channelMode);
     m_worker->setPlaybackRate(m_settings.playbackRate);
     m_worker->setPitchSemitones(m_settings.pitchSemitones);
+    m_worker->setApplyEqualizer(m_settings.applyEqualizer);
+    m_worker->setEqualizerBandGains(m_settings.equalizerBandGains);
     m_worker->setOverwriteExisting(m_items[nextIndex].conflictResolution.willOverwriteExisting);
 
     if (!m_worker->startConversion()) {

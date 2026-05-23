@@ -116,6 +116,44 @@ copy_host_path() {
     done
 }
 
+find_host_library() {
+    local soname="$1"
+    local path=""
+
+    if command -v ldconfig >/dev/null 2>&1; then
+        path="$(
+            ldconfig -p 2>/dev/null \
+            | awk -v soname="${soname}" '$1 == soname && /x86-64|aarch64|armhf|i386/ { print $NF; exit }'
+        )"
+    fi
+
+    if [[ -z "${path}" ]]; then
+        path="$(
+            find /lib /usr/lib -name "${soname}" -print -quit 2>/dev/null || true
+        )"
+    fi
+
+    [[ -n "${path}" && -e "${path}" ]] || return 1
+    printf '%s\n' "${path}"
+}
+
+bundle_optional_library() {
+    local soname="$1"
+    local path
+
+    path="$(find_host_library "${soname}")" || return 0
+    if copy_host_path "${path}"; then
+        bundle_roots+=("${APPDIR}${path}")
+        local resolved
+        resolved="$(readlink -f "${path}" 2>/dev/null || true)"
+        if [[ -n "${resolved}" ]]; then
+            bundle_roots+=("${APPDIR}${resolved}")
+        fi
+    else
+        warn "Failed to bundle optional runtime library ${soname} from ${path}"
+    fi
+}
+
 ldd_dependencies() {
     local target="$1"
     local output
@@ -445,6 +483,9 @@ while IFS= read -r file; do
     bundle_roots+=("${file}")
 done < <(collect_elf_files "${APPDIR}/usr/lib/gstreamer-1.0")
 
+bundle_optional_library "libcurl-gnutls.so.4"
+bundle_optional_library "libcurl.so.4"
+
 log "Bundling shared-library closure (${#bundle_roots[@]} roots)"
 bundle_elf_closure "${bundle_roots[@]}"
 
@@ -454,10 +495,11 @@ cat > "${APPDIR}/${APP_ID}.desktop" <<EOF
 Type=Application
 Name=${APP_NAME}
 Comment=WaveFlux audio player
-Exec=${APP_EXEC}
+Exec=${APP_EXEC} %U
 Icon=${APP_ID}
 Terminal=false
 Categories=AudioVideo;Audio;Player;
+MimeType=audio/aac;audio/ac3;audio/aiff;audio/basic;audio/flac;audio/m4a;audio/mp2;audio/mp3;audio/mp4;audio/mpeg;audio/ogg;audio/opus;audio/vorbis;audio/wav;audio/webm;audio/x-669;audio/x-aac;audio/x-aiff;audio/x-amf;audio/x-flac;audio/x-it;audio/x-m4a;audio/x-matroska;audio/x-mod;audio/x-mp2;audio/x-mp3;audio/x-mpeg;audio/x-ms-wma;audio/x-s3m;audio/x-stm;audio/x-wav;audio/x-xm;audio/x-vorbis+ogg;application/ogg;
 StartupNotify=true
 EOF
 cp "${APPDIR}/${APP_ID}.desktop" "${APPDIR}/usr/share/applications/${APP_ID}.desktop"

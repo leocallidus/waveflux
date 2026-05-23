@@ -133,6 +133,18 @@ Item {
         onTriggered: root.appliedSearchRevision = root.searchRevision
     }
 
+    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync()
+    onSearchFieldMaskChanged: root.scheduleFilterViewportSync()
+    onSearchQuickFilterMaskChanged: root.scheduleFilterViewportSync()
+    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync()
+
+    Timer {
+        id: filterViewportSyncTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.syncViewportAfterFilterChange()
+    }
+
     function applyCenteredContentY(visibleRow, visibleCount) {
         const viewportHeight = playlistView.height
         if (viewportHeight <= 0) {
@@ -143,6 +155,63 @@ Item {
         const centerY = (visibleRow + 0.5) * rowHeight
         playlistView.contentY = Math.max(0, Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
         return true
+    }
+
+    function logicalVisibleCount() {
+        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
+        return filterActive ? root.matchCount() : trackModel.count
+    }
+
+    function clampContentYToLogicalBounds() {
+        if (!playlistView || playlistView.height <= 0) {
+            return
+        }
+        const maxY = Math.max(0, root.logicalVisibleCount() * 40 - playlistView.height)
+        playlistView.contentY = Math.max(0, Math.min(maxY, Number(playlistView.contentY) || 0))
+    }
+
+    function locateModelIndexFast(index) {
+        const safeIndex = Math.floor(Number(index))
+        if (!Number.isFinite(safeIndex) || safeIndex < 0 || safeIndex >= trackModel.count) {
+            return false
+        }
+
+        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
+        if (filterActive && !root.matchesActiveFilterAt(safeIndex)) {
+            return false
+        }
+
+        const visibleCount = root.logicalVisibleCount()
+        if (visibleCount <= 0) {
+            return false
+        }
+
+        const visibleRow = filterActive ? root.matchCountBefore(safeIndex) : safeIndex
+        return root.applyCenteredContentY(visibleRow, visibleCount)
+    }
+
+    function scheduleFilterViewportSync() {
+        if (!playlistView || playlistView.height <= 0) {
+            return
+        }
+        filterViewportSyncTimer.restart()
+    }
+
+    function syncViewportAfterFilterChange() {
+        if (!playlistView || playlistView.height <= 0) {
+            return
+        }
+
+        if (playlistView.forceLayout) {
+            playlistView.forceLayout()
+        }
+
+        const current = root.uiActiveIndex()
+        if (current >= 0 && root.locateModelIndexFast(current)) {
+            return
+        }
+
+        root.clampContentYToLogicalBounds()
     }
 
     function fastLocateCurrentTrack() {
@@ -670,7 +739,7 @@ Item {
             root.pendingTrashFilePath = ""
         }
 
-        contentItem: Label {
+        contentItem: Kirigami.SelectableLabel {
             text: root.tr("playlist.confirmTrashMessage")
             wrapMode: Text.WordWrap
             color: themeManager.textColor

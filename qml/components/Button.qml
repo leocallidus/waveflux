@@ -4,14 +4,21 @@ import QtQuick.Controls as Controls
 Controls.Button {
     id: control
 
+    property string tooltipText: text
+
     hoverEnabled: true
     implicitHeight: Math.max(36, contentItem.implicitHeight + topPadding + bottomPadding)
     leftPadding: 14
     rightPadding: 14
     topPadding: 8
     bottomPadding: 8
+    Controls.ToolTip.visible: hovered && buttonText.truncated && tooltipText.length > 0
+    Controls.ToolTip.text: tooltipText
+    Controls.ToolTip.delay: 450
 
     contentItem: Text {
+        id: buttonText
+
         text: control.text
         font: control.font
         color: !control.enabled

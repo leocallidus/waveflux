@@ -103,6 +103,14 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
             }
             emit navigationStateChanged();
         });
+        connect(m_trackModel, &QAbstractItemModel::rowsAboutToBeRemoved, this,
+                [this](const QModelIndex &, int first, int last) {
+            handleRowsAboutToBeRemoved(first, last);
+        });
+        connect(m_trackModel, &QAbstractItemModel::rowsInserted, this,
+                [this](const QModelIndex &, int first, int last) {
+            handleRowsInserted(first, last);
+        });
         connect(m_trackModel, &QAbstractItemModel::rowsAboutToBeMoved, this,
                 [this](const QModelIndex &, int, int, const QModelIndex &, int) {
             captureShuffleSnapshot();
@@ -126,6 +134,12 @@ PlaybackController::PlaybackController(TrackModel *trackModel,
                 syncShuffleToCurrentTrack();
             }
             emit navigationStateChanged();
+        });
+
+        connect(m_trackModel, &TrackModel::searchRevisionChanged, this, [this]() {
+            if (searchPlaybackFilterActive()) {
+                emit navigationStateChanged();
+            }
         });
 
         connect(m_trackModel, &TrackModel::trackSelected, this, [this](const QString &filePath) {
@@ -276,6 +290,17 @@ bool PlaybackController::canGoNext() const
         return true;
     }
 
+    if (searchPlaybackFilterActive()) {
+        const int matchCount = searchPlaybackMatchCount();
+        if (matchCount <= 0) {
+            return false;
+        }
+        if (!trackMatchesSearchPlaybackFilter(current)) {
+            return true;
+        }
+        return matchCount > 1 || m_repeatMode == RepeatAll;
+    }
+
     if (m_shuffleEnabled) {
         if (count == 1) {
             return m_repeatMode == RepeatAll;
@@ -297,6 +322,17 @@ bool PlaybackController::canGoPrevious() const
     const int current = effectiveCurrentIndex();
     if (count <= 0 || current < 0) {
         return false;
+    }
+
+    if (searchPlaybackFilterActive()) {
+        const int matchCount = searchPlaybackMatchCount();
+        if (matchCount <= 0) {
+            return false;
+        }
+        if (!trackMatchesSearchPlaybackFilter(current)) {
+            return true;
+        }
+        return matchCount > 1 || m_repeatMode == RepeatAll;
     }
 
     if (m_shuffleEnabled) {
@@ -446,6 +482,7 @@ void PlaybackController::onAudioPositionChanged(qint64 positionMs)
     if (!canAdvanceOnBoundary) {
         finalizeActiveSession(SessionEndReason::TrackEnded, QDateTime::currentMSecsSinceEpoch());
         m_audioEngine->stop();
+        emit playbackSequenceFinished();
         return;
     }
 
@@ -1097,7 +1134,9 @@ void PlaybackController::nextTrack()
 
     int nextIndex = takeNextQueuedIndex();
     if (nextIndex < 0) {
-        if (!m_shuffleEnabled) {
+        if (searchPlaybackFilterActive()) {
+            nextIndex = nextSearchPlaybackIndex(current);
+        } else if (!m_shuffleEnabled) {
             if (current + 1 < count) {
                 nextIndex = current + 1;
             } else if (m_repeatMode == RepeatAll) {
@@ -1181,6 +1220,11 @@ void PlaybackController::previousTrack()
         }
     }
 
+    navigateToPreviousTrackInternal(SessionEndReason::UserSkip);
+}
+
+void PlaybackController::skipToPreviousTrack()
+{
     navigateToPreviousTrackInternal(SessionEndReason::UserSkip);
 }
 
@@ -1451,6 +1495,7 @@ void PlaybackController::handleTrackEndedInternal(quint64 eosTransitionId, bool 
             traceTransitionEvent("handle_track_ended_no_previous", eosTransitionId);
             setPendingTrackIndex(-1);
             setTransitionState(TransitionIdle);
+            emit playbackSequenceFinished();
             return;
         }
         traceTransitionEvent("handle_track_ended_navigate_previous", eosTransitionId);
@@ -1460,6 +1505,7 @@ void PlaybackController::handleTrackEndedInternal(quint64 eosTransitionId, bool 
             traceTransitionEvent("handle_track_ended_no_next", eosTransitionId);
             setPendingTrackIndex(-1);
             setTransitionState(TransitionIdle);
+            emit playbackSequenceFinished();
             return;
         }
         traceTransitionEvent("handle_track_ended_navigate_next", eosTransitionId);
@@ -1642,6 +1688,51 @@ void PlaybackController::setRepeatableShuffle(bool enabled)
         regenerateShuffleOrder(effectiveCurrentIndex());
     }
     emit repeatableShuffleChanged();
+    emit navigationStateChanged();
+}
+
+void PlaybackController::setSearchPlaybackEnabled(bool enabled)
+{
+    if (m_searchPlaybackEnabled == enabled) {
+        return;
+    }
+
+    m_searchPlaybackEnabled = enabled;
+    emit searchPlaybackFilterChanged();
+    emit navigationStateChanged();
+}
+
+void PlaybackController::setSearchPlaybackQuery(const QString &query)
+{
+    const QString normalized = query.trimmed().toLower();
+    if (m_searchPlaybackQuery == normalized) {
+        return;
+    }
+
+    m_searchPlaybackQuery = normalized;
+    emit searchPlaybackFilterChanged();
+    emit navigationStateChanged();
+}
+
+void PlaybackController::setSearchPlaybackFieldMask(int fieldMask)
+{
+    if (m_searchPlaybackFieldMask == fieldMask) {
+        return;
+    }
+
+    m_searchPlaybackFieldMask = fieldMask;
+    emit searchPlaybackFilterChanged();
+    emit navigationStateChanged();
+}
+
+void PlaybackController::setSearchPlaybackQuickFilterMask(int quickFilterMask)
+{
+    if (m_searchPlaybackQuickFilterMask == quickFilterMask) {
+        return;
+    }
+
+    m_searchPlaybackQuickFilterMask = quickFilterMask;
+    emit searchPlaybackFilterChanged();
     emit navigationStateChanged();
 }
 
@@ -1879,6 +1970,10 @@ int PlaybackController::calculateNextIndex(bool advanceShuffleState)
         return current;
     }
 
+    if (searchPlaybackFilterActive()) {
+        return nextSearchPlaybackIndex(current);
+    }
+
     if (!m_shuffleEnabled) {
         if (current + 1 < count) {
             return current + 1;
@@ -1933,6 +2028,10 @@ int PlaybackController::calculatePreviousIndex()
         return -1;
     }
 
+    if (searchPlaybackFilterActive()) {
+        return previousSearchPlaybackIndex(current);
+    }
+
     if (!m_shuffleEnabled) {
         if (current > 0) {
             return current - 1;
@@ -1966,6 +2065,94 @@ int PlaybackController::calculatePreviousIndex()
     }
     m_shufflePosition = pos;
     return m_shuffleOrder.value(pos, -1);
+}
+
+bool PlaybackController::searchPlaybackFilterActive() const
+{
+    return m_searchPlaybackEnabled
+        && m_trackModel
+        && (!m_searchPlaybackQuery.trimmed().isEmpty()
+            || m_searchPlaybackQuickFilterMask != TrackModel::SearchQuickFilterNone);
+}
+
+bool PlaybackController::trackMatchesSearchPlaybackFilter(int index) const
+{
+    return m_trackModel
+        && index >= 0
+        && index < m_trackModel->rowCount()
+        && m_trackModel->matchesSearchAdvancedNormalized(index,
+                                                         m_searchPlaybackQuery,
+                                                         m_searchPlaybackFieldMask,
+                                                         m_searchPlaybackQuickFilterMask);
+}
+
+int PlaybackController::searchPlaybackMatchCount() const
+{
+    if (!searchPlaybackFilterActive()) {
+        return 0;
+    }
+
+    return m_trackModel->countMatchingAdvancedNormalized(m_searchPlaybackQuery,
+                                                         m_searchPlaybackFieldMask,
+                                                         m_searchPlaybackQuickFilterMask);
+}
+
+int PlaybackController::nextSearchPlaybackIndex(int current) const
+{
+    if (!m_trackModel) {
+        return -1;
+    }
+
+    const int count = m_trackModel->rowCount();
+    if (count <= 0 || searchPlaybackMatchCount() <= 0) {
+        return -1;
+    }
+
+    const int start = qBound(0, current, count - 1);
+    for (int index = start + 1; index < count; ++index) {
+        if (trackMatchesSearchPlaybackFilter(index)) {
+            return index;
+        }
+    }
+
+    if (m_repeatMode == RepeatAll || !trackMatchesSearchPlaybackFilter(start)) {
+        for (int index = 0; index <= start; ++index) {
+            if (trackMatchesSearchPlaybackFilter(index)) {
+                return index;
+            }
+        }
+    }
+
+    return -1;
+}
+
+int PlaybackController::previousSearchPlaybackIndex(int current) const
+{
+    if (!m_trackModel) {
+        return -1;
+    }
+
+    const int count = m_trackModel->rowCount();
+    if (count <= 0 || searchPlaybackMatchCount() <= 0) {
+        return -1;
+    }
+
+    const int start = qBound(0, current, count - 1);
+    for (int index = start - 1; index >= 0; --index) {
+        if (trackMatchesSearchPlaybackFilter(index)) {
+            return index;
+        }
+    }
+
+    if (m_repeatMode == RepeatAll || !trackMatchesSearchPlaybackFilter(start)) {
+        for (int index = count - 1; index >= start; --index) {
+            if (trackMatchesSearchPlaybackFilter(index)) {
+                return index;
+            }
+        }
+    }
+
+    return -1;
 }
 
 void PlaybackController::startTrackLoadWatch()
@@ -2024,6 +2211,69 @@ void PlaybackController::onLoadFailure(const QString &message)
     }
 
     m_handlingFailure = false;
+}
+
+void PlaybackController::handleRowsAboutToBeRemoved(int first, int last)
+{
+    if (!m_trackModel || first < 0 || last < first) {
+        return;
+    }
+
+    const bool removesActiveTrack =
+        m_activeTrackIndex >= first && m_activeTrackIndex <= last;
+    const bool removesPendingTrack =
+        m_pendingTrackIndex >= first && m_pendingTrackIndex <= last;
+    const bool removesGaplessTrack =
+        m_gaplessQueuedIndex >= first && m_gaplessQueuedIndex <= last;
+
+    if (removesPendingTrack || removesGaplessTrack) {
+        clearGaplessTransitionState();
+        setPendingTrackIndex(-1);
+    }
+
+    if (!removesActiveTrack) {
+        return;
+    }
+
+    clearTrackLoadWatch();
+    clearGaplessTransitionState();
+    clearPendingCueSeek();
+
+    if (m_audioEngine && !m_audioEngine->currentFile().isEmpty()) {
+        m_audioEngine->unload();
+    }
+
+    setActiveTrackIndex(-1);
+    setPendingTrackIndex(-1);
+    setTransitionState(TransitionIdle);
+    emit navigationStateChanged();
+}
+
+void PlaybackController::handleRowsInserted(int first, int last)
+{
+    if (first < 0 || last < first) {
+        return;
+    }
+
+    const int insertedCount = last - first + 1;
+    bool navigationChanged = false;
+
+    if (m_activeTrackIndex >= first) {
+        setActiveTrackIndex(m_activeTrackIndex + insertedCount);
+        navigationChanged = true;
+    }
+    if (m_pendingTrackIndex >= first) {
+        setPendingTrackIndex(m_pendingTrackIndex + insertedCount);
+        navigationChanged = true;
+    }
+    if (m_gaplessQueuedIndex >= first) {
+        m_gaplessQueuedIndex += insertedCount;
+        navigationChanged = true;
+    }
+
+    if (navigationChanged) {
+        emit navigationStateChanged();
+    }
 }
 
 int PlaybackController::activePlaybackIndex() const

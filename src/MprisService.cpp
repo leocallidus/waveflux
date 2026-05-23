@@ -83,11 +83,23 @@ public:
             QStringLiteral("audio/flac"),
             QStringLiteral("audio/x-flac"),
             QStringLiteral("audio/ogg"),
+            QStringLiteral("audio/opus"),
             QStringLiteral("audio/wav"),
             QStringLiteral("audio/x-wav"),
             QStringLiteral("audio/aac"),
             QStringLiteral("audio/mp4"),
-            QStringLiteral("audio/x-m4a")
+            QStringLiteral("audio/x-m4a"),
+            QStringLiteral("audio/webm"),
+            QStringLiteral("audio/x-matroska"),
+            QStringLiteral("audio/x-ms-wma"),
+            QStringLiteral("audio/x-669"),
+            QStringLiteral("audio/x-amf"),
+            QStringLiteral("audio/x-it"),
+            QStringLiteral("audio/x-mod"),
+            QStringLiteral("audio/x-s3m"),
+            QStringLiteral("audio/x-stm"),
+            QStringLiteral("audio/x-xm"),
+            QStringLiteral("application/ogg")
         };
     }
 
@@ -397,7 +409,7 @@ QVariantMap MprisService::metadata() const
 
 double MprisService::volume() const
 {
-    return m_audioEngine ? m_audioEngine->volume() : 1.0;
+    return m_audioEngine ? qMin(m_audioEngine->volume(), 1.0) : 1.0;
 }
 
 qlonglong MprisService::positionUs() const
@@ -474,7 +486,7 @@ void MprisService::setVolume(double volumeValue)
     if (!m_audioEngine) {
         return;
     }
-    m_audioEngine->setVolume(volumeValue);
+    m_audioEngine->setVolume(qMin(volumeValue, 1.0));
 }
 
 void MprisService::next()

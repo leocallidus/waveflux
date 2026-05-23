@@ -981,7 +981,7 @@ void WaveformItem::rebuildWavePath(int fullWidth, int h)
 
     const int widthToUse = fullWidth;
     const qreal centerY = h * 0.5;
-    const qreal maxHeight = (h * 0.5) * 0.88;
+    const qreal maxHeight = (h * 0.5) * kWaveformAmplitudeScale;
 
     QPainterPath path;
     path.moveTo(0, centerY);

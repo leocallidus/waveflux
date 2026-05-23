@@ -25,6 +25,11 @@ class AudioConverterService : public QObject
     Q_PROPERTY(QString channelMode READ channelMode WRITE setChannelMode NOTIFY channelModeChanged)
     Q_PROPERTY(double playbackRate READ playbackRate WRITE setPlaybackRate NOTIFY playbackRateChanged)
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
+    Q_PROPERTY(bool applyEqualizer READ applyEqualizer WRITE setApplyEqualizer NOTIFY applyEqualizerChanged)
+    Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains WRITE setEqualizerBandGains NOTIFY equalizerBandGainsChanged)
+    Q_PROPERTY(bool trimEnabled READ trimEnabled WRITE setTrimEnabled NOTIFY trimEnabledChanged)
+    Q_PROPERTY(qint64 trimStartMs READ trimStartMs WRITE setTrimStartMs NOTIFY trimStartMsChanged)
+    Q_PROPERTY(qint64 trimEndMs READ trimEndMs WRITE setTrimEndMs NOTIFY trimEndMsChanged)
     Q_PROPERTY(bool isRunning READ isRunning NOTIFY isRunningChanged)
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
@@ -66,6 +71,11 @@ public:
     QString channelMode() const { return m_channelMode; }
     double playbackRate() const { return m_playbackRate; }
     int pitchSemitones() const { return m_pitchSemitones; }
+    bool applyEqualizer() const { return m_applyEqualizer; }
+    QVariantList equalizerBandGains() const { return m_equalizerBandGains; }
+    bool trimEnabled() const { return m_trimEnabled; }
+    qint64 trimStartMs() const { return m_trimStartMs; }
+    qint64 trimEndMs() const { return m_trimEndMs; }
     bool isRunning() const { return m_isRunning; }
     double progress() const { return m_progress; }
     QString statusText() const { return m_statusText; }
@@ -96,6 +106,11 @@ public slots:
     void setChannelMode(const QString &channelMode);
     void setPlaybackRate(double playbackRate);
     void setPitchSemitones(int pitchSemitones);
+    void setApplyEqualizer(bool applyEqualizer);
+    void setEqualizerBandGains(const QVariantList &gains);
+    void setTrimEnabled(bool enabled);
+    void setTrimStartMs(qint64 startMs);
+    void setTrimEndMs(qint64 endMs);
     void setOverwriteExisting(bool overwriteExisting);
 
 signals:
@@ -107,6 +122,11 @@ signals:
     void channelModeChanged();
     void playbackRateChanged();
     void pitchSemitonesChanged();
+    void applyEqualizerChanged();
+    void equalizerBandGainsChanged();
+    void trimEnabledChanged();
+    void trimStartMsChanged();
+    void trimEndMsChanged();
     void isRunningChanged();
     void progressChanged();
     void statusTextChanged();
@@ -127,11 +147,12 @@ private:
     static int normalizeSampleRate(int sampleRate, const QString &format);
     static double normalizePlaybackRate(double playbackRate);
     static int normalizePitchSemitones(int pitchSemitones);
+    static QVariantList normalizeEqualizerBandGains(const QVariantList &gains);
     static const FormatProfile *findFormatProfile(const QString &format);
     static QVariantMap toVariantMap(const FormatProfile &profile);
     static QString replaceExtension(const QString &path, const QString &extension);
     static QString uniqueOutputPath(const QString &path);
-    static QStringList requiredGStreamerElements(const FormatProfile *profile);
+    static QStringList requiredGStreamerElements(const FormatProfile *profile, bool includeEqualizer = false);
     static QStringList missingGStreamerElements(const QStringList &requiredElements);
     static bool hasGStreamerElementFactory(const QString &factoryName);
 
@@ -160,6 +181,7 @@ private:
                         const QVariantList &messageArgs = QVariantList(),
                         const QString &terminationKey = QStringLiteral("runtime-failed"),
                         const QString &diagnosticMessage = QString());
+    bool applyTrimSegmentSeek(QString *errorMessage);
     void updateProgressFromPipeline();
     bool refreshSourceDurationFromPipeline();
     bool copyBasicSourceTagsToOutput(const QString &outputPath, QString *warningMessage);
@@ -175,6 +197,11 @@ private:
     QString m_channelMode = QStringLiteral("stereo");
     double m_playbackRate = 1.0;
     int m_pitchSemitones = 0;
+    bool m_applyEqualizer = false;
+    QVariantList m_equalizerBandGains;
+    bool m_trimEnabled = false;
+    qint64 m_trimStartMs = 0;
+    qint64 m_trimEndMs = 0;
     bool m_isRunning = false;
     double m_progress = 0.0;
     QString m_statusText;
@@ -188,6 +215,7 @@ private:
     GstElement *m_convertElement = nullptr;
     GstElement *m_resampleElement = nullptr;
     GstElement *m_pitchElement = nullptr;
+    GstElement *m_equalizerElement = nullptr;
     GstElement *m_postConvertElement = nullptr;
     GstElement *m_capsFilterElement = nullptr;
     GstElement *m_encoderElement = nullptr;
@@ -200,6 +228,8 @@ private:
     QString m_pendingTempOutputFile;
     QString m_pendingFinalOutputFile;
     qint64 m_sourceDurationMs = 0;
+    qint64 m_progressStartMs = 0;
+    qint64 m_progressDurationMs = 0;
     bool m_cancelRequested = false;
     bool m_completionHandled = false;
     bool m_overwriteExisting = false;

@@ -1908,7 +1908,7 @@ Dialog {
         width: Math.min(root.width - 32, 560)
         standardButtons: Dialog.Ok
 
-        contentItem: Label {
+        contentItem: Kirigami.SelectableLabel {
             id: errorDialogMessage
             text: ""
             wrapMode: Text.WordWrap

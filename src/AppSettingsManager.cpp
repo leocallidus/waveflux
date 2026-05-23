@@ -1,8 +1,10 @@
 #include "AppSettingsManager.h"
+#include "TrackInfoFormatter.h"
 
 #include <KLocalizedString>
 
 #include <QDir>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QLocale>
 #include <QProcess>
@@ -29,6 +31,59 @@ constexpr int kYtDlpMinParallelDownloads = 1;
 constexpr int kYtDlpMaxParallelDownloads = 4;
 constexpr int kExternalToolStartTimeoutMs = 3000;
 constexpr int kExternalToolFinishTimeoutMs = 4000;
+constexpr int kMaxTrackInfoFormatLength = 1024;
+
+const QStringList &trackInfoOverlayKeys()
+{
+    static const QStringList keys = {
+        QStringLiteral("topLeft"),
+        QStringLiteral("topCenter"),
+        QStringLiteral("topRight"),
+        QStringLiteral("middleLeft"),
+        QStringLiteral("middleCenter"),
+        QStringLiteral("middleRight"),
+        QStringLiteral("bottomLeft"),
+        QStringLiteral("bottomCenter"),
+        QStringLiteral("bottomRight")
+    };
+    return keys;
+}
+
+QString defaultTrackInfoWindowTitleFormatValue()
+{
+    return QStringLiteral("{%a - %t — |%F — }%v");
+}
+
+QString legacyTrackInfoWindowTitleFormatValue()
+{
+    return QStringLiteral("{%a - %t — |%F — }WaveFlux %v");
+}
+
+QString defaultTrackInfoWaveformTooltipFormatValue()
+{
+    return QString();
+}
+
+QVariantMap defaultTrackInfoOverlayFormatsValue()
+{
+    QVariantMap formats;
+    for (const QString &key : trackInfoOverlayKeys()) {
+        formats.insert(key, QString());
+    }
+    formats.insert(QStringLiteral("topLeft"), QStringLiteral("{%B kbps/%s kHz|{%B kbps}{%s kHz}}"));
+    formats.insert(QStringLiteral("middleCenter"), QStringLiteral("{%a - %t|%F}"));
+    formats.insert(QStringLiteral("bottomRight"), QStringLiteral("%T/{%d}"));
+    return formats;
+}
+
+QVariantMap emptyTrackInfoOverlayFormatsValue()
+{
+    QVariantMap formats;
+    for (const QString &key : trackInfoOverlayKeys()) {
+        formats.insert(key, QString());
+    }
+    return formats;
+}
 
 quint32 normalizeShuffleSeed(const QVariant &value, quint32 fallback = kDefaultShuffleSeed)
 {
@@ -59,6 +114,17 @@ QString normalizeLocalPathValue(const QString &value)
     }
 
     return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
+}
+
+QDateTime normalizeStoredDateTime(const QVariant &value)
+{
+    const QDateTime dateTime = value.toDateTime();
+    return dateTime.isValid() ? dateTime.toUTC() : QDateTime();
+}
+
+QDateTime normalizeDateTimeValue(const QDateTime &dateTime)
+{
+    return dateTime.isValid() ? dateTime.toUTC() : QDateTime();
 }
 
 QString firstNonEmptyLine(const QString &text)
@@ -501,6 +567,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("audioConverter.errorOutputAlreadyExists"), QStringLiteral("Output file already exists: %1")},
         {QStringLiteral("audioConverter.errorReplaceExistingOutput"), QStringLiteral("Failed to replace the existing output file: %1 (%2)")},
         {QStringLiteral("audioConverter.errorFinalizeOutput"), QStringLiteral("Failed to finalize the converted output file: %1 (%2)")},
+        {QStringLiteral("audioConverter.errorTrimSeekFailed"), QStringLiteral("Failed to apply the selected trim range.")},
         {QStringLiteral("batchConverter.started"), QStringLiteral("Batch conversion started.")},
         {QStringLiteral("batchConverter.restoredDraft"), QStringLiteral("Restored batch draft from the previous session.")},
         {QStringLiteral("batchConverter.alreadyRunning"), QStringLiteral("A batch conversion is already running.")},
@@ -601,6 +668,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("dialogs.xspfPlaylist"), QStringLiteral("XSPF Playlist (*.xspf)")},
         {QStringLiteral("dialogs.jsonPlaylist"), QStringLiteral("JSON Playlist (*.json)")},
         {QStringLiteral("dialogs.chooseWaveformColor"), QStringLiteral("Choose Waveform Color")},
+        {QStringLiteral("dialogs.chooseWaveformBackgroundColor"), QStringLiteral("Choose Waveform Background Color")},
         {QStringLiteral("dialogs.chooseProgressColor"), QStringLiteral("Choose Progress Color")},
         {QStringLiteral("dialogs.chooseAccentColor"), QStringLiteral("Choose Accent Color")},
         {QStringLiteral("settings.title"), QStringLiteral("Settings")},
@@ -614,6 +682,7 @@ const QHash<QString, QString> &englishTexts()
          QStringLiteral("Left smart-collections panel in normal skin")},
         {QStringLiteral("settings.theme"), QStringLiteral("Theme:")},
         {QStringLiteral("settings.waveformColor"), QStringLiteral("Waveform Color:")},
+        {QStringLiteral("settings.waveformBackgroundColor"), QStringLiteral("Waveform Background Color:")},
         {QStringLiteral("settings.progressColor"), QStringLiteral("Progress Color:")},
         {QStringLiteral("settings.accentColor"), QStringLiteral("Accent Color:")},
         {QStringLiteral("settings.language"), QStringLiteral("Language:")},
@@ -625,6 +694,9 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.trayEnabled"), QStringLiteral("Enable tray integration")},
         {QStringLiteral("settings.trayDescription"),
          QStringLiteral("Close button hides app to tray instead of exiting")},
+        {QStringLiteral("settings.trayIconAlwaysVisible"), QStringLiteral("Always show tray icon")},
+        {QStringLiteral("settings.trayIconAlwaysVisibleDescription"),
+         QStringLiteral("Keep the tray icon visible while WaveFlux is running. Closing the window still exits unless tray integration is enabled.")},
         {QStringLiteral("settings.confirmTrashDeletion"), QStringLiteral("Confirm before moving tracks to Trash")},
         {QStringLiteral("settings.confirmTrashDeletionDescription"),
          QStringLiteral("Show a warning dialog before moving a file to Trash from the playlist")},
@@ -635,6 +707,69 @@ const QHash<QString, QString> &englishTexts()
          QStringLiteral("Auto-add new tracks from playlist folder")},
         {QStringLiteral("settings.autoAddTracksFromPlaylistFolderDescription"),
          QStringLiteral("When most playlist tracks come from one folder, WaveFlux watches that folder and appends newly added supported files automatically.")},
+        {QStringLiteral("settings.playlistScrollBarVisible"), QStringLiteral("Show playlist scrollbar")},
+        {QStringLiteral("settings.playlistScrollBarVisibleDescription"),
+         QStringLiteral("Display the vertical scrollbar in the playlist table for both normal and compact skins.")},
+        {QStringLiteral("settings.playSearchResultsInOrder"), QStringLiteral("Play search results in order")},
+        {QStringLiteral("settings.playSearchResultsInOrderDescription"),
+         QStringLiteral("When playlist search is active, Next and automatic playback continue through only the visible search results in table order.")},
+        {QStringLiteral("settings.autoCheckUpdates"), QStringLiteral("Automatically check for updates")},
+        {QStringLiteral("settings.autoCheckUpdatesDescription"),
+         QStringLiteral("Check GitHub Releases for new WaveFlux versions in the background. You can disable this at any time.")},
+        {QStringLiteral("settings.includePrereleaseUpdates"), QStringLiteral("Include pre-release versions")},
+        {QStringLiteral("settings.includePrereleaseUpdatesDescription"),
+         QStringLiteral("Show test and preview releases from GitHub Releases when checking for updates.")},
+        {QStringLiteral("settings.checkUpdatesNow"), QStringLiteral("Check for updates now")},
+        {QStringLiteral("settings.checkUpdatesNowDescription"),
+         QStringLiteral("Immediately checks GitHub Releases for a newer WaveFlux version.")},
+        {QStringLiteral("settings.lastUpdateCheck"), QStringLiteral("Last update check")},
+        {QStringLiteral("settings.lastUpdateCheckNever"), QStringLiteral("Never")},
+        {QStringLiteral("updates.dialogTitle"), QStringLiteral("WaveFlux update available")},
+        {QStringLiteral("updates.currentVersion"), QStringLiteral("Installed:")},
+        {QStringLiteral("updates.availableVersion"), QStringLiteral("Available:")},
+        {QStringLiteral("updates.publishedAt"), QStringLiteral("Published:")},
+        {QStringLiteral("updates.changes"), QStringLiteral("Changes")},
+        {QStringLiteral("updates.noReleaseNotes"), QStringLiteral("This release does not include release notes.")},
+        {QStringLiteral("updates.openReleasePage"), QStringLiteral("Open release page")},
+        {QStringLiteral("updates.remindLater"), QStringLiteral("Remind later")},
+        {QStringLiteral("updates.skipVersion"), QStringLiteral("Skip this version")},
+        {QStringLiteral("updates.close"), QStringLiteral("Close")},
+        {QStringLiteral("settings.autoScrollToCurrentTrackOnStartup"),
+         QStringLiteral("Scroll to current track on startup")},
+        {QStringLiteral("settings.autoScrollToCurrentTrackOnStartupDescription"),
+         QStringLiteral("After restoring the previous session, automatically center the playlist on the current track.")},
+        {QStringLiteral("settings.playExternalOpenWithoutPlaylist"),
+         QStringLiteral("Play externally opened files without adding them")},
+        {QStringLiteral("settings.playExternalOpenWithoutPlaylistDescription"),
+         QStringLiteral("When WaveFlux is launched from a file manager, desktop file, or file association with a media file, play that file directly without adding it to the playlist.")},
+        {QStringLiteral("settings.restorePlaybackPositionOnStartup"),
+         QStringLiteral("Restore playback position on startup")},
+        {QStringLiteral("settings.restorePlaybackPositionOnStartupDescription"),
+         QStringLiteral("After restoring the previous session, seek the current track to the saved playback position.")},
+        {QStringLiteral("settings.restorePlaybackPausedOnStartup"),
+         QStringLiteral("Restore paused")},
+        {QStringLiteral("settings.restorePlaybackPausedOnStartupDescription"),
+         QStringLiteral("Restore the saved track and position, but keep playback paused even if the app was closed while playing.")},
+        {QStringLiteral("settings.quitAfterPlaybackFinished"),
+         QStringLiteral("Quit after playback finishes")},
+        {QStringLiteral("settings.quitAfterPlaybackFinishedDescription"),
+         QStringLiteral("Exit WaveFlux when the current playback queue or playlist reaches its natural end.")},
+        {QStringLiteral("settings.keepAboveWhilePlaying"),
+         QStringLiteral("Keep above other windows while playing")},
+        {QStringLiteral("settings.keepAboveWhilePlayingDescription"),
+         QStringLiteral("Keep the WaveFlux window on top only while audio is playing.")},
+        {QStringLiteral("settings.alwaysKeepAbove"),
+         QStringLiteral("Always keep above other windows")},
+        {QStringLiteral("settings.alwaysKeepAboveDescription"),
+         QStringLiteral("Keep the WaveFlux window above other windows even when playback is paused or stopped.")},
+        {QStringLiteral("settings.keyboardSeekStepSeconds"),
+         QStringLiteral("Keyboard seek step")},
+        {QStringLiteral("settings.keyboardSeekStepSecondsDescription"),
+         QStringLiteral("Base seek step for keyboard shortcuts. Repeated key presses in the normal skin still accelerate from this value.")},
+        {QStringLiteral("settings.keyboardSeekBackwardToPreviousTrack"),
+         QStringLiteral("Backward keyboard seek can go to previous track")},
+        {QStringLiteral("settings.keyboardSeekBackwardToPreviousTrackDescription"),
+         QStringLiteral("When keyboard backward seek reaches the start of the current track, jump to the previous track instead of stopping at 0:00.")},
         {QStringLiteral("settings.ytDlpExecutablePath"), QStringLiteral("yt-dlp executable path")},
         {QStringLiteral("settings.ytDlpExecutablePathDescription"),
          QStringLiteral("Leave empty to resolve yt-dlp from PATH.")},
@@ -904,14 +1039,18 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Light")},
         {QStringLiteral("settings.reset"), QStringLiteral("Reset")},
         {QStringLiteral("settings.close"), QStringLiteral("Close")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.2.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.3.0")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("A minimalist audio player with waveform visualization")},
         {QStringLiteral("player.previous"), QStringLiteral("Previous")},
+        {QStringLiteral("player.previousHoldSeekTooltip"),
+         QStringLiteral("Previous track\nHold: seek -10s")},
         {QStringLiteral("player.pause"), QStringLiteral("Pause")},
         {QStringLiteral("player.play"), QStringLiteral("Play")},
         {QStringLiteral("player.stop"), QStringLiteral("Stop")},
         {QStringLiteral("player.next"), QStringLiteral("Next")},
+        {QStringLiteral("player.nextHoldSeekTooltip"),
+         QStringLiteral("Next track\nHold: seek +10s")},
         {QStringLiteral("player.shuffleEnable"), QStringLiteral("Enable shuffle")},
         {QStringLiteral("player.shuffleDisable"), QStringLiteral("Disable shuffle")},
         {QStringLiteral("player.repeatOff"), QStringLiteral("Repeat: Off")},
@@ -946,6 +1085,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("tagEditor.genre"), QStringLiteral("Genre:")},
         {QStringLiteral("tagEditor.year"), QStringLiteral("Year:")},
         {QStringLiteral("tagEditor.trackNumber"), QStringLiteral("Track #:")},
+        {QStringLiteral("tagEditor.bpm"), QStringLiteral("BPM:")},
         {QStringLiteral("tagEditor.cover"), QStringLiteral("Cover:")},
         {QStringLiteral("tagEditor.coverSelect"), QStringLiteral("Choose...")},
         {QStringLiteral("tagEditor.coverClear"), QStringLiteral("Remove")},
@@ -987,6 +1127,17 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("audioConverter.transformSectionHint"), QStringLiteral("Adjust playback speed and pitch only if you want the converted file to sound different from the source.")},
         {QStringLiteral("audioConverter.speed"), QStringLiteral("Speed: ")},
         {QStringLiteral("audioConverter.pitch"), QStringLiteral("Pitch: ")},
+        {QStringLiteral("audioConverter.applyCurrentEqualizer"), QStringLiteral("Apply current equalizer")},
+        {QStringLiteral("audioConverter.applyCurrentEqualizerHint"), QStringLiteral("Bake the current equalizer band gains into the converted file.")},
+        {QStringLiteral("audioConverter.equalizerCurrent"), QStringLiteral("Equalizer: current")},
+        {QStringLiteral("audioConverter.equalizerDisabled"), QStringLiteral("Equalizer: off")},
+        {QStringLiteral("audioConverter.trimSection"), QStringLiteral("Trim")},
+        {QStringLiteral("audioConverter.trimSectionHint"), QStringLiteral("Convert only a selected part of the source track.")},
+        {QStringLiteral("audioConverter.enableTrim"), QStringLiteral("Trim converted track")},
+        {QStringLiteral("audioConverter.trimStart"), QStringLiteral("Start")},
+        {QStringLiteral("audioConverter.trimEnd"), QStringLiteral("End")},
+        {QStringLiteral("audioConverter.trimRange"), QStringLiteral("Trim: %1 - %2")},
+        {QStringLiteral("audioConverter.trimDisabled"), QStringLiteral("Trim: off")},
         {QStringLiteral("audioConverter.reset"), QStringLiteral("Reset")},
         {QStringLiteral("audioConverter.semitones"), QStringLiteral("semitones")},
         {QStringLiteral("audioConverter.statusSection"), QStringLiteral("Status")},
@@ -1056,6 +1207,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("audioConverter.preflightExistingOutputConfirm"), QStringLiteral("A file already exists at this path. Confirm replacement to continue: %1")},
         {QStringLiteral("audioConverter.preflightExistingOutputNotWritable"), QStringLiteral("Existing output file is not writable: %1")},
         {QStringLiteral("audioConverter.preflightMissingPlugins"), QStringLiteral("Required conversion components for %1 are unavailable: %2")},
+        {QStringLiteral("audioConverter.preflightTrimInvalid"), QStringLiteral("Trim range must leave at least one second of audio.")},
         {QStringLiteral("batchAudioConverter.title"), QStringLiteral("Batch Audio Conversion")},
         {QStringLiteral("batchAudioConverter.summaryLine"), QStringLiteral("%1 selected, %2 will be processed, %3 skipped.")},
         {QStringLiteral("batchAudioConverter.summarySection"), QStringLiteral("Batch summary")},
@@ -1207,6 +1359,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.skinCompact"), QStringLiteral("Compact")},
         {QStringLiteral("settings.skinDescription"), QStringLiteral("Compact mode provides minimal interface for small screens")},
         {QStringLiteral("settings.waveformSection"), QStringLiteral("Waveform")},
+        {QStringLiteral("settings.trackInfoSection"), QStringLiteral("Track Info")},
         {QStringLiteral("settings.themeSection"), QStringLiteral("Theme")},
         {QStringLiteral("settings.sectionAppearanceDescription"),
          QStringLiteral("Language, skin mode, and interface layout options.")},
@@ -1216,17 +1369,71 @@ const QHash<QString, QString> &englishTexts()
          QStringLiteral("Playback controls, speed/pitch, and shuffle behavior.")},
         {QStringLiteral("settings.sectionWaveformDescription"),
          QStringLiteral("Waveform geometry, hints, and CUE overlays.")},
+        {QStringLiteral("settings.sectionTrackInfoDescription"),
+         QStringLiteral("Format current track text for the window title, waveform overlay, and tooltip.")},
         {QStringLiteral("settings.sectionColorsDescription"),
-         QStringLiteral("Waveform, progress, and accent colors.")},
+         QStringLiteral("Waveform, waveform background, progress, and accent colors.")},
+        {QStringLiteral("settings.shortcuts"), QStringLiteral("Keyboard Shortcuts")},
+        {QStringLiteral("settings.sectionShortcutsDescription"),
+         QStringLiteral("Reassign keyboard shortcuts, clear optional bindings, and restore defaults.")},
+        {QStringLiteral("settings.shortcutSearch"), QStringLiteral("Search shortcuts")},
+        {QStringLiteral("settings.shortcutGroup"), QStringLiteral("Group")},
+        {QStringLiteral("settings.shortcutGroupAll"), QStringLiteral("All")},
+        {QStringLiteral("settings.shortcutAction"), QStringLiteral("Action")},
+        {QStringLiteral("settings.shortcutCurrent"), QStringLiteral("Current")},
+        {QStringLiteral("settings.shortcutDefault"), QStringLiteral("Default")},
+        {QStringLiteral("settings.shortcutContext"), QStringLiteral("Context")},
+        {QStringLiteral("settings.shortcutCapture"), QStringLiteral("Record")},
+        {QStringLiteral("settings.shortcutClear"), QStringLiteral("Clear")},
+        {QStringLiteral("settings.shortcutReset"), QStringLiteral("Reset")},
+        {QStringLiteral("settings.shortcutResetGroup"), QStringLiteral("Reset group")},
+        {QStringLiteral("settings.shortcutResetAll"), QStringLiteral("Reset all shortcuts")},
+        {QStringLiteral("settings.shortcutUnassigned"), QStringLiteral("Unassigned")},
+        {QStringLiteral("settings.shortcutNotAssignable"), QStringLiteral("Reserved")},
+        {QStringLiteral("settings.shortcutCaptureTitle"), QStringLiteral("Press shortcut")},
+        {QStringLiteral("settings.shortcutCaptureHint"),
+         QStringLiteral("Press a key combination. Escape cancels.")},
+        {QStringLiteral("settings.shortcutCaptureClearHint"),
+         QStringLiteral("Backspace clears this shortcut.")},
+        {QStringLiteral("settings.shortcutConflictTitle"), QStringLiteral("Shortcut conflict")},
+        {QStringLiteral("settings.shortcutConflictMessage"),
+         QStringLiteral("This shortcut is already assigned. Replace existing assignments?")},
+        {QStringLiteral("settings.shortcutConflictReplace"), QStringLiteral("Replace")},
+        {QStringLiteral("settings.shortcutConflictCancel"), QStringLiteral("Cancel")},
+        {QStringLiteral("settings.shortcutError"), QStringLiteral("Shortcut error")},
+        {QStringLiteral("settings.shortcutNoMatches"), QStringLiteral("No shortcuts match the filter.")},
+        {QStringLiteral("settings.shortcutStatusReset"), QStringLiteral("Shortcut settings updated.")},
+        {QStringLiteral("settings.shortcutValidationUnknownId"),
+         QStringLiteral("This shortcut command is no longer available.")},
+        {QStringLiteral("settings.shortcutValidationNotAssignable"),
+         QStringLiteral("This shortcut is reserved and cannot be changed.")},
+        {QStringLiteral("settings.shortcutValidationEmptyNotAllowed"),
+         QStringLiteral("This command must keep a shortcut assigned.")},
+        {QStringLiteral("settings.shortcutValidationInvalid"),
+         QStringLiteral("This key combination is not a valid shortcut.")},
+        {QStringLiteral("settings.shortcutValidationReserved"),
+         QStringLiteral("This key combination is reserved for this command.")},
+        {QStringLiteral("settings.shortcutValidationConflict"),
+         QStringLiteral("This key combination conflicts with another command.")},
+        {QStringLiteral("settings.shortcutValidationNonReplaceableConflict"),
+         QStringLiteral("This key combination conflicts with a reserved command.")},
+        {QStringLiteral("settings.shortcutValidationReplaceFailed"),
+         QStringLiteral("The conflicting shortcut could not be replaced.")},
+        {QStringLiteral("settings.shortcutValidationUnknownGroup"),
+         QStringLiteral("This shortcut group is no longer available.")},
+        {QStringLiteral("settings.shortcutValidationUnknown"),
+         QStringLiteral("The shortcut change could not be applied.")},
         {QStringLiteral("settings.sectionThemeDescription"),
          QStringLiteral("Theme presets and global reset options.")},
         {QStringLiteral("settings.searchPlaceholder"), QStringLiteral("Search settings...")},
         {QStringLiteral("settings.quickActions"), QStringLiteral("Quick actions")},
         {QStringLiteral("settings.quickResetAudio"), QStringLiteral("Reset Audio Only")},
         {QStringLiteral("settings.quickResetWaveform"), QStringLiteral("Reset Waveform Only")},
+        {QStringLiteral("settings.quickResetTrackInfo"), QStringLiteral("Reset Track Info")},
         {QStringLiteral("settings.quickResetAll"), QStringLiteral("Reset All to Defaults")},
         {QStringLiteral("settings.resetConfirmTitleAudio"), QStringLiteral("Confirm Audio Reset")},
         {QStringLiteral("settings.resetConfirmTitleWaveform"), QStringLiteral("Confirm Waveform Reset")},
+        {QStringLiteral("settings.resetConfirmTitleTrackInfo"), QStringLiteral("Confirm Track Info Reset")},
         {QStringLiteral("settings.resetConfirmTitleAll"), QStringLiteral("Confirm Full Reset")},
         {QStringLiteral("settings.resetConfirmTitleTheme"), QStringLiteral("Confirm Theme Reset")},
         {QStringLiteral("settings.resetConfirmMessage"),
@@ -1234,9 +1441,40 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.resetConfirmNoChanges"), QStringLiteral("No settings need to be changed.")},
         {QStringLiteral("settings.resetConfirmApply"), QStringLiteral("Apply Reset")},
         {QStringLiteral("settings.resetConfirmCancel"), QStringLiteral("Cancel")},
+        {QStringLiteral("settings.factoryReset"), QStringLiteral("Full application reset")},
+        {QStringLiteral("settings.factoryResetDescription"),
+         QStringLiteral("Delete all WaveFlux settings, saved playlists, session data, library database, imports, presets, cache, and other user-created app data.")},
+        {QStringLiteral("settings.factoryResetTitle"), QStringLiteral("Delete all WaveFlux data?")},
+        {QStringLiteral("settings.factoryResetMessage"),
+         QStringLiteral("This cannot be undone. WaveFlux will delete all settings and user data, then close. Audio files on disk will not be deleted.")},
+        {QStringLiteral("settings.factoryResetConfirm"), QStringLiteral("Delete Everything")},
+        {QStringLiteral("settings.factoryResetFailed"),
+         QStringLiteral("Some files could not be deleted. Close WaveFlux and remove the listed paths manually.")},
         {QStringLiteral("settings.valueEnabled"), QStringLiteral("Enabled")},
         {QStringLiteral("settings.valueDisabled"), QStringLiteral("Disabled")},
         {QStringLiteral("settings.valueSystemDefault"), QStringLiteral("System default")},
+        {QStringLiteral("settings.trackInfoEnabled"), QStringLiteral("Show track info")},
+        {QStringLiteral("settings.trackInfoEnabledDescription"),
+         QStringLiteral("Use formatted track information in WaveFlux UI surfaces.")},
+        {QStringLiteral("settings.trackInfoWaveformOverlayHoverOnly"), QStringLiteral("Show track info over waveform only on hover")},
+        {QStringLiteral("settings.trackInfoWaveformOverlayHoverOnlyDescription"),
+         QStringLiteral("Keep waveform track info hidden until the pointer is over the waveform.")},
+        {QStringLiteral("settings.trackInfoWindowTitleFormat"), QStringLiteral("Window title format")},
+        {QStringLiteral("settings.trackInfoTooltipFormat"), QStringLiteral("Waveform tooltip format")},
+        {QStringLiteral("settings.trackInfoOverlayFormats"), QStringLiteral("Waveform overlay formats")},
+        {QStringLiteral("settings.trackInfoTop"), QStringLiteral("Top")},
+        {QStringLiteral("settings.trackInfoMiddle"), QStringLiteral("Middle")},
+        {QStringLiteral("settings.trackInfoBottom"), QStringLiteral("Bottom")},
+        {QStringLiteral("settings.trackInfoLeft"), QStringLiteral("Left")},
+        {QStringLiteral("settings.trackInfoCenter"), QStringLiteral("Center")},
+        {QStringLiteral("settings.trackInfoRight"), QStringLiteral("Right")},
+        {QStringLiteral("settings.trackInfoSyntax"), QStringLiteral("Format syntax")},
+        {QStringLiteral("settings.trackInfoSyntaxHint"),
+         QStringLiteral("Use %a artist, %t title, %A album, %c comment, %g genre, %y year, %n track number, %i playlist index, %T elapsed, %r remaining, %C cursor time, %o cursor delta, %d duration, %D duration seconds, %L playlist duration, %b bit depth, %B bitrate, %s sample rate, %H channels, %M BPM, %f basename, %F filename, %p full path, %P directory path, %N directory name, %e extension, %E uppercase extension, %v version. Conditional blocks use {primary|fallback}; escape special characters with \\{ \\} \\| \\%.")},
+        {QStringLiteral("settings.trackInfoPreview"), QStringLiteral("Preview")},
+        {QStringLiteral("settings.trackInfoNoPreview"), QStringLiteral("No current track preview is available.")},
+        {QStringLiteral("settings.trackInfoResetMinimal"), QStringLiteral("Reset to minimal")},
+        {QStringLiteral("settings.trackInfoClearAll"), QStringLiteral("Clear all fields")},
         {QStringLiteral("settings.waveformHeight"), QStringLiteral("Waveform Height:")},
         {QStringLiteral("settings.compactWaveformHeight"), QStringLiteral("Compact Waveform Height:")},
         {QStringLiteral("settings.waveformZoomHintsVisible"), QStringLiteral("Show waveform zoom hints")},
@@ -1269,6 +1507,9 @@ const QHash<QString, QString> &englishTexts()
          QStringLiteral("Choose processing character: Standard is balanced, Hi-Fi is cleaner, Studio is the most transparent.")},
         {QStringLiteral("settings.audioQualityProfileUnavailableDescription"),
          QStringLiteral("Audio quality profiles stay on Standard for tracker modules because the OpenMPT path does not use the GStreamer mastering chain.")},
+        {QStringLiteral("settings.displayVolumeInDecibels"), QStringLiteral("Show volume in decibels")},
+        {QStringLiteral("settings.displayVolumeInDecibelsDescription"),
+         QStringLiteral("Display volume readouts as Stevens-law perceived decibels instead of percent. The volume control behavior is unchanged.")},
         {QStringLiteral("settings.audioQualityStandard"), QStringLiteral("Standard")},
         {QStringLiteral("settings.audioQualityHiFi"), QStringLiteral("Hi-Fi")},
         {QStringLiteral("settings.audioQualityStudio"), QStringLiteral("Studio")},
@@ -1317,6 +1558,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("sidebar.bitPcm"), QStringLiteral("-bit PCM")},
         // ControlBar
         {QStringLiteral("player.mute"), QStringLiteral("Mute")},
+        {QStringLiteral("player.unmute"), QStringLiteral("Unmute")},
         {QStringLiteral("player.maxVolume"), QStringLiteral("Max volume")},
         {QStringLiteral("player.equalizer"), QStringLiteral("Equalizer")},
         {QStringLiteral("player.equalizerUnavailable"), QStringLiteral("Equalizer unavailable")},
@@ -1406,6 +1648,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("menu.library"), QStringLiteral("Library")},
         {QStringLiteral("menu.help"), QStringLiteral("Help")},
         {QStringLiteral("menu.openFiles"), QStringLiteral("Open Files...")},
+        {QStringLiteral("menu.openUrl"), QStringLiteral("Open URL...")},
         {QStringLiteral("menu.addFolder"), QStringLiteral("Add Folder...")},
         {QStringLiteral("menu.audioConverter"), QStringLiteral("Audio Converter...")},
         {QStringLiteral("menu.exportPlaylist"), QStringLiteral("Export Playlist...")},
@@ -1427,15 +1670,45 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("menu.seekForward5"), QStringLiteral("Seek +5s")},
         {QStringLiteral("menu.repeatMode"), QStringLiteral("Repeat")},
         {QStringLiteral("menu.newEmptyPlaylist"), QStringLiteral("New Empty Playlist")},
+        // OpenUrlDialog
+        {QStringLiteral("openUrl.title"), QStringLiteral("Open URL")},
+        {QStringLiteral("openUrl.hint"), QStringLiteral("Enter a remote audio stream or file URL (http, https, ftp).")},
+        {QStringLiteral("openUrl.paste"), QStringLiteral("Paste")},
+        {QStringLiteral("openUrl.actionLabel"), QStringLiteral("Target action:")},
+        {QStringLiteral("openUrl.actionPlayNow"), QStringLiteral("Play now (clear queue)")},
+        {QStringLiteral("openUrl.actionAddToCurrent"), QStringLiteral("Add to current playlist")},
+        {QStringLiteral("openUrl.actionAddToNew"), QStringLiteral("Add to new playlist")},
+        {QStringLiteral("openUrl.confirmPlay"), QStringLiteral("Play")},
+        {QStringLiteral("openUrl.confirmAdd"), QStringLiteral("Add")},
+        {QStringLiteral("openUrl.errorInvalidFormat"), QStringLiteral("Invalid URL format. Must start with http:// or https://")},
+        {QStringLiteral("playlists.newStreamPlaylistName"), QStringLiteral("New Stream Playlist")},
         // Help
         {QStringLiteral("help.about"), QStringLiteral("About")},
         {QStringLiteral("help.shortcuts"), QStringLiteral("Keyboard Shortcuts")},
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("About WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Version:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.2")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.3.0")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux is a focused desktop audio player for local libraries and internet streams, with waveform visualization, queue control, and precise playback tools.")},
+        {QStringLiteral("help.aboutLicense"), QStringLiteral("Built as a native Qt/KDE desktop application.")},
+        {QStringLiteral("help.aboutTabAbout"), QStringLiteral("About")},
+        {QStringLiteral("help.aboutTabComponents"), QStringLiteral("Components")},
+        {QStringLiteral("help.aboutTabAuthor"), QStringLiteral("Author")},
+        {QStringLiteral("help.aboutComponentQt"),
+         QStringLiteral("Application shell, QML interface, multimedia, SQL, networking, concurrency, and widgets integration.")},
+        {QStringLiteral("help.aboutComponentKde"),
+         QStringLiteral("Kirigami UI integration plus CoreAddons and I18n support.")},
+        {QStringLiteral("help.aboutComponentGStreamer"),
+         QStringLiteral("Primary audio playback, waveform decoding, equalizer, and audio conversion pipelines.")},
+        {QStringLiteral("help.aboutComponentTagLib"),
+         QStringLiteral("Audio metadata reading and tag editing for supported local files.")},
+        {QStringLiteral("help.aboutComponentOpenMpt"),
+         QStringLiteral("Tracker module playback and waveform rendering for MOD/XM/S3M/IT-style formats.")},
+        {QStringLiteral("help.aboutComponentSQLite"),
+         QStringLiteral("Local media library database, smart collections, playback context, and listening statistics.")},
+        {QStringLiteral("help.aboutComponentDesktop"),
+         QStringLiteral("MPRIS, system tray, MIME/desktop integration, file manager actions, and XDG portals where available.")},
         {QStringLiteral("help.aboutAuthorLabel"), QStringLiteral("Author:")},
         {QStringLiteral("help.aboutAuthorName"), QStringLiteral("leocallidus")},
         {QStringLiteral("help.aboutAuthorUrl"), QStringLiteral("https://github.com/leocallidus")},
@@ -1454,6 +1727,29 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("help.shortcutsContextMainWindow"), QStringLiteral("Main Window")},
         {QStringLiteral("help.shortcutsContextPlaylist"), QStringLiteral("Playlist")},
         {QStringLiteral("help.shortcutsContextDialog"), QStringLiteral("Dialog")},
+        {QStringLiteral("shortcut.fullscreenToggle"), QStringLiteral("Enter / exit fullscreen")},
+        {QStringLiteral("shortcut.playPauseTapHold"),
+         QStringLiteral("Play / pause, hold for temporary 2x speed")},
+        {QStringLiteral("shortcut.seekBackwardAccelerated"),
+         QStringLiteral("Seek backward (accelerated)")},
+        {QStringLiteral("shortcut.seekForwardAccelerated"),
+         QStringLiteral("Seek forward (accelerated)")},
+        {QStringLiteral("shortcut.playlistScrollToBeginning"),
+         QStringLiteral("Beginning of playlist")},
+        {QStringLiteral("shortcut.playlistScrollToEnd"),
+         QStringLiteral("End of playlist")},
+        {QStringLiteral("shortcut.playlistPageUp"),
+         QStringLiteral("Scroll playlist up")},
+        {QStringLiteral("shortcut.playlistPageDown"),
+         QStringLiteral("Scroll playlist down")},
+        {QStringLiteral("shortcut.speedDown"), QStringLiteral("Speed -0.1x")},
+        {QStringLiteral("shortcut.speedUp"), QStringLiteral("Speed +0.1x")},
+        {QStringLiteral("shortcut.pitchDown"), QStringLiteral("Pitch -1")},
+        {QStringLiteral("shortcut.pitchUp"), QStringLiteral("Pitch +1")},
+        {QStringLiteral("shortcut.repeatCycle"), QStringLiteral("Cycle repeat mode")},
+        {QStringLiteral("shortcut.compactTogglePlaylist"),
+         QStringLiteral("Show / hide compact playlist")},
+        {QStringLiteral("shortcut.dialogClose"), QStringLiteral("Close dialog")},
         {QStringLiteral("header.searchPlaceholder"), QStringLiteral("Search... title: artist: album: path:")},
         {QStringLiteral("header.searchManualPlaceholder"),
          QStringLiteral("Enter a search query and press Enter or click the magnifier")},
@@ -1500,15 +1796,23 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("playlists.renameTitle"), QStringLiteral("Rename Playlist")},
         {QStringLiteral("playlists.renameApply"), QStringLiteral("Rename")},
         {QStringLiteral("playlists.delete"), QStringLiteral("Delete playlist")},
+        {QStringLiteral("playlists.deleteAll"), QStringLiteral("Delete all playlists")},
         {QStringLiteral("playlists.deleteConfirmTitle"), QStringLiteral("Delete Playlist")},
         {QStringLiteral("playlists.deleteConfirmMessage"),
          QStringLiteral("Delete playlist \"%1\"? This cannot be undone.")},
+        {QStringLiteral("playlists.deleteAllConfirmTitle"), QStringLiteral("Delete All Playlists")},
+        {QStringLiteral("playlists.deleteAllConfirmMessage"),
+         QStringLiteral("Delete all saved playlists (%1)? This cannot be undone.")},
         {QStringLiteral("playlists.errorTitle"), QStringLiteral("Playlist Error")},
         {QStringLiteral("collections.create"), QStringLiteral("Create")},
         {QStringLiteral("collections.delete"), QStringLiteral("Delete")},
+        {QStringLiteral("collections.deleteAll"), QStringLiteral("Delete all collections")},
         {QStringLiteral("collections.deleteConfirmTitle"), QStringLiteral("Delete Collection")},
         {QStringLiteral("collections.deleteConfirmMessage"),
          QStringLiteral("Delete smart collection \"%1\"? This cannot be undone.")},
+        {QStringLiteral("collections.deleteAllConfirmTitle"), QStringLiteral("Delete All Collections")},
+        {QStringLiteral("collections.deleteAllConfirmMessage"),
+         QStringLiteral("Delete all smart collections (%1)? This cannot be undone.")},
         {QStringLiteral("collections.disabled"), QStringLiteral("Collections are unavailable (SQLite library disabled).")},
         {QStringLiteral("collections.empty"), QStringLiteral("No smart collections yet.")},
         {QStringLiteral("collections.emptyTracks"), QStringLiteral("No tracks in this collection.")},
@@ -1625,6 +1929,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("audioConverter.errorOutputAlreadyExists"), QStringLiteral("Выходной файл уже существует: %1")},
         {QStringLiteral("audioConverter.errorReplaceExistingOutput"), QStringLiteral("Не удалось заменить существующий выходной файл: %1 (%2)")},
         {QStringLiteral("audioConverter.errorFinalizeOutput"), QStringLiteral("Не удалось завершить запись сконвертированного файла: %1 (%2)")},
+        {QStringLiteral("audioConverter.errorTrimSeekFailed"), QStringLiteral("Не удалось применить выбранный диапазон обрезки.")},
         {QStringLiteral("batchConverter.started"), QStringLiteral("Пакетная конвертация запущена.")},
         {QStringLiteral("batchConverter.restoredDraft"), QStringLiteral("Черновик пакетной конвертации восстановлен из предыдущего сеанса.")},
         {QStringLiteral("batchConverter.alreadyRunning"), QStringLiteral("Пакетная конвертация уже выполняется.")},
@@ -1725,6 +2030,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("dialogs.xspfPlaylist"), QStringLiteral("Плейлист XSPF (*.xspf)")},
         {QStringLiteral("dialogs.jsonPlaylist"), QStringLiteral("Плейлист JSON (*.json)")},
         {QStringLiteral("dialogs.chooseWaveformColor"), QStringLiteral("Выберите цвет волны")},
+        {QStringLiteral("dialogs.chooseWaveformBackgroundColor"), QStringLiteral("Выберите цвет фона волны")},
         {QStringLiteral("dialogs.chooseProgressColor"), QStringLiteral("Выберите цвет прогресса")},
         {QStringLiteral("dialogs.chooseAccentColor"), QStringLiteral("Выберите акцентный цвет")},
         {QStringLiteral("settings.title"), QStringLiteral("Настройки")},
@@ -1738,6 +2044,7 @@ const QHash<QString, QString> &russianTexts()
          QStringLiteral("Левая панель умных коллекций в обычном скине")},
         {QStringLiteral("settings.theme"), QStringLiteral("Тема:")},
         {QStringLiteral("settings.waveformColor"), QStringLiteral("Цвет волны:")},
+        {QStringLiteral("settings.waveformBackgroundColor"), QStringLiteral("Цвет фона волны:")},
         {QStringLiteral("settings.progressColor"), QStringLiteral("Цвет прогресса:")},
         {QStringLiteral("settings.accentColor"), QStringLiteral("Акцентный цвет:")},
         {QStringLiteral("settings.language"), QStringLiteral("Язык:")},
@@ -1749,6 +2056,9 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.trayEnabled"), QStringLiteral("Включить интеграцию с треем")},
         {QStringLiteral("settings.trayDescription"),
          QStringLiteral("Кнопка закрытия прячет приложение в трей вместо выхода")},
+        {QStringLiteral("settings.trayIconAlwaysVisible"), QStringLiteral("Всегда отображать иконку в системном лотке")},
+        {QStringLiteral("settings.trayIconAlwaysVisibleDescription"),
+         QStringLiteral("Показывает иконку в трее, пока WaveFlux запущен. Закрытие окна полностью завершает приложение, если интеграция с треем выключена.")},
         {QStringLiteral("settings.confirmTrashDeletion"), QStringLiteral("Подтверждать удаление треков в корзину")},
         {QStringLiteral("settings.confirmTrashDeletionDescription"),
          QStringLiteral("Показывать предупреждение перед перемещением файла в корзину из плейлиста")},
@@ -1759,6 +2069,69 @@ const QHash<QString, QString> &russianTexts()
          QStringLiteral("Автодобавление новых треков из папки плейлиста")},
         {QStringLiteral("settings.autoAddTracksFromPlaylistFolderDescription"),
          QStringLiteral("Если большинство треков плейлиста находится в одной папке, WaveFlux следит за ней и автоматически добавляет новые поддерживаемые файлы.")},
+        {QStringLiteral("settings.playlistScrollBarVisible"), QStringLiteral("Показывать скроллбар плейлиста")},
+        {QStringLiteral("settings.playlistScrollBarVisibleDescription"),
+         QStringLiteral("Показывает вертикальный скроллбар в таблице плейлиста для обычного и компактного скинов.")},
+        {QStringLiteral("settings.playSearchResultsInOrder"), QStringLiteral("Играть результаты поиска по порядку")},
+        {QStringLiteral("settings.playSearchResultsInOrderDescription"),
+         QStringLiteral("Когда поиск по плейлисту активен, следующий трек и автопереход идут только по видимым результатам поиска в порядке таблицы.")},
+        {QStringLiteral("settings.autoCheckUpdates"), QStringLiteral("Автоматически проверять обновления")},
+        {QStringLiteral("settings.autoCheckUpdatesDescription"),
+         QStringLiteral("Проверять GitHub Releases на наличие новых версий WaveFlux в фоне. Эту проверку можно отключить в любой момент.")},
+        {QStringLiteral("settings.includePrereleaseUpdates"), QStringLiteral("Включать pre-release версии")},
+        {QStringLiteral("settings.includePrereleaseUpdatesDescription"),
+         QStringLiteral("Показывать тестовые и предварительные релизы из GitHub Releases при проверке обновлений.")},
+        {QStringLiteral("settings.checkUpdatesNow"), QStringLiteral("Проверить обновления сейчас")},
+        {QStringLiteral("settings.checkUpdatesNowDescription"),
+         QStringLiteral("Сразу проверяет GitHub Releases на наличие новой версии WaveFlux.")},
+        {QStringLiteral("settings.lastUpdateCheck"), QStringLiteral("Последняя проверка обновлений")},
+        {QStringLiteral("settings.lastUpdateCheckNever"), QStringLiteral("Никогда")},
+        {QStringLiteral("updates.dialogTitle"), QStringLiteral("Доступно обновление WaveFlux")},
+        {QStringLiteral("updates.currentVersion"), QStringLiteral("Установлена:")},
+        {QStringLiteral("updates.availableVersion"), QStringLiteral("Доступна:")},
+        {QStringLiteral("updates.publishedAt"), QStringLiteral("Опубликовано:")},
+        {QStringLiteral("updates.changes"), QStringLiteral("Изменения")},
+        {QStringLiteral("updates.noReleaseNotes"), QStringLiteral("В этом релизе нет описания изменений.")},
+        {QStringLiteral("updates.openReleasePage"), QStringLiteral("Открыть страницу релиза")},
+        {QStringLiteral("updates.remindLater"), QStringLiteral("Напомнить позже")},
+        {QStringLiteral("updates.skipVersion"), QStringLiteral("Пропустить версию")},
+        {QStringLiteral("updates.close"), QStringLiteral("Закрыть")},
+        {QStringLiteral("settings.autoScrollToCurrentTrackOnStartup"),
+         QStringLiteral("Прокручивать к текущему треку при запуске")},
+        {QStringLiteral("settings.autoScrollToCurrentTrackOnStartupDescription"),
+         QStringLiteral("После восстановления предыдущего сеанса автоматически центрирует плейлист на текущем треке.")},
+        {QStringLiteral("settings.playExternalOpenWithoutPlaylist"),
+         QStringLiteral("Проигрывать внешне открытые файлы без добавления")},
+        {QStringLiteral("settings.playExternalOpenWithoutPlaylistDescription"),
+         QStringLiteral("Если WaveFlux запущен из файлового менеджера, desktop-файла или ассоциации файлов с медиафайлом, файл будет воспроизведён напрямую без добавления в плейлист.")},
+        {QStringLiteral("settings.restorePlaybackPositionOnStartup"),
+         QStringLiteral("Восстанавливать позицию воспроизведения при запуске")},
+        {QStringLiteral("settings.restorePlaybackPositionOnStartupDescription"),
+         QStringLiteral("После восстановления предыдущего сеанса перематывает текущий трек на сохранённую позицию.")},
+        {QStringLiteral("settings.restorePlaybackPausedOnStartup"),
+         QStringLiteral("Восстанавливать на паузе")},
+        {QStringLiteral("settings.restorePlaybackPausedOnStartupDescription"),
+         QStringLiteral("Восстанавливает сохранённый трек и позицию, но оставляет воспроизведение на паузе, даже если приложение было закрыто во время проигрывания.")},
+        {QStringLiteral("settings.quitAfterPlaybackFinished"),
+         QStringLiteral("Выйти после завершения воспроизведения")},
+        {QStringLiteral("settings.quitAfterPlaybackFinishedDescription"),
+         QStringLiteral("Завершает WaveFlux, когда текущая очередь или плейлист доходит до естественного конца.")},
+        {QStringLiteral("settings.keepAboveWhilePlaying"),
+         QStringLiteral("Поверх всех окон во время проигрывания")},
+        {QStringLiteral("settings.keepAboveWhilePlayingDescription"),
+         QStringLiteral("Держит окно WaveFlux поверх остальных окон только во время воспроизведения.")},
+        {QStringLiteral("settings.alwaysKeepAbove"),
+         QStringLiteral("Всегда поверх окон")},
+        {QStringLiteral("settings.alwaysKeepAboveDescription"),
+         QStringLiteral("Держит окно WaveFlux поверх остальных окон даже на паузе или после остановки.")},
+        {QStringLiteral("settings.keyboardSeekStepSeconds"),
+         QStringLiteral("Шаг перемотки с клавиатуры")},
+        {QStringLiteral("settings.keyboardSeekStepSecondsDescription"),
+         QStringLiteral("Базовый шаг перемотки для клавиатурных сочетаний. В обычном скине повторные нажатия по-прежнему ускоряются от этого значения.")},
+        {QStringLiteral("settings.keyboardSeekBackwardToPreviousTrack"),
+         QStringLiteral("Перемотка назад с клавиатуры может перейти на предыдущий трек")},
+        {QStringLiteral("settings.keyboardSeekBackwardToPreviousTrackDescription"),
+         QStringLiteral("Если перемотка назад с клавиатуры доходит до начала текущего трека, переходить на предыдущий трек вместо остановки на 0:00.")},
         {QStringLiteral("settings.ytDlpExecutablePath"), QStringLiteral("Путь к yt-dlp")},
         {QStringLiteral("settings.ytDlpExecutablePathDescription"),
          QStringLiteral("Оставьте поле пустым, чтобы искать yt-dlp через PATH.")},
@@ -2031,14 +2404,18 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Светлая")},
         {QStringLiteral("settings.reset"), QStringLiteral("Сбросить")},
         {QStringLiteral("settings.close"), QStringLiteral("Закрыть")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.2.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.3.0")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("Минималистичный аудиоплеер с визуализацией волны")},
         {QStringLiteral("player.previous"), QStringLiteral("Предыдущий")},
+        {QStringLiteral("player.previousHoldSeekTooltip"),
+         QStringLiteral("Предыдущий трек\nУдержание: перемотка -10с")},
         {QStringLiteral("player.pause"), QStringLiteral("Пауза")},
         {QStringLiteral("player.play"), QStringLiteral("Воспроизвести")},
         {QStringLiteral("player.stop"), QStringLiteral("Стоп")},
         {QStringLiteral("player.next"), QStringLiteral("Следующий")},
+        {QStringLiteral("player.nextHoldSeekTooltip"),
+         QStringLiteral("Следующий трек\nУдержание: перемотка +10с")},
         {QStringLiteral("player.shuffleEnable"), QStringLiteral("Включить перемешивание")},
         {QStringLiteral("player.shuffleDisable"), QStringLiteral("Выключить перемешивание")},
         {QStringLiteral("player.repeatOff"), QStringLiteral("Повтор: выкл")},
@@ -2074,6 +2451,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("tagEditor.genre"), QStringLiteral("Жанр:")},
         {QStringLiteral("tagEditor.year"), QStringLiteral("Год:")},
         {QStringLiteral("tagEditor.trackNumber"), QStringLiteral("Трек #:")},
+        {QStringLiteral("tagEditor.bpm"), QStringLiteral("Удары в минуту:")},
         {QStringLiteral("tagEditor.cover"), QStringLiteral("Обложка:")},
         {QStringLiteral("tagEditor.coverSelect"), QStringLiteral("Выбрать...")},
         {QStringLiteral("tagEditor.coverClear"), QStringLiteral("Удалить")},
@@ -2115,6 +2493,17 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("audioConverter.transformSectionHint"), QStringLiteral("Меняйте скорость и тональность только если результат должен звучать иначе, чем исходный файл.")},
         {QStringLiteral("audioConverter.speed"), QStringLiteral("Скорость: ")},
         {QStringLiteral("audioConverter.pitch"), QStringLiteral("Тональность: ")},
+        {QStringLiteral("audioConverter.applyCurrentEqualizer"), QStringLiteral("Применить текущий эквалайзер")},
+        {QStringLiteral("audioConverter.applyCurrentEqualizerHint"), QStringLiteral("Встроить текущие полосы эквалайзера в конвертированный файл.")},
+        {QStringLiteral("audioConverter.equalizerCurrent"), QStringLiteral("Эквалайзер: текущий")},
+        {QStringLiteral("audioConverter.equalizerDisabled"), QStringLiteral("Эквалайзер: выкл.")},
+        {QStringLiteral("audioConverter.trimSection"), QStringLiteral("Обрезка")},
+        {QStringLiteral("audioConverter.trimSectionHint"), QStringLiteral("Конвертировать только выбранный фрагмент исходного трека.")},
+        {QStringLiteral("audioConverter.enableTrim"), QStringLiteral("Обрезать конвертируемый трек")},
+        {QStringLiteral("audioConverter.trimStart"), QStringLiteral("Начало")},
+        {QStringLiteral("audioConverter.trimEnd"), QStringLiteral("Конец")},
+        {QStringLiteral("audioConverter.trimRange"), QStringLiteral("Обрезка: %1 - %2")},
+        {QStringLiteral("audioConverter.trimDisabled"), QStringLiteral("Обрезка: выкл.")},
         {QStringLiteral("audioConverter.reset"), QStringLiteral("Сбросить")},
         {QStringLiteral("audioConverter.semitones"), QStringLiteral("полутонов")},
         {QStringLiteral("audioConverter.statusSection"), QStringLiteral("Статус")},
@@ -2184,6 +2573,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("audioConverter.preflightExistingOutputConfirm"), QStringLiteral("По этому пути уже есть файл. Подтвердите замену, чтобы продолжить: %1")},
         {QStringLiteral("audioConverter.preflightExistingOutputNotWritable"), QStringLiteral("Существующий выходной файл недоступен для записи: %1")},
         {QStringLiteral("audioConverter.preflightMissingPlugins"), QStringLiteral("Для формата %1 недоступны необходимые компоненты конвертации: %2")},
+        {QStringLiteral("audioConverter.preflightTrimInvalid"), QStringLiteral("Диапазон обрезки должен оставлять минимум одну секунду аудио.")},
         {QStringLiteral("batchAudioConverter.title"), QStringLiteral("Пакетная конвертация аудио")},
         {QStringLiteral("batchAudioConverter.summaryLine"), QStringLiteral("Выбрано: %1, будет обработано: %2, пропущено: %3.")},
         {QStringLiteral("batchAudioConverter.summarySection"), QStringLiteral("Сводка партии")},
@@ -2335,6 +2725,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.skinCompact"), QStringLiteral("Компактный")},
         {QStringLiteral("settings.skinDescription"), QStringLiteral("Компактный режим для небольших экранов")},
         {QStringLiteral("settings.waveformSection"), QStringLiteral("Волна")},
+        {QStringLiteral("settings.trackInfoSection"), QStringLiteral("Информация о треке")},
         {QStringLiteral("settings.themeSection"), QStringLiteral("Тема")},
         {QStringLiteral("settings.sectionAppearanceDescription"),
          QStringLiteral("Язык, режим скина и параметры компоновки интерфейса.")},
@@ -2344,17 +2735,71 @@ const QHash<QString, QString> &russianTexts()
          QStringLiteral("Управление воспроизведением, скорость/тон и режим перемешивания.")},
         {QStringLiteral("settings.sectionWaveformDescription"),
          QStringLiteral("Геометрия волны, подсказки и CUE-оверлеи.")},
+        {QStringLiteral("settings.sectionTrackInfoDescription"),
+         QStringLiteral("Форматируемый текст текущего трека для заголовка окна, оверлея волны и подсказки.")},
         {QStringLiteral("settings.sectionColorsDescription"),
-         QStringLiteral("Цвета волны, прогресса и акцента.")},
+         QStringLiteral("Цвета волны, фона волны, прогресса и акцента.")},
+        {QStringLiteral("settings.shortcuts"), QStringLiteral("Комбинации клавиш")},
+        {QStringLiteral("settings.sectionShortcutsDescription"),
+         QStringLiteral("Переназначение комбинаций клавиш, отключение необязательных сочетаний и возврат значений по умолчанию.")},
+        {QStringLiteral("settings.shortcutSearch"), QStringLiteral("Поиск комбинаций")},
+        {QStringLiteral("settings.shortcutGroup"), QStringLiteral("Группа")},
+        {QStringLiteral("settings.shortcutGroupAll"), QStringLiteral("Все")},
+        {QStringLiteral("settings.shortcutAction"), QStringLiteral("Действие")},
+        {QStringLiteral("settings.shortcutCurrent"), QStringLiteral("Текущая")},
+        {QStringLiteral("settings.shortcutDefault"), QStringLiteral("По умолчанию")},
+        {QStringLiteral("settings.shortcutContext"), QStringLiteral("Контекст")},
+        {QStringLiteral("settings.shortcutCapture"), QStringLiteral("Записать")},
+        {QStringLiteral("settings.shortcutClear"), QStringLiteral("Очистить")},
+        {QStringLiteral("settings.shortcutReset"), QStringLiteral("Сброс")},
+        {QStringLiteral("settings.shortcutResetGroup"), QStringLiteral("Сбросить группу")},
+        {QStringLiteral("settings.shortcutResetAll"), QStringLiteral("Сбросить все сочетания")},
+        {QStringLiteral("settings.shortcutUnassigned"), QStringLiteral("Не назначено")},
+        {QStringLiteral("settings.shortcutNotAssignable"), QStringLiteral("Зарезервировано")},
+        {QStringLiteral("settings.shortcutCaptureTitle"), QStringLiteral("Нажмите сочетание")},
+        {QStringLiteral("settings.shortcutCaptureHint"),
+         QStringLiteral("Нажмите комбинацию клавиш. Escape отменяет ввод.")},
+        {QStringLiteral("settings.shortcutCaptureClearHint"),
+         QStringLiteral("Backspace очищает это сочетание.")},
+        {QStringLiteral("settings.shortcutConflictTitle"), QStringLiteral("Конфликт сочетания")},
+        {QStringLiteral("settings.shortcutConflictMessage"),
+         QStringLiteral("Это сочетание уже назначено. Заменить существующие назначения?")},
+        {QStringLiteral("settings.shortcutConflictReplace"), QStringLiteral("Заменить")},
+        {QStringLiteral("settings.shortcutConflictCancel"), QStringLiteral("Отмена")},
+        {QStringLiteral("settings.shortcutError"), QStringLiteral("Ошибка сочетания")},
+        {QStringLiteral("settings.shortcutNoMatches"), QStringLiteral("Нет сочетаний по этому фильтру.")},
+        {QStringLiteral("settings.shortcutStatusReset"), QStringLiteral("Настройки сочетаний обновлены.")},
+        {QStringLiteral("settings.shortcutValidationUnknownId"),
+         QStringLiteral("Эта команда сочетания больше недоступна.")},
+        {QStringLiteral("settings.shortcutValidationNotAssignable"),
+         QStringLiteral("Это сочетание зарезервировано и не может быть изменено.")},
+        {QStringLiteral("settings.shortcutValidationEmptyNotAllowed"),
+         QStringLiteral("Для этой команды должно оставаться назначенное сочетание.")},
+        {QStringLiteral("settings.shortcutValidationInvalid"),
+         QStringLiteral("Эта комбинация клавиш не является корректным сочетанием.")},
+        {QStringLiteral("settings.shortcutValidationReserved"),
+         QStringLiteral("Эта комбинация клавиш зарезервирована для данной команды.")},
+        {QStringLiteral("settings.shortcutValidationConflict"),
+         QStringLiteral("Эта комбинация клавиш конфликтует с другой командой.")},
+        {QStringLiteral("settings.shortcutValidationNonReplaceableConflict"),
+         QStringLiteral("Эта комбинация клавиш конфликтует с зарезервированной командой.")},
+        {QStringLiteral("settings.shortcutValidationReplaceFailed"),
+         QStringLiteral("Не удалось заменить конфликтующее сочетание.")},
+        {QStringLiteral("settings.shortcutValidationUnknownGroup"),
+         QStringLiteral("Эта группа сочетаний больше недоступна.")},
+        {QStringLiteral("settings.shortcutValidationUnknown"),
+         QStringLiteral("Не удалось применить изменение сочетания.")},
         {QStringLiteral("settings.sectionThemeDescription"),
          QStringLiteral("Предустановки темы и общий сброс оформления.")},
         {QStringLiteral("settings.searchPlaceholder"), QStringLiteral("Поиск настроек...")},
         {QStringLiteral("settings.quickActions"), QStringLiteral("Быстрые действия")},
         {QStringLiteral("settings.quickResetAudio"), QStringLiteral("Сбросить только аудио")},
         {QStringLiteral("settings.quickResetWaveform"), QStringLiteral("Сбросить только волну")},
+        {QStringLiteral("settings.quickResetTrackInfo"), QStringLiteral("Сбросить информацию о треке")},
         {QStringLiteral("settings.quickResetAll"), QStringLiteral("Сбросить всё к дефолту")},
         {QStringLiteral("settings.resetConfirmTitleAudio"), QStringLiteral("Подтвердите сброс аудио")},
         {QStringLiteral("settings.resetConfirmTitleWaveform"), QStringLiteral("Подтвердите сброс волны")},
+        {QStringLiteral("settings.resetConfirmTitleTrackInfo"), QStringLiteral("Подтвердите сброс информации о треке")},
         {QStringLiteral("settings.resetConfirmTitleAll"), QStringLiteral("Подтвердите полный сброс")},
         {QStringLiteral("settings.resetConfirmTitleTheme"), QStringLiteral("Подтвердите сброс темы")},
         {QStringLiteral("settings.resetConfirmMessage"),
@@ -2362,9 +2807,40 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.resetConfirmNoChanges"), QStringLiteral("Изменений не требуется.")},
         {QStringLiteral("settings.resetConfirmApply"), QStringLiteral("Применить сброс")},
         {QStringLiteral("settings.resetConfirmCancel"), QStringLiteral("Отмена")},
+        {QStringLiteral("settings.factoryReset"), QStringLiteral("Полный сброс приложения")},
+        {QStringLiteral("settings.factoryResetDescription"),
+         QStringLiteral("Удаляет все настройки WaveFlux, сохранённые плейлисты, данные сеанса, базу библиотеки, импорты, пресеты, кэш и другие пользовательские данные приложения.")},
+        {QStringLiteral("settings.factoryResetTitle"), QStringLiteral("Удалить все данные WaveFlux?")},
+        {QStringLiteral("settings.factoryResetMessage"),
+         QStringLiteral("Это действие нельзя отменить. WaveFlux удалит все настройки и пользовательские данные, затем закроется. Аудиофайлы на диске удалены не будут.")},
+        {QStringLiteral("settings.factoryResetConfirm"), QStringLiteral("Удалить всё")},
+        {QStringLiteral("settings.factoryResetFailed"),
+         QStringLiteral("Некоторые файлы не удалось удалить. Закройте WaveFlux и удалите указанные пути вручную.")},
         {QStringLiteral("settings.valueEnabled"), QStringLiteral("Включено")},
         {QStringLiteral("settings.valueDisabled"), QStringLiteral("Выключено")},
         {QStringLiteral("settings.valueSystemDefault"), QStringLiteral("Системное значение")},
+        {QStringLiteral("settings.trackInfoEnabled"), QStringLiteral("Показывать информацию о треке")},
+        {QStringLiteral("settings.trackInfoEnabledDescription"),
+         QStringLiteral("Использовать форматируемую информацию о треке в интерфейсе WaveFlux.")},
+        {QStringLiteral("settings.trackInfoWaveformOverlayHoverOnly"), QStringLiteral("Показывать информацию о треке только при наведении на волну")},
+        {QStringLiteral("settings.trackInfoWaveformOverlayHoverOnlyDescription"),
+         QStringLiteral("Скрывать информацию поверх волны, пока указатель не находится над волной.")},
+        {QStringLiteral("settings.trackInfoWindowTitleFormat"), QStringLiteral("Формат заголовка окна")},
+        {QStringLiteral("settings.trackInfoTooltipFormat"), QStringLiteral("Формат подсказки волны")},
+        {QStringLiteral("settings.trackInfoOverlayFormats"), QStringLiteral("Форматы оверлея волны")},
+        {QStringLiteral("settings.trackInfoTop"), QStringLiteral("Верхний")},
+        {QStringLiteral("settings.trackInfoMiddle"), QStringLiteral("Посередине")},
+        {QStringLiteral("settings.trackInfoBottom"), QStringLiteral("Нижний")},
+        {QStringLiteral("settings.trackInfoLeft"), QStringLiteral("Левый")},
+        {QStringLiteral("settings.trackInfoCenter"), QStringLiteral("По центру")},
+        {QStringLiteral("settings.trackInfoRight"), QStringLiteral("Правый")},
+        {QStringLiteral("settings.trackInfoSyntax"), QStringLiteral("Синтаксис формата")},
+        {QStringLiteral("settings.trackInfoSyntaxHint"),
+         QStringLiteral("Используйте %a артист, %t название, %A альбом, %c комментарий, %g жанр, %y год, %n номер, %i индекс в плейлисте, %T прошло, %r осталось, %C время под курсором, %o разница с курсором, %d длительность, %D длительность в секундах, %L длительность плейлиста, %b битность, %B битрейт, %s частоту, %H каналы, %M BPM, %f имя без расширения, %F имя файла, %p полный путь, %P путь директории, %N имя директории, %e расширение, %E расширение в верхнем регистре, %v версию. Условные блоки: {основной|запасной}; спецсимволы экранируются как \\{ \\} \\| \\%.")},
+        {QStringLiteral("settings.trackInfoPreview"), QStringLiteral("Предпросмотр")},
+        {QStringLiteral("settings.trackInfoNoPreview"), QStringLiteral("Нет текущего трека для предпросмотра.")},
+        {QStringLiteral("settings.trackInfoResetMinimal"), QStringLiteral("Сбросить к минимальным")},
+        {QStringLiteral("settings.trackInfoClearAll"), QStringLiteral("Очистить все поля")},
         {QStringLiteral("settings.waveformHeight"), QStringLiteral("Высота волны:")},
         {QStringLiteral("settings.compactWaveformHeight"), QStringLiteral("Высота волны (компакт):")},
         {QStringLiteral("settings.waveformZoomHintsVisible"), QStringLiteral("Показывать подсказки зума волны")},
@@ -2397,6 +2873,9 @@ const QHash<QString, QString> &russianTexts()
          QStringLiteral("Выберите характер обработки: Standard - сбалансированный, Hi-Fi - более чистый, Studio - максимально прозрачный.")},
         {QStringLiteral("settings.audioQualityProfileUnavailableDescription"),
          QStringLiteral("Для tracker-модулей используется профиль Standard, потому что воспроизведение через OpenMPT не использует цепочку мастеринга GStreamer.")},
+        {QStringLiteral("settings.displayVolumeInDecibels"), QStringLiteral("Показывать громкость в децибелах")},
+        {QStringLiteral("settings.displayVolumeInDecibelsDescription"),
+         QStringLiteral("Показывает значения громкости в децибелах по формуле Стивенса вместо процентов. Поведение регулятора громкости не меняется.")},
         {QStringLiteral("settings.audioQualityStandard"), QStringLiteral("Standard")},
         {QStringLiteral("settings.audioQualityHiFi"), QStringLiteral("Hi-Fi")},
         {QStringLiteral("settings.audioQualityStudio"), QStringLiteral("Studio")},
@@ -2445,6 +2924,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("sidebar.bitPcm"), QStringLiteral("-бит PCM")},
         // ControlBar
         {QStringLiteral("player.mute"), QStringLiteral("Без звука")},
+        {QStringLiteral("player.unmute"), QStringLiteral("Включить звук")},
         {QStringLiteral("player.maxVolume"), QStringLiteral("Максимум")},
         {QStringLiteral("player.equalizer"), QStringLiteral("Эквалайзер")},
         {QStringLiteral("player.equalizerUnavailable"), QStringLiteral("Эквалайзер недоступен")},
@@ -2534,6 +3014,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("menu.library"), QStringLiteral("Библиотека")},
         {QStringLiteral("menu.help"), QStringLiteral("Справка")},
         {QStringLiteral("menu.openFiles"), QStringLiteral("Открыть файлы...")},
+        {QStringLiteral("menu.openUrl"), QStringLiteral("Открыть URL...")},
         {QStringLiteral("menu.addFolder"), QStringLiteral("Добавить папку...")},
         {QStringLiteral("menu.audioConverter"), QStringLiteral("Аудиоконвертер...")},
         {QStringLiteral("menu.exportPlaylist"), QStringLiteral("Экспорт плейлиста...")},
@@ -2555,15 +3036,45 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("menu.seekForward5"), QStringLiteral("Перемотка +5с")},
         {QStringLiteral("menu.repeatMode"), QStringLiteral("Повтор")},
         {QStringLiteral("menu.newEmptyPlaylist"), QStringLiteral("Новый пустой плейлист")},
+        // OpenUrlDialog
+        {QStringLiteral("openUrl.title"), QStringLiteral("Открыть URL")},
+        {QStringLiteral("openUrl.hint"), QStringLiteral("Введите адрес удалённого аудиопотока или файла (http, https, ftp).")},
+        {QStringLiteral("openUrl.paste"), QStringLiteral("Вставить")},
+        {QStringLiteral("openUrl.actionLabel"), QStringLiteral("Действие:")},
+        {QStringLiteral("openUrl.actionPlayNow"), QStringLiteral("Воспроизвести сейчас (очистить очередь)")},
+        {QStringLiteral("openUrl.actionAddToCurrent"), QStringLiteral("Добавить в текущий плейлист")},
+        {QStringLiteral("openUrl.actionAddToNew"), QStringLiteral("Добавить в новый плейлист")},
+        {QStringLiteral("openUrl.confirmPlay"), QStringLiteral("Воспроизвести")},
+        {QStringLiteral("openUrl.confirmAdd"), QStringLiteral("Добавить")},
+        {QStringLiteral("openUrl.errorInvalidFormat"), QStringLiteral("Неверный формат URL. Должен начинаться с http:// или https://")},
+        {QStringLiteral("playlists.newStreamPlaylistName"), QStringLiteral("Новый плейлист-стрим")},
         // Help
         {QStringLiteral("help.about"), QStringLiteral("О программе")},
         {QStringLiteral("help.shortcuts"), QStringLiteral("Комбинации клавиш")},
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("О WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Версия:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.2")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.3.0")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux — сфокусированный настольный аудиоплеер для локальной медиатеки и интернет-стримов с визуализацией волны, очередью и точным управлением воспроизведением.")},
+        {QStringLiteral("help.aboutLicense"), QStringLiteral("Собрано как нативное настольное приложение на Qt/KDE.")},
+        {QStringLiteral("help.aboutTabAbout"), QStringLiteral("О программе")},
+        {QStringLiteral("help.aboutTabComponents"), QStringLiteral("Компоненты")},
+        {QStringLiteral("help.aboutTabAuthor"), QStringLiteral("Автор")},
+        {QStringLiteral("help.aboutComponentQt"),
+         QStringLiteral("Каркас приложения, QML-интерфейс, мультимедиа, SQL, сеть, параллельные задачи и интеграция widgets.")},
+        {QStringLiteral("help.aboutComponentKde"),
+         QStringLiteral("Интеграция Kirigami, а также поддержка CoreAddons и I18n.")},
+        {QStringLiteral("help.aboutComponentGStreamer"),
+         QStringLiteral("Основное воспроизведение аудио, декодирование волны, эквалайзер и конвейеры аудиоконвертации.")},
+        {QStringLiteral("help.aboutComponentTagLib"),
+         QStringLiteral("Чтение аудиометаданных и редактирование тегов для поддерживаемых локальных файлов.")},
+        {QStringLiteral("help.aboutComponentOpenMpt"),
+         QStringLiteral("Воспроизведение tracker-модулей и отрисовка волны для форматов MOD/XM/S3M/IT.")},
+        {QStringLiteral("help.aboutComponentSQLite"),
+         QStringLiteral("Локальная база медиатеки, умные коллекции, контекст воспроизведения и статистика прослушивания.")},
+        {QStringLiteral("help.aboutComponentDesktop"),
+         QStringLiteral("MPRIS, системный трей, MIME/desktop-интеграция, действия файлового менеджера и XDG-порталы при наличии.")},
         {QStringLiteral("help.aboutAuthorLabel"), QStringLiteral("Автор:")},
         {QStringLiteral("help.aboutAuthorName"), QStringLiteral("leocallidus")},
         {QStringLiteral("help.aboutAuthorUrl"), QStringLiteral("https://github.com/leocallidus")},
@@ -2582,6 +3093,29 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("help.shortcutsContextMainWindow"), QStringLiteral("Главное окно")},
         {QStringLiteral("help.shortcutsContextPlaylist"), QStringLiteral("Плейлист")},
         {QStringLiteral("help.shortcutsContextDialog"), QStringLiteral("Диалог")},
+        {QStringLiteral("shortcut.fullscreenToggle"), QStringLiteral("Вход / выход из полноэкранного режима")},
+        {QStringLiteral("shortcut.playPauseTapHold"),
+         QStringLiteral("Воспроизведение / пауза, удерживать для временной скорости 2x")},
+        {QStringLiteral("shortcut.seekBackwardAccelerated"),
+         QStringLiteral("Перемотка назад (ускоренная)")},
+        {QStringLiteral("shortcut.seekForwardAccelerated"),
+         QStringLiteral("Перемотка вперед (ускоренная)")},
+        {QStringLiteral("shortcut.playlistScrollToBeginning"),
+         QStringLiteral("Начало плейлиста")},
+        {QStringLiteral("shortcut.playlistScrollToEnd"),
+         QStringLiteral("Конец плейлиста")},
+        {QStringLiteral("shortcut.playlistPageUp"),
+         QStringLiteral("Листать плейлист вверх")},
+        {QStringLiteral("shortcut.playlistPageDown"),
+         QStringLiteral("Листать плейлист вниз")},
+        {QStringLiteral("shortcut.speedDown"), QStringLiteral("Скорость -0.1x")},
+        {QStringLiteral("shortcut.speedUp"), QStringLiteral("Скорость +0.1x")},
+        {QStringLiteral("shortcut.pitchDown"), QStringLiteral("Тон -1")},
+        {QStringLiteral("shortcut.pitchUp"), QStringLiteral("Тон +1")},
+        {QStringLiteral("shortcut.repeatCycle"), QStringLiteral("Переключить режим повтора")},
+        {QStringLiteral("shortcut.compactTogglePlaylist"),
+         QStringLiteral("Показать / скрыть компактный плейлист")},
+        {QStringLiteral("shortcut.dialogClose"), QStringLiteral("Закрыть диалог")},
         {QStringLiteral("header.searchPlaceholder"), QStringLiteral("Поиск... title: artist: album: path:")},
         {QStringLiteral("header.searchManualPlaceholder"),
          QStringLiteral("Введите запрос и нажмите Enter или кнопку лупы")},
@@ -2628,15 +3162,23 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("playlists.renameTitle"), QStringLiteral("Переименовать плейлист")},
         {QStringLiteral("playlists.renameApply"), QStringLiteral("Переименовать")},
         {QStringLiteral("playlists.delete"), QStringLiteral("Удалить плейлист")},
+        {QStringLiteral("playlists.deleteAll"), QStringLiteral("Удалить все плейлисты")},
         {QStringLiteral("playlists.deleteConfirmTitle"), QStringLiteral("Удалить плейлист")},
         {QStringLiteral("playlists.deleteConfirmMessage"),
          QStringLiteral("Удалить плейлист \"%1\"? Это действие нельзя отменить.")},
+        {QStringLiteral("playlists.deleteAllConfirmTitle"), QStringLiteral("Удалить все плейлисты")},
+        {QStringLiteral("playlists.deleteAllConfirmMessage"),
+         QStringLiteral("Удалить все сохранённые плейлисты (%1)? Это действие нельзя отменить.")},
         {QStringLiteral("playlists.errorTitle"), QStringLiteral("Ошибка плейлиста")},
         {QStringLiteral("collections.create"), QStringLiteral("Создать")},
         {QStringLiteral("collections.delete"), QStringLiteral("Удалить")},
+        {QStringLiteral("collections.deleteAll"), QStringLiteral("Удалить все коллекции")},
         {QStringLiteral("collections.deleteConfirmTitle"), QStringLiteral("Удалить коллекцию")},
         {QStringLiteral("collections.deleteConfirmMessage"),
          QStringLiteral("Удалить смарт-коллекцию \"%1\"? Это действие нельзя отменить.")},
+        {QStringLiteral("collections.deleteAllConfirmTitle"), QStringLiteral("Удалить все коллекции")},
+        {QStringLiteral("collections.deleteAllConfirmMessage"),
+         QStringLiteral("Удалить все смарт-коллекции (%1)? Это действие нельзя отменить.")},
         {QStringLiteral("collections.disabled"), QStringLiteral("Коллекции недоступны (SQLite-библиотека отключена).")},
         {QStringLiteral("collections.empty"), QStringLiteral("Смарт-коллекции пока не созданы.")},
         {QStringLiteral("collections.emptyTracks"), QStringLiteral("В этой коллекции нет треков.")},
@@ -2969,6 +3511,114 @@ QVariantMap AppSettingsManager::validateYtDlpImportRuntime(const QString &select
     return result;
 }
 
+QVariantMap AppSettingsManager::performFullApplicationReset()
+{
+    QVariantMap result;
+    QStringList removedPaths;
+    QStringList failedPaths;
+
+    m_fullApplicationResetPending = true;
+    m_saveSettingsPending = false;
+    m_saveSettingsTimer.stop();
+
+    auto removeDirectory = [&removedPaths, &failedPaths](QStandardPaths::StandardLocation location) {
+        const QString path = QStandardPaths::writableLocation(location).trimmed();
+        if (path.isEmpty()) {
+            return;
+        }
+
+        QDir dir(path);
+        if (!dir.exists()) {
+            return;
+        }
+
+        if (dir.removeRecursively()) {
+            removedPaths.push_back(path);
+        } else {
+            failedPaths.push_back(path);
+        }
+    };
+
+    m_settings.clear();
+    m_settings.sync();
+
+    QSettings settings(QStringLiteral("WaveFlux"), QStringLiteral("WaveFlux"));
+    settings.clear();
+    settings.sync();
+
+    removeDirectory(QStandardPaths::AppConfigLocation);
+    removeDirectory(QStandardPaths::AppDataLocation);
+    removeDirectory(QStandardPaths::CacheLocation);
+
+    result.insert(QStringLiteral("ok"), failedPaths.isEmpty());
+    result.insert(QStringLiteral("removedPaths"), removedPaths);
+    result.insert(QStringLiteral("failedPaths"), failedPaths);
+    return result;
+}
+
+QVariantMap AppSettingsManager::defaultTrackInfoWaveformOverlayFormats() const
+{
+    return defaultTrackInfoOverlayFormatsValue();
+}
+
+QVariantMap AppSettingsManager::emptyTrackInfoWaveformOverlayFormats() const
+{
+    return emptyTrackInfoOverlayFormatsValue();
+}
+
+QString AppSettingsManager::defaultTrackInfoWindowTitleFormat() const
+{
+    return defaultTrackInfoWindowTitleFormatValue();
+}
+
+QString AppSettingsManager::defaultTrackInfoWaveformTooltipFormat() const
+{
+    return defaultTrackInfoWaveformTooltipFormatValue();
+}
+
+QString AppSettingsManager::renderTrackInfoFormat(const QString &format,
+                                                  const QVariantMap &trackInfo,
+                                                  const QString &contextName) const
+{
+    using RenderContext = WaveFlux::TrackInfoFormatter::RenderContext;
+
+    RenderContext renderContext = RenderContext::WaveformOverlay;
+    const QString normalizedContext = contextName.trimmed().toLower();
+    if (normalizedContext == QStringLiteral("windowtitle") || normalizedContext == QStringLiteral("window-title")) {
+        renderContext = RenderContext::WindowTitle;
+    } else if (normalizedContext == QStringLiteral("playlist")) {
+        renderContext = RenderContext::Playlist;
+    } else if (normalizedContext == QStringLiteral("tooltip") || normalizedContext == QStringLiteral("waveformtooltip")) {
+        renderContext = RenderContext::WaveformTooltip;
+    }
+
+    WaveFlux::TrackInfoFormatter::TrackInfoContext context;
+    context.artist = trackInfo.value(QStringLiteral("artist")).toString();
+    context.title = trackInfo.value(QStringLiteral("title")).toString();
+    context.album = trackInfo.value(QStringLiteral("album")).toString();
+    context.comment = trackInfo.value(QStringLiteral("comment")).toString();
+    context.genre = trackInfo.value(QStringLiteral("genre")).toString();
+    context.year = trackInfo.value(QStringLiteral("year")).toString();
+    context.trackNumber = trackInfo.value(QStringLiteral("trackNumber")).toString();
+    context.playlistIndex = trackInfo.value(QStringLiteral("playlistIndex"), -1).toInt();
+    context.playlistCount = trackInfo.value(QStringLiteral("playlistCount")).toInt();
+    context.positionMs = trackInfo.value(QStringLiteral("positionMs"), -1).toLongLong();
+    context.hoverPositionMs = trackInfo.value(QStringLiteral("hoverPositionMs"), -1).toLongLong();
+    context.durationMs = trackInfo.value(QStringLiteral("durationMs"),
+                                         trackInfo.value(QStringLiteral("duration"), -1)).toLongLong();
+    context.playlistDurationMs = trackInfo.value(QStringLiteral("playlistDurationMs"), -1).toLongLong();
+    context.bitDepth = trackInfo.value(QStringLiteral("bitDepth")).toInt();
+    context.bitrateKbps = trackInfo.value(QStringLiteral("bitrate"),
+                                          trackInfo.value(QStringLiteral("bitrateKbps"))).toInt();
+    context.sampleRateHz = trackInfo.value(QStringLiteral("sampleRate"),
+                                           trackInfo.value(QStringLiteral("sampleRateHz"))).toInt();
+    context.channelCount = trackInfo.value(QStringLiteral("channelCount")).toInt();
+    context.bpm = trackInfo.value(QStringLiteral("bpm")).toInt();
+    context.filePath = trackInfo.value(QStringLiteral("filePath")).toString();
+    context.appVersion = QCoreApplication::applicationVersion();
+    return WaveFlux::TrackInfoFormatter::render(format, context, renderContext);
+}
+
 void AppSettingsManager::setLanguage(const QString &language)
 {
     const QString normalized = normalizeLanguage(language);
@@ -2990,6 +3640,17 @@ void AppSettingsManager::setTrayEnabled(bool enabled)
 
     m_trayEnabled = enabled;
     emit trayEnabledChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrayIconAlwaysVisible(bool visible)
+{
+    if (m_trayIconAlwaysVisible == visible) {
+        return;
+    }
+
+    m_trayIconAlwaysVisible = visible;
+    emit trayIconAlwaysVisibleChanged();
     scheduleSaveSettings();
 }
 
@@ -3129,6 +3790,17 @@ void AppSettingsManager::setAudioQualityProfile(const QString &profile)
     scheduleSaveSettings();
 }
 
+void AppSettingsManager::setDisplayVolumeInDecibels(bool enabled)
+{
+    if (m_displayVolumeInDecibels == enabled) {
+        return;
+    }
+
+    m_displayVolumeInDecibels = enabled;
+    emit displayVolumeInDecibelsChanged();
+    scheduleSaveSettings();
+}
+
 void AppSettingsManager::setDynamicSpectrum(bool enabled)
 {
     if (m_dynamicSpectrum == enabled) {
@@ -3170,6 +3842,264 @@ void AppSettingsManager::setAutoAddTracksFromPlaylistFolder(bool enabled)
 
     m_autoAddTracksFromPlaylistFolder = enabled;
     emit autoAddTracksFromPlaylistFolderChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setPlaylistScrollBarVisible(bool visible)
+{
+    if (m_playlistScrollBarVisible == visible) {
+        return;
+    }
+
+    m_playlistScrollBarVisible = visible;
+    emit playlistScrollBarVisibleChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setPlaySearchResultsInOrder(bool enabled)
+{
+    if (m_playSearchResultsInOrder == enabled) {
+        return;
+    }
+
+    m_playSearchResultsInOrder = enabled;
+    emit playSearchResultsInOrderChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrackInfoEnabled(bool enabled)
+{
+    if (m_trackInfoEnabled == enabled) {
+        return;
+    }
+
+    m_trackInfoEnabled = enabled;
+    emit trackInfoEnabledChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrackInfoWaveformOverlayHoverOnly(bool hoverOnly)
+{
+    if (m_trackInfoWaveformOverlayHoverOnly == hoverOnly) {
+        return;
+    }
+
+    m_trackInfoWaveformOverlayHoverOnly = hoverOnly;
+    emit trackInfoWaveformOverlayHoverOnlyChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrackInfoWindowTitleFormat(const QString &format)
+{
+    const QString normalized = normalizeTrackInfoFormat(format);
+    if (m_trackInfoWindowTitleFormat == normalized) {
+        return;
+    }
+
+    m_trackInfoWindowTitleFormat = normalized;
+    emit trackInfoWindowTitleFormatChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrackInfoWaveformTooltipFormat(const QString &format)
+{
+    const QString normalized = normalizeTrackInfoFormat(format);
+    if (m_trackInfoWaveformTooltipFormat == normalized) {
+        return;
+    }
+
+    m_trackInfoWaveformTooltipFormat = normalized;
+    emit trackInfoWaveformTooltipFormatChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrackInfoWaveformOverlayFormats(const QVariantMap &formats)
+{
+    const QVariantMap normalized = normalizeTrackInfoOverlayFormats(formats, true);
+    if (m_trackInfoWaveformOverlayFormats == normalized) {
+        return;
+    }
+
+    m_trackInfoWaveformOverlayFormats = normalized;
+    emit trackInfoWaveformOverlayFormatsChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setAutoCheckUpdates(bool enabled)
+{
+    if (m_autoCheckUpdates == enabled) {
+        return;
+    }
+
+    m_autoCheckUpdates = enabled;
+    emit autoCheckUpdatesChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setIncludePrereleaseUpdates(bool enabled)
+{
+    if (m_includePrereleaseUpdates == enabled) {
+        return;
+    }
+
+    m_includePrereleaseUpdates = enabled;
+    emit includePrereleaseUpdatesChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setUpdateCheckerEtag(const QString &etag)
+{
+    const QString normalized = etag.trimmed();
+    if (m_updateCheckerEtag == normalized) {
+        return;
+    }
+
+    m_updateCheckerEtag = normalized;
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLastUpdateCheckAt(const QDateTime &dateTime)
+{
+    const QDateTime normalized = normalizeDateTimeValue(dateTime);
+    if (m_lastUpdateCheckAt == normalized) {
+        return;
+    }
+
+    m_lastUpdateCheckAt = normalized;
+    emit lastUpdateCheckAtChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLastAutomaticUpdateCheckAt(const QDateTime &dateTime)
+{
+    const QDateTime normalized = normalizeDateTimeValue(dateTime);
+    if (m_lastAutomaticUpdateCheckAt == normalized) {
+        return;
+    }
+
+    m_lastAutomaticUpdateCheckAt = normalized;
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setSkippedUpdateTag(const QString &tag)
+{
+    const QString normalized = tag.trimmed();
+    if (m_skippedUpdateTag == normalized) {
+        return;
+    }
+
+    m_skippedUpdateTag = normalized;
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setUpdateReminderDeferredUntil(const QDateTime &dateTime)
+{
+    const QDateTime normalized = normalizeDateTimeValue(dateTime);
+    if (m_updateReminderDeferredUntil == normalized) {
+        return;
+    }
+
+    m_updateReminderDeferredUntil = normalized;
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setAutoScrollToCurrentTrackOnStartup(bool enabled)
+{
+    if (m_autoScrollToCurrentTrackOnStartup == enabled) {
+        return;
+    }
+
+    m_autoScrollToCurrentTrackOnStartup = enabled;
+    emit autoScrollToCurrentTrackOnStartupChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setPlayExternalOpenWithoutPlaylist(bool enabled)
+{
+    if (m_playExternalOpenWithoutPlaylist == enabled) {
+        return;
+    }
+
+    m_playExternalOpenWithoutPlaylist = enabled;
+    emit playExternalOpenWithoutPlaylistChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setRestorePlaybackPositionOnStartup(bool enabled)
+{
+    if (m_restorePlaybackPositionOnStartup == enabled) {
+        return;
+    }
+
+    m_restorePlaybackPositionOnStartup = enabled;
+    emit restorePlaybackPositionOnStartupChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setRestorePlaybackPausedOnStartup(bool enabled)
+{
+    if (m_restorePlaybackPausedOnStartup == enabled) {
+        return;
+    }
+
+    m_restorePlaybackPausedOnStartup = enabled;
+    emit restorePlaybackPausedOnStartupChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setQuitAfterPlaybackFinished(bool enabled)
+{
+    if (m_quitAfterPlaybackFinished == enabled) {
+        return;
+    }
+
+    m_quitAfterPlaybackFinished = enabled;
+    emit quitAfterPlaybackFinishedChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setKeepAboveWhilePlaying(bool enabled)
+{
+    if (m_keepAboveWhilePlaying == enabled) {
+        return;
+    }
+
+    m_keepAboveWhilePlaying = enabled;
+    emit keepAboveWhilePlayingChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setAlwaysKeepAbove(bool enabled)
+{
+    if (m_alwaysKeepAbove == enabled) {
+        return;
+    }
+
+    m_alwaysKeepAbove = enabled;
+    emit alwaysKeepAboveChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setKeyboardSeekStepSeconds(int seconds)
+{
+    const int normalized = qBound(1, seconds, 60);
+    if (m_keyboardSeekStepSeconds == normalized) {
+        return;
+    }
+
+    m_keyboardSeekStepSeconds = normalized;
+    emit keyboardSeekStepSecondsChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setKeyboardSeekBackwardToPreviousTrack(bool enabled)
+{
+    if (m_keyboardSeekBackwardToPreviousTrack == enabled) {
+        return;
+    }
+
+    m_keyboardSeekBackwardToPreviousTrack = enabled;
+    emit keyboardSeekBackwardToPreviousTrackChanged();
     scheduleSaveSettings();
 }
 
@@ -3418,6 +4348,7 @@ void AppSettingsManager::loadSettings()
     m_settings.beginGroup("App");
     m_language = normalizeLanguage(m_settings.value("language", QStringLiteral("auto")).toString());
     m_trayEnabled = m_settings.value("trayEnabled", false).toBool();
+    m_trayIconAlwaysVisible = m_settings.value("trayIconAlwaysVisible", false).toBool();
     m_sidebarVisible = m_settings.value("sidebarVisible", true).toBool();
     m_collectionsSidebarVisible = m_settings.value("collectionsSidebarVisible", true).toBool();
     const QString skinValue = m_settings.value("skinMode", QStringLiteral("normal")).toString();
@@ -3432,11 +4363,63 @@ void AppSettingsManager::loadSettings()
     m_reversePlayback = m_settings.value("reversePlayback", false).toBool();
     m_audioQualityProfile =
         normalizeAudioQualityProfile(m_settings.value("audioQualityProfile", QStringLiteral("standard")).toString());
+    m_displayVolumeInDecibels = m_settings.value("displayVolumeInDecibels", false).toBool();
     m_dynamicSpectrum = m_settings.value("dynamicSpectrum", false).toBool();
     m_confirmTrashDeletion = m_settings.value("confirmTrashDeletion", true).toBool();
     m_automaticPlaylistSearch = m_settings.value("automaticPlaylistSearch", false).toBool();
     m_autoAddTracksFromPlaylistFolder =
         m_settings.value("autoAddTracksFromPlaylistFolder", true).toBool();
+    m_playlistScrollBarVisible = m_settings.value("playlistScrollBarVisible", true).toBool();
+    m_playSearchResultsInOrder = m_settings.value("playSearchResultsInOrder", false).toBool();
+    m_trackInfoEnabled = m_settings.value("trackInfo.enabled", true).toBool();
+    m_trackInfoWaveformOverlayHoverOnly =
+        m_settings.value("trackInfo.waveformOverlayHoverOnly", true).toBool();
+    QString windowTitleFormat =
+        m_settings.value("trackInfo.windowTitleFormat",
+                         defaultTrackInfoWindowTitleFormatValue()).toString();
+    if (windowTitleFormat == legacyTrackInfoWindowTitleFormatValue()) {
+        windowTitleFormat = defaultTrackInfoWindowTitleFormatValue();
+    }
+    m_trackInfoWindowTitleFormat = normalizeTrackInfoFormat(windowTitleFormat);
+    QString waveformTooltipFormat =
+        m_settings.value("trackInfo.waveformTooltipFormat",
+                         defaultTrackInfoWaveformTooltipFormatValue()).toString();
+    if (waveformTooltipFormat == QLatin1String("%C")) {
+        waveformTooltipFormat = defaultTrackInfoWaveformTooltipFormatValue();
+    }
+    m_trackInfoWaveformTooltipFormat = normalizeTrackInfoFormat(waveformTooltipFormat);
+    QVariantMap persistedTrackInfoOverlayFormats;
+    for (const QString &key : trackInfoOverlayKeys()) {
+        const QString settingsKey = QStringLiteral("trackInfo.waveformOverlay.") + key;
+        if (m_settings.contains(settingsKey)) {
+            persistedTrackInfoOverlayFormats.insert(key, m_settings.value(settingsKey).toString());
+        }
+    }
+    m_trackInfoWaveformOverlayFormats =
+        normalizeTrackInfoOverlayFormats(persistedTrackInfoOverlayFormats, true);
+    m_autoCheckUpdates = m_settings.value("updates.autoCheck", true).toBool();
+    m_includePrereleaseUpdates = m_settings.value("updates.includePrerelease", false).toBool();
+    m_updateCheckerEtag = m_settings.value("updates.etag", QString()).toString().trimmed();
+    m_lastUpdateCheckAt = normalizeStoredDateTime(m_settings.value("updates.lastCheckAt"));
+    m_lastAutomaticUpdateCheckAt =
+        normalizeStoredDateTime(m_settings.value("updates.lastAutoCheckAt"));
+    m_skippedUpdateTag = m_settings.value("updates.skippedTag", QString()).toString().trimmed();
+    m_updateReminderDeferredUntil = normalizeStoredDateTime(m_settings.value("updates.deferredUntil"));
+    m_autoScrollToCurrentTrackOnStartup =
+        m_settings.value("autoScrollToCurrentTrackOnStartup", true).toBool();
+    m_playExternalOpenWithoutPlaylist =
+        m_settings.value("playExternalOpenWithoutPlaylist", false).toBool();
+    m_restorePlaybackPositionOnStartup =
+        m_settings.value("restorePlaybackPositionOnStartup", true).toBool();
+    m_restorePlaybackPausedOnStartup =
+        m_settings.value("restorePlaybackPausedOnStartup", false).toBool();
+    m_quitAfterPlaybackFinished = m_settings.value("quitAfterPlaybackFinished", false).toBool();
+    m_keepAboveWhilePlaying = m_settings.value("keepAboveWhilePlaying", false).toBool();
+    m_alwaysKeepAbove = m_settings.value("alwaysKeepAbove", false).toBool();
+    m_keyboardSeekStepSeconds =
+        qBound(1, m_settings.value("keyboardSeekStepSeconds", 5).toInt(), 60);
+    m_keyboardSeekBackwardToPreviousTrack =
+        m_settings.value("keyboardSeekBackwardToPreviousTrack", false).toBool();
     m_deterministicShuffleEnabled = m_settings.value("deterministicShuffleEnabled", false).toBool();
     m_shuffleSeed = normalizeShuffleSeed(
         m_settings.value("shuffleSeed", static_cast<qulonglong>(kDefaultShuffleSeed)));
@@ -3500,6 +4483,7 @@ void AppSettingsManager::saveSettings()
     m_settings.beginGroup("App");
     m_settings.setValue("language", m_language);
     m_settings.setValue("trayEnabled", m_trayEnabled);
+    m_settings.setValue("trayIconAlwaysVisible", m_trayIconAlwaysVisible);
     m_settings.setValue("sidebarVisible", m_sidebarVisible);
     m_settings.setValue("collectionsSidebarVisible", m_collectionsSidebarVisible);
     m_settings.setValue("skinMode", m_skinMode);
@@ -3512,10 +4496,38 @@ void AppSettingsManager::saveSettings()
     m_settings.setValue("showSpeedPitchControls", m_showSpeedPitchControls);
     m_settings.setValue("reversePlayback", m_reversePlayback);
     m_settings.setValue("audioQualityProfile", m_audioQualityProfile);
+    m_settings.setValue("displayVolumeInDecibels", m_displayVolumeInDecibels);
     m_settings.setValue("dynamicSpectrum", m_dynamicSpectrum);
     m_settings.setValue("confirmTrashDeletion", m_confirmTrashDeletion);
     m_settings.setValue("automaticPlaylistSearch", m_automaticPlaylistSearch);
     m_settings.setValue("autoAddTracksFromPlaylistFolder", m_autoAddTracksFromPlaylistFolder);
+    m_settings.setValue("playlistScrollBarVisible", m_playlistScrollBarVisible);
+    m_settings.setValue("playSearchResultsInOrder", m_playSearchResultsInOrder);
+    m_settings.setValue("trackInfo.enabled", m_trackInfoEnabled);
+    m_settings.setValue("trackInfo.waveformOverlayHoverOnly", m_trackInfoWaveformOverlayHoverOnly);
+    m_settings.setValue("trackInfo.windowTitleFormat", m_trackInfoWindowTitleFormat);
+    m_settings.setValue("trackInfo.waveformTooltipFormat", m_trackInfoWaveformTooltipFormat);
+    for (const QString &key : trackInfoOverlayKeys()) {
+        m_settings.setValue(QStringLiteral("trackInfo.waveformOverlay.") + key,
+                            m_trackInfoWaveformOverlayFormats.value(key).toString());
+    }
+    m_settings.setValue("updates.autoCheck", m_autoCheckUpdates);
+    m_settings.setValue("updates.includePrerelease", m_includePrereleaseUpdates);
+    m_settings.setValue("updates.etag", m_updateCheckerEtag);
+    m_settings.setValue("updates.lastCheckAt", m_lastUpdateCheckAt);
+    m_settings.setValue("updates.lastAutoCheckAt", m_lastAutomaticUpdateCheckAt);
+    m_settings.setValue("updates.skippedTag", m_skippedUpdateTag);
+    m_settings.setValue("updates.deferredUntil", m_updateReminderDeferredUntil);
+    m_settings.setValue("autoScrollToCurrentTrackOnStartup", m_autoScrollToCurrentTrackOnStartup);
+    m_settings.setValue("playExternalOpenWithoutPlaylist", m_playExternalOpenWithoutPlaylist);
+    m_settings.setValue("restorePlaybackPositionOnStartup", m_restorePlaybackPositionOnStartup);
+    m_settings.setValue("restorePlaybackPausedOnStartup", m_restorePlaybackPausedOnStartup);
+    m_settings.setValue("quitAfterPlaybackFinished", m_quitAfterPlaybackFinished);
+    m_settings.setValue("keepAboveWhilePlaying", m_keepAboveWhilePlaying);
+    m_settings.setValue("alwaysKeepAbove", m_alwaysKeepAbove);
+    m_settings.setValue("keyboardSeekStepSeconds", m_keyboardSeekStepSeconds);
+    m_settings.setValue("keyboardSeekBackwardToPreviousTrack",
+                        m_keyboardSeekBackwardToPreviousTrack);
     m_settings.setValue("deterministicShuffleEnabled", m_deterministicShuffleEnabled);
     m_settings.setValue("shuffleSeed", static_cast<qulonglong>(m_shuffleSeed));
     m_settings.setValue("repeatableShuffle", m_repeatableShuffle);
@@ -3623,6 +4635,11 @@ QVariantMap AppSettingsManager::normalizeBatchAudioConverterLastSettings(const Q
                       normalizeBatchPlaybackRate(settings.value(QStringLiteral("playbackRate"), 1.0).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizeBatchPitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("applyEqualizer"),
+                      settings.value(QStringLiteral("applyEqualizer"), false).toBool());
+    normalized.insert(QStringLiteral("equalizerBandGains"),
+                      normalizeEqualizerBandGains(
+                          settings.value(QStringLiteral("equalizerBandGains")).toList()));
     normalized.insert(QStringLiteral("addResultsToPlaylist"),
                       normalized.value(QStringLiteral("playlistAddMode")).toString()
                           != QStringLiteral("disabled"));
@@ -3654,6 +4671,11 @@ QVariantMap AppSettingsManager::normalizeBatchAudioConverterPresetSettings(const
                       normalizeBatchPlaybackRate(settings.value(QStringLiteral("playbackRate"), 1.0).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizeBatchPitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("applyEqualizer"),
+                      settings.value(QStringLiteral("applyEqualizer"), false).toBool());
+    normalized.insert(QStringLiteral("equalizerBandGains"),
+                      normalizeEqualizerBandGains(
+                          settings.value(QStringLiteral("equalizerBandGains")).toList()));
     normalized.insert(QStringLiteral("addResultsToPlaylist"),
                       normalized.value(QStringLiteral("playlistAddMode")).toString()
                           != QStringLiteral("disabled"));
@@ -3805,4 +4827,22 @@ QVariantList AppSettingsManager::normalizeYtDlpImportRecentOutputDirectories(
     return normalizeUniqueStringHistory(directories,
                                         kYtDlpRecentOutputDirectoriesRetention,
                                         normalizeLocalPathValue);
+}
+
+QString AppSettingsManager::normalizeTrackInfoFormat(const QString &format)
+{
+    return format.left(kMaxTrackInfoFormatLength);
+}
+
+QVariantMap AppSettingsManager::normalizeTrackInfoOverlayFormats(const QVariantMap &formats,
+                                                                 bool fillMissingWithDefaults)
+{
+    const QVariantMap fallback = fillMissingWithDefaults
+        ? defaultTrackInfoOverlayFormatsValue()
+        : emptyTrackInfoOverlayFormatsValue();
+    QVariantMap normalized;
+    for (const QString &key : trackInfoOverlayKeys()) {
+        normalized.insert(key, normalizeTrackInfoFormat(formats.value(key, fallback.value(key)).toString()));
+    }
+    return normalized;
 }

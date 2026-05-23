@@ -3,6 +3,7 @@
 #include <QFileInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <QtTest>
 
 #include "TrackModel.h"
@@ -33,10 +34,58 @@ class tst_TrackModel : public QObject
     Q_OBJECT
 
 private slots:
+    void insertsDroppedUrlsAtRequestedIndex();
+    void clampsDroppedUrlInsertionIndexAndPreservesCurrentTrack();
     void autoAddsNewFileFromDominantPlaylistFolder();
     void disablesAutoAddWhenSettingIsOff();
     void ignoresFolderChangesWithoutAbsoluteMajority();
 };
+
+void tst_TrackModel::insertsDroppedUrlsAtRequestedIndex()
+{
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "temporary dir should be valid");
+
+    const QString firstTrack = tempDir.filePath(QStringLiteral("alpha.flac"));
+    const QString secondTrack = tempDir.filePath(QStringLiteral("beta.flac"));
+    const QString droppedTrack = tempDir.filePath(QStringLiteral("inserted.mp3"));
+    QVERIFY(writePlaceholderFile(firstTrack));
+    QVERIFY(writePlaceholderFile(secondTrack));
+    QVERIFY(writePlaceholderFile(droppedTrack));
+
+    TrackModel model;
+    model.setTracks({makeTrack(firstTrack), makeTrack(secondTrack)});
+    model.insertUrlsAt(1, {QUrl::fromLocalFile(droppedTrack)});
+
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(model.getFilePath(0), firstTrack);
+    QCOMPARE(model.getFilePath(1), droppedTrack);
+    QCOMPARE(model.getFilePath(2), secondTrack);
+}
+
+void tst_TrackModel::clampsDroppedUrlInsertionIndexAndPreservesCurrentTrack()
+{
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "temporary dir should be valid");
+
+    const QString firstTrack = tempDir.filePath(QStringLiteral("alpha.flac"));
+    const QString secondTrack = tempDir.filePath(QStringLiteral("beta.flac"));
+    const QString droppedTrack = tempDir.filePath(QStringLiteral("inserted.mp3"));
+    QVERIFY(writePlaceholderFile(firstTrack));
+    QVERIFY(writePlaceholderFile(secondTrack));
+    QVERIFY(writePlaceholderFile(droppedTrack));
+
+    TrackModel model;
+    model.setTracks({makeTrack(firstTrack), makeTrack(secondTrack)});
+    model.setCurrentIndex(1);
+
+    model.insertUrlsAt(-50, {QUrl::fromLocalFile(droppedTrack)});
+
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(model.getFilePath(0), droppedTrack);
+    QCOMPARE(model.getFilePath(2), secondTrack);
+    QCOMPARE(model.currentIndex(), 2);
+}
 
 void tst_TrackModel::autoAddsNewFileFromDominantPlaylistFolder()
 {

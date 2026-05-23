@@ -137,6 +137,7 @@ public slots:
     void stop();
     void unload();
     void togglePlayPause();
+    Q_INVOKABLE void toggleMute();
     void seek(qint64 position);
     Q_INVOKABLE void seekWithSource(qint64 position, const QString &source);
     Q_INVOKABLE QVariantMap trackerDiagnosticsSnapshot() const;
@@ -265,6 +266,7 @@ private:
     // so the exposed position() stays relative to the current track start.
     qint64 m_trackTimelineOffsetMs = 0;
     double m_volume = 1.0;
+    double m_volumeBeforeMute = 1.0;
     double m_playbackRate = 1.0;
     bool m_reversePlayback = false;
     QString m_audioQualityProfile = QStringLiteral("standard");

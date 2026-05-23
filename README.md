@@ -29,6 +29,7 @@ metadata editing, and desktop integration on both Windows and Linux.
 - Single-track and bulk tag editing with cover art support where the format allows it
 - Smart collections and persistent library/search backend using SQLite
 - Saved playlist profiles with restore, update, duplicate, and delete flows
+- Built-in update checks through GitHub Releases, with optional automatic background checks
 - Built-in performance profiler with overlay, memory checkpoints, JSON/CSV export, and memory-budget tooling
 - Windows media integration via SMTC and Linux desktop integration via MPRIS/XDG portal when enabled
 - English and Russian UI
@@ -182,6 +183,7 @@ Current test targets:
 - `tst_cue_sheet_parser`
 - `tst_xspf_playlist_parser`
 - `tst_app_settings_manager`
+- `tst_update_checker`
 - `tst_ytdlp_import_service`
 - `tst_ytdlp_import_dialog_smoke`
 - `tst_playback_backend_contract`
@@ -336,6 +338,7 @@ sudo apt install -y \
 Output:
 
 - `dist/debian/`
+- Debian package file names use `waveflux_<version>-<release>_<arch>.deb`.
 
 ### RPM Package
 
@@ -352,6 +355,7 @@ Or install build dependencies first:
 Output:
 
 - `dist/rpm/`
+- RPM source archives use `waveflux-<version>.tar.gz`; package naming follows the generated RPM metadata.
 
 ### Arch Package
 
@@ -362,6 +366,33 @@ Output:
 Output:
 
 - `dist/pacman/`
+- Arch package metadata reads the version from `CMakeLists.txt`.
+
+### Release Asset Naming
+
+Release packaging helpers derive the application version from `project(waveflux VERSION ...)` in `CMakeLists.txt`.
+Keep release asset names stable so the in-app update checker can later recommend the right download:
+
+- `WaveFlux-<version>-windows-portable.zip`
+- `WaveFlux-<version>-windows-x64.msi`
+- `WaveFlux-<version>-<arch>.AppImage`
+- `waveflux_<version>-<release>_<arch>.deb`
+
+## Updates
+
+WaveFlux checks for new versions through GitHub Releases:
+
+- <https://github.com/leocallidus/waveflux/releases>
+
+Automatic update checks are enabled by default and can be disabled in `Settings` -> `System` -> `Automatically check for updates`.
+Manual checks are available from the same settings section through `Check for updates now`.
+
+The updater only reads release metadata from GitHub. It does not download, install, or execute release assets.
+When a newer version is found, WaveFlux shows a modal dialog with the release title, version, publication date,
+plain-text release notes, and actions to open the release page, remind later, skip that version, or close the dialog.
+
+For privacy, update checks do not send library contents, file paths, playlists, or user settings.
+WaveFlux stores only technical update metadata such as the last check time, ETag, skipped release tag, and reminder delay.
 
 ## Performance and Memory Tooling
 

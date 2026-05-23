@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <limits>
 
 #include "AppSettingsManager.h"
@@ -88,6 +89,7 @@ private slots:
     void defaultsNewPlaylistFolderAutoAddToEnabled();
     void persistsAndReloadsSettings();
     void sanitizesInvalidStoredValues();
+    void persistsTrackInfoSettingsAndNormalizesFormats();
     void persistsYtDlpImportHistoryAndSanitizesSecrets();
     void signalsOnlyOnEffectiveChangesAndPersistsBurstUpdates();
     void resolvesImportToolRuntimeDeterministically();
@@ -122,6 +124,14 @@ void AppSettingsManagerTest::defaultsNewPlaylistFolderAutoAddToEnabled()
 {
     AppSettingsManager settings;
     QCOMPARE(settings.autoAddTracksFromPlaylistFolder(), true);
+    QCOMPARE(settings.autoCheckUpdates(), true);
+    QCOMPARE(settings.includePrereleaseUpdates(), false);
+    QCOMPARE(settings.trackInfoEnabled(), true);
+    QCOMPARE(settings.trackInfoWaveformOverlayHoverOnly(), true);
+    QCOMPARE(settings.trackInfoWindowTitleFormat(), settings.defaultTrackInfoWindowTitleFormat());
+    QCOMPARE(settings.trackInfoWaveformTooltipFormat(), QString());
+    QCOMPARE(settings.trackInfoWaveformOverlayFormats(), settings.defaultTrackInfoWaveformOverlayFormats());
+    QVERIFY(!settings.lastUpdateCheckAt().isValid());
 }
 
 void AppSettingsManagerTest::persistsAndReloadsSettings()
@@ -152,6 +162,9 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     batchLastSettings.insert(QStringLiteral("playbackRate"), 1.15);
     batchLastSettings.insert(QStringLiteral("pitchSemitones"), -2);
     batchLastSettings.insert(QStringLiteral("addResultsToPlaylist"), true);
+    batchLastSettings.insert(QStringLiteral("applyEqualizer"), false);
+    batchLastSettings.insert(QStringLiteral("equalizerBandGains"),
+                             gains({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
 
     QVariantMap batchPresetSettings = batchLastSettings;
     batchPresetSettings.remove(QStringLiteral("retryPolicy"));
@@ -218,6 +231,9 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         QStringLiteral("/tmp/yt-out"),
         QStringLiteral("/tmp/yt-archive")
     };
+    const QDateTime lastUpdateCheckAt(QDate(2026, 5, 22), QTime(8, 15, 30), QTimeZone::UTC);
+    const QDateTime lastAutomaticUpdateCheckAt(QDate(2026, 5, 22), QTime(9, 15, 30), QTimeZone::UTC);
+    const QDateTime updateReminderDeferredUntil(QDate(2026, 5, 23), QTime(8, 15, 30), QTimeZone::UTC);
 
     {
         AppSettingsManager settings;
@@ -238,6 +254,21 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         settings.setDynamicSpectrum(true);
         settings.setConfirmTrashDeletion(false);
         settings.setAutoAddTracksFromPlaylistFolder(false);
+        settings.setAutoCheckUpdates(false);
+        settings.setIncludePrereleaseUpdates(true);
+        QVariantMap trackInfoOverlay = settings.defaultTrackInfoWaveformOverlayFormats();
+        trackInfoOverlay.insert(QStringLiteral("topCenter"), QStringLiteral("%g"));
+        trackInfoOverlay.insert(QStringLiteral("bottomRight"), QStringLiteral("%T/%r"));
+        settings.setTrackInfoEnabled(false);
+        settings.setTrackInfoWaveformOverlayHoverOnly(false);
+        settings.setTrackInfoWindowTitleFormat(QStringLiteral("%F - test"));
+        settings.setTrackInfoWaveformTooltipFormat(QStringLiteral("%C %o"));
+        settings.setTrackInfoWaveformOverlayFormats(trackInfoOverlay);
+        settings.setUpdateCheckerEtag(QStringLiteral(" \"etag-test\" "));
+        settings.setLastUpdateCheckAt(lastUpdateCheckAt);
+        settings.setLastAutomaticUpdateCheckAt(lastAutomaticUpdateCheckAt);
+        settings.setSkippedUpdateTag(QStringLiteral(" v9.9.9 "));
+        settings.setUpdateReminderDeferredUntil(updateReminderDeferredUntil);
         settings.setDeterministicShuffleEnabled(true);
         settings.setShuffleSeed(123456789u);
         settings.setRepeatableShuffle(false);
@@ -280,6 +311,26 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         QStringLiteral("dynamicSpectrum"),
         QStringLiteral("confirmTrashDeletion"),
         QStringLiteral("autoAddTracksFromPlaylistFolder"),
+        QStringLiteral("trackInfo.enabled"),
+        QStringLiteral("trackInfo.waveformOverlayHoverOnly"),
+        QStringLiteral("trackInfo.windowTitleFormat"),
+        QStringLiteral("trackInfo.waveformTooltipFormat"),
+        QStringLiteral("trackInfo.waveformOverlay.topLeft"),
+        QStringLiteral("trackInfo.waveformOverlay.topCenter"),
+        QStringLiteral("trackInfo.waveformOverlay.topRight"),
+        QStringLiteral("trackInfo.waveformOverlay.middleLeft"),
+        QStringLiteral("trackInfo.waveformOverlay.middleCenter"),
+        QStringLiteral("trackInfo.waveformOverlay.middleRight"),
+        QStringLiteral("trackInfo.waveformOverlay.bottomLeft"),
+        QStringLiteral("trackInfo.waveformOverlay.bottomCenter"),
+        QStringLiteral("trackInfo.waveformOverlay.bottomRight"),
+        QStringLiteral("updates.autoCheck"),
+        QStringLiteral("updates.includePrerelease"),
+        QStringLiteral("updates.etag"),
+        QStringLiteral("updates.lastCheckAt"),
+        QStringLiteral("updates.lastAutoCheckAt"),
+        QStringLiteral("updates.skippedTag"),
+        QStringLiteral("updates.deferredUntil"),
         QStringLiteral("deterministicShuffleEnabled"),
         QStringLiteral("shuffleSeed"),
         QStringLiteral("repeatableShuffle"),
@@ -325,6 +376,21 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     QCOMPARE(reloaded.dynamicSpectrum(), true);
     QCOMPARE(reloaded.confirmTrashDeletion(), false);
     QCOMPARE(reloaded.autoAddTracksFromPlaylistFolder(), false);
+    QCOMPARE(reloaded.autoCheckUpdates(), false);
+    QCOMPARE(reloaded.includePrereleaseUpdates(), true);
+    QCOMPARE(reloaded.trackInfoEnabled(), false);
+    QCOMPARE(reloaded.trackInfoWaveformOverlayHoverOnly(), false);
+    QCOMPARE(reloaded.trackInfoWindowTitleFormat(), QStringLiteral("%F - test"));
+    QCOMPARE(reloaded.trackInfoWaveformTooltipFormat(), QStringLiteral("%C %o"));
+    QCOMPARE(reloaded.trackInfoWaveformOverlayFormats().value(QStringLiteral("topCenter")).toString(),
+             QStringLiteral("%g"));
+    QCOMPARE(reloaded.trackInfoWaveformOverlayFormats().value(QStringLiteral("bottomRight")).toString(),
+             QStringLiteral("%T/%r"));
+    QCOMPARE(reloaded.updateCheckerEtag(), QStringLiteral("\"etag-test\""));
+    QCOMPARE(reloaded.lastUpdateCheckAt(), lastUpdateCheckAt);
+    QCOMPARE(reloaded.lastAutomaticUpdateCheckAt(), lastAutomaticUpdateCheckAt);
+    QCOMPARE(reloaded.skippedUpdateTag(), QStringLiteral("v9.9.9"));
+    QCOMPARE(reloaded.updateReminderDeferredUntil(), updateReminderDeferredUntil);
     QCOMPARE(reloaded.deterministicShuffleEnabled(), true);
     QCOMPARE(reloaded.shuffleSeed(), 123456789u);
     QCOMPARE(reloaded.repeatableShuffle(), false);
@@ -402,6 +468,23 @@ void AppSettingsManagerTest::sanitizesInvalidStoredValues()
     {
         QSettings settings(QStringLiteral("WaveFlux"), QStringLiteral("WaveFlux"));
         settings.beginGroup(QStringLiteral("App"));
+        settings.setValue(QStringLiteral("trackInfo.windowTitleFormat"),
+                          QStringLiteral("{%a - %t — |%F — }WaveFlux %v"));
+        settings.setValue(QStringLiteral("trackInfo.waveformTooltipFormat"), QStringLiteral("%C"));
+        settings.endGroup();
+        settings.sync();
+    }
+
+    AppSettingsManager fromOldTrackInfoDefault;
+    QCOMPARE(fromOldTrackInfoDefault.trackInfoWindowTitleFormat(),
+             fromOldTrackInfoDefault.defaultTrackInfoWindowTitleFormat());
+    QCOMPARE(fromOldTrackInfoDefault.trackInfoWaveformTooltipFormat(), QString());
+
+    clearSettings();
+
+    {
+        QSettings settings(QStringLiteral("WaveFlux"), QStringLiteral("WaveFlux"));
+        settings.beginGroup(QStringLiteral("App"));
         settings.setValue(QStringLiteral("batchAudioConverter.draft"),
                           QVariantMap{{QStringLiteral("schema"), QStringLiteral("broken")},
                                       {QStringLiteral("items"), QVariantList{QVariantMap{{QStringLiteral("id"), 1}}}}});
@@ -425,6 +508,39 @@ void AppSettingsManagerTest::sanitizesInvalidStoredValues()
     QCOMPARE(fromBrokenBatchPersistence.batchAudioConverterDraft(), QVariantMap());
     QCOMPARE(fromBrokenBatchPersistence.batchAudioConverterFinishedJobs(), QVariantList());
     QCOMPARE(fromBrokenBatchPersistence.ytDlpImportDraft(), QVariantMap());
+}
+
+void AppSettingsManagerTest::persistsTrackInfoSettingsAndNormalizesFormats()
+{
+    const QString longFormat(1100, QLatin1Char('x'));
+    QVariantMap partialOverlay;
+    partialOverlay.insert(QStringLiteral("middleCenter"), longFormat);
+    partialOverlay.insert(QStringLiteral("unknown"), QStringLiteral("ignored"));
+
+    {
+        AppSettingsManager settings;
+        settings.setTrackInfoWindowTitleFormat(longFormat);
+        settings.setTrackInfoWaveformTooltipFormat(QStringLiteral("%C %o"));
+        settings.setTrackInfoWaveformOverlayFormats(partialOverlay);
+
+        QCOMPARE(settings.trackInfoWindowTitleFormat().size(), 1024);
+        QCOMPARE(settings.trackInfoWaveformOverlayFormats().value(QStringLiteral("middleCenter")).toString().size(),
+                 1024);
+        QVERIFY(!settings.trackInfoWaveformOverlayFormats().contains(QStringLiteral("unknown")));
+        QCOMPARE(settings.renderTrackInfoFormat(QStringLiteral("%a - %t"),
+                                                QVariantMap{{QStringLiteral("artist"), QStringLiteral("Artist")},
+                                                            {QStringLiteral("title"), QStringLiteral("Title")}},
+                                                QStringLiteral("windowTitle")),
+                 QStringLiteral("Artist - Title"));
+    }
+
+    AppSettingsManager reloaded;
+    QCOMPARE(reloaded.trackInfoWindowTitleFormat().size(), 1024);
+    QCOMPARE(reloaded.trackInfoWaveformTooltipFormat(), QStringLiteral("%C %o"));
+    QCOMPARE(reloaded.trackInfoWaveformOverlayFormats().value(QStringLiteral("middleCenter")).toString().size(),
+             1024);
+    QCOMPARE(reloaded.trackInfoWaveformOverlayFormats().value(QStringLiteral("topLeft")).toString(),
+             reloaded.defaultTrackInfoWaveformOverlayFormats().value(QStringLiteral("topLeft")).toString());
 }
 
 void AppSettingsManagerTest::persistsYtDlpImportHistoryAndSanitizesSecrets()

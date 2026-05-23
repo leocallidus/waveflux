@@ -17,6 +17,10 @@
 #include <string>
 #include <gst/gst.h>
 
+#ifndef WAVEFLUX_VERSION
+#define WAVEFLUX_VERSION "0.0.0"
+#endif
+
 #include "AudioEngine.h"
 #include "AudioConverterService.h"
 #include "BatchAudioConverterService.h"
@@ -33,6 +37,8 @@
 #include "EqualizerPresetManager.h"
 #include "BatchAudioConverterPresetManager.h"
 #include "AppSettingsManager.h"
+#include "UpdateChecker.h"
+#include "ShortcutManager.h"
 #include "GlobalKeyMonitor.h"
 #include "MprisService.h"
 #include "TrayManager.h"
@@ -137,7 +143,7 @@ int main(int argc, char *argv[])
         app.setQuitOnLastWindowClosed(true);
         app.setApplicationName("WaveFlux");
         app.setApplicationDisplayName("WaveFlux");
-        app.setApplicationVersion("1.2.0");
+        app.setApplicationVersion(QStringLiteral(WAVEFLUX_VERSION));
         app.setOrganizationName("WaveFlux");
         app.setOrganizationDomain("waveflux.app");
         app.setWindowIcon(QIcon(QStringLiteral(":/WaveFlux/resources/icons/waveflux.ico")));
@@ -191,7 +197,28 @@ int main(int argc, char *argv[])
         EqualizerPresetManager equalizerPresetManager;
         BatchAudioConverterPresetManager batchAudioConverterPresetManager;
         AppSettingsManager appSettingsManager;
+        UpdateChecker updateChecker(&appSettingsManager);
+        ShortcutManager shortcutManager;
+        QObject::connect(&playbackController,
+                         &PlaybackController::playbackSequenceFinished,
+                         &app,
+                         [&appSettingsManager, &app]() {
+                             if (appSettingsManager.quitAfterPlaybackFinished()) {
+                                 app.quit();
+                             }
+                         },
+                         Qt::QueuedConnection);
         GlobalKeyMonitor globalKeyMonitor;
+        globalKeyMonitor.setTapHoldShortcutSequence(
+            shortcutManager.effectiveSequence(QStringLiteral("playback.spaceTapHold")));
+        QObject::connect(&shortcutManager,
+                         &ShortcutManager::shortcutsChanged,
+                         &globalKeyMonitor,
+                         [&shortcutManager, &globalKeyMonitor]() {
+                             globalKeyMonitor.setTapHoldShortcutSequence(
+                                 shortcutManager.effectiveSequence(
+                                     QStringLiteral("playback.spaceTapHold")));
+                         });
         DatabaseManager databaseManager;
         MigrationManager migrationManager;
         SmartCollectionsEngine smartCollectionsEngine;
@@ -206,6 +233,10 @@ int main(int argc, char *argv[])
         performanceProfiler.setPlaylistTrackCount(trackModel.rowCount());
         audioConverterService.initialize(&trackModel);
         sessionManager.initialize(&trackModel, &audioEngine, &playbackController);
+        sessionManager.setRestorePlaybackPositionOnStartup(
+            appSettingsManager.restorePlaybackPositionOnStartup());
+        sessionManager.setRestorePlaybackPausedOnStartup(
+            appSettingsManager.restorePlaybackPausedOnStartup());
         playlistExportService.initialize(&trackModel);
         ytDlpImportService.setAppSettingsManager(&appSettingsManager);
 
@@ -490,6 +521,8 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("batchAudioConverterPresetManager",
                                                  &batchAudioConverterPresetManager);
         engine.rootContext()->setContextProperty("appSettings", &appSettingsManager);
+        engine.rootContext()->setContextProperty("updateChecker", &updateChecker);
+        engine.rootContext()->setContextProperty("shortcutManager", &shortcutManager);
         engine.rootContext()->setContextProperty("globalKeyMonitor", &globalKeyMonitor);
         engine.rootContext()->setContextProperty("trayManager", &trayManager);
         engine.rootContext()->setContextProperty("xdgPortalFilePicker", &xdgPortalFilePicker);
@@ -560,20 +593,34 @@ int main(int argc, char *argv[])
 
         sessionManager.restoreSession();
         if (!startupUrls.isEmpty()) {
-            const int firstAddedIndex = trackModel.rowCount();
-            trackModel.addUrls(startupUrls);
-            if (trackModel.rowCount() > firstAddedIndex) {
-                playbackController.requestPlayIndex(firstAddedIndex,
-                                                    QStringLiteral("main.startup_open_files"));
+            if (appSettingsManager.playExternalOpenWithoutPlaylist()) {
+                audioEngine.loadUrl(startupUrls.constFirst());
+            } else {
+                const int firstAddedIndex = trackModel.rowCount();
+                trackModel.addUrls(startupUrls);
+                if (trackModel.rowCount() > firstAddedIndex) {
+                    playbackController.requestPlayIndex(firstAddedIndex,
+                                                        QStringLiteral("main.startup_open_files"));
+                }
             }
+        }
+        if (mainWindow && appSettingsManager.autoScrollToCurrentTrackOnStartup()) {
+            QTimer::singleShot(250, mainWindow, [mainWindow]() {
+                QMetaObject::invokeMethod(mainWindow, "autoLocateCurrentTrackOnStartup");
+            });
         }
         QTimer::singleShot(300, &performanceProfiler, [&performanceProfiler]() {
             performanceProfiler.captureMemoryCheckpoint(QStringLiteral("session.restore_complete"));
         });
+        updateChecker.scheduleStartupCheck();
         QObject::connect(&app, &QCoreApplication::aboutToQuit,
                          &playbackController, &PlaybackController::forceFlushPlaybackStats);
         QObject::connect(&app, &QCoreApplication::aboutToQuit,
-                         &sessionManager, &SessionManager::forceSave);
+                         &sessionManager, [&sessionManager, &appSettingsManager]() {
+            if (!appSettingsManager.fullApplicationResetPending()) {
+                sessionManager.forceSave();
+            }
+        });
         QObject::connect(&app, &QCoreApplication::aboutToQuit,
                          &app,
                          [&audioEngine,

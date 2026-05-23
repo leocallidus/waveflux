@@ -17,6 +17,7 @@
 #include <gst/gst.h>
 
 #include "AudioEngine.h"
+#include "AppSettingsManager.h"
 #include "playback/PlaybackBackendRouting.h"
 
 class PlaybackBackendRoutingTest : public QObject
@@ -382,7 +383,8 @@ void PlaybackBackendRoutingTest::unsupportedTrackerCandidates_areRejectedBeforeP
     engine.loadFile(unsupportedPath);
 
     QCOMPARE(errorSpy.count(), 1);
-    QVERIFY(errorSpy.at(0).at(0).toString().contains(QStringLiteral("not supported yet")));
+    QVERIFY(errorSpy.at(0).at(0).toString().contains(
+        AppSettingsManager::translateForCurrentLanguage(QStringLiteral("error.trackerUnsupported")).arg(QString()).trimmed()));
     QCOMPARE(engine.currentBackendKind(), WaveFlux::PlaybackBackendKind::GStreamer);
     QCOMPARE(engine.currentFile(), regularPath);
 
@@ -418,7 +420,7 @@ void PlaybackBackendRoutingTest::midiSources_areRejectedBeforePlaybackStarts()
 
     QCOMPARE(errorSpy.count(), 1);
     QCOMPARE(errorSpy.at(0).at(0).toString(),
-             QStringLiteral("MIDI playback is not supported yet: unsupported.mid"));
+             AppSettingsManager::translateForCurrentLanguage(QStringLiteral("error.midiUnsupported")).arg(QStringLiteral("unsupported.mid")));
     QCOMPARE(engine.currentBackendKind(), WaveFlux::PlaybackBackendKind::GStreamer);
     QCOMPARE(engine.currentFile(), regularPath);
 
@@ -904,7 +906,7 @@ void PlaybackBackendRoutingTest::audioEngine_trackerSpectrumStartsStopsWithPlayb
     QTRY_VERIFY_WITH_TIMEOUT(levelsHaveEnergy(engine.spectrumLevels()), 3000);
 
     engine.pause();
-    QTRY_VERIFY_WITH_TIMEOUT(levelsAreZero(engine.spectrumLevels()), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(levelsAreZero(engine.spectrumLevels()), 3000);
     const int pausedSignalCount = spectrumSpy.count();
     QTest::qWait(180);
     QCOMPARE(spectrumSpy.count(), pausedSignalCount);

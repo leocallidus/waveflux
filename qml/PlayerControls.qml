@@ -22,6 +22,18 @@ Item {
         const seconds = totalSeconds % 60
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
     }
+
+    function formatVolume(value) {
+        const volume = Math.max(0, Math.min(1.25, Number(value) || 0))
+        if (appSettings.displayVolumeInDecibels) {
+            if (volume <= 0.000001) {
+                return "-∞ dB"
+            }
+            const db = (10 / 0.3) * (Math.log(volume) / Math.LN10)
+            return db.toFixed(1) + " dB"
+        }
+        return Math.round(volume * 100) + "%"
+    }
     
     Rectangle {
         anchors.fill: parent
@@ -93,36 +105,20 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
                     Layout.fillWidth: true
 
-                    Label {
-                        visible: !root.veryCompactMode
-                        text: audioEngine.playbackRate.toFixed(2) + "x"
-                        font.family: themeManager.monoFontFamily
-                        opacity: 0.8
-                    }
-
-                    AccentSlider {
-                        id: rateSlider
-                        from: 0.25
-                        to: 2.0
-                        stepSize: 0.05
+                    PlaybackAdjustStrip {
+                        title: root.tr("player.speed")
                         value: audioEngine.playbackRate
-                        onMoved: audioEngine.playbackRate = value
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 60
-                        Layout.maximumWidth: root.compactMode ? 120 : 160
-
-                        ToolTip {
-                            parent: rateSlider.handle
-                            visible: rateSlider.pressed
-                            text: audioEngine.playbackRate.toFixed(2) + "x"
-                        }
-                    }
-
-                    ToolButton {
-                        text: root.veryCompactMode ? "1x" : "1.0x"
-                        onClicked: audioEngine.playbackRate = 1.0
-                        ToolTip.text: root.tr("player.resetSpeed")
-                        ToolTip.visible: hovered
+                        valueText: value.toFixed(2) + "x"
+                        resetText: "1x"
+                        resetTooltip: root.tr("player.resetSpeed")
+                        minimumValue: 0.25
+                        maximumValue: 2.0
+                        neutralValue: 1.0
+                        stepSize: 0.05
+                        stripWidth: root.compactMode ? 84 : 112
+                        compactMode: root.veryCompactMode
+                        onValueEdited: function(nextValue) { audioEngine.playbackRate = nextValue }
+                        onResetRequested: audioEngine.playbackRate = 1.0
                     }
                 }
 
@@ -132,38 +128,20 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
                     Layout.fillWidth: true
 
-                    Label {
-                        text: (audioEngine.pitchSemitones >= 0 ? "+" : "") + audioEngine.pitchSemitones
-                        font.family: themeManager.monoFontFamily
-                        opacity: audioEngine.pitchSemitones !== 0 ? 1.0 : 0.6
-                        color: audioEngine.pitchSemitones !== 0 ? themeManager.primaryColor : themeManager.textColor
-                    }
-
-                    AccentSlider {
-                        id: pitchSlider
-                        from: -6
-                        to: 6
-                        stepSize: 1
+                    PlaybackAdjustStrip {
+                        title: root.tr("player.pitch")
                         value: audioEngine.pitchSemitones
-                        onMoved: audioEngine.pitchSemitones = Math.round(value)
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 50
-                        Layout.maximumWidth: root.compactMode ? 100 : 140
-
-                        ToolTip {
-                            parent: pitchSlider.handle
-                            visible: pitchSlider.pressed
-                            text: (pitchSlider.value >= 0 ? "+" : "") + Math.round(pitchSlider.value) + " " + root.tr("player.semitones")
-                        }
-                    }
-
-                    ToolButton {
-                        text: "0"
-                        enabled: audioEngine.pitchSemitones !== 0
-                        opacity: audioEngine.pitchSemitones !== 0 ? 1.0 : 0.5
-                        onClicked: audioEngine.pitchSemitones = 0
-                        ToolTip.text: root.tr("player.resetPitch")
-                        ToolTip.visible: hovered
+                        valueText: (value >= 0 ? "+" : "") + Math.round(value)
+                        resetText: "0"
+                        resetTooltip: root.tr("player.resetPitch")
+                        minimumValue: -6
+                        maximumValue: 6
+                        neutralValue: 0
+                        stepSize: 1
+                        stripWidth: root.compactMode ? 84 : 112
+                        compactMode: root.compactMode
+                        onValueEdited: function(nextValue) { audioEngine.pitchSemitones = Math.round(nextValue) }
+                        onResetRequested: audioEngine.pitchSemitones = 0
                     }
                 }
 
@@ -194,44 +172,11 @@ Item {
                     }
                 }
 
-                RowLayout {
-                    spacing: Kirigami.Units.smallSpacing
-                    Layout.minimumWidth: 100
-                    Layout.maximumWidth: root.compactMode ? 140 : 180
-
-                    ToolButton {
-                        icon.source: IconResolver.themed(audioEngine.volume > 0 ? "audio-volume-high" : "audio-volume-muted", themeManager.darkMode)
-                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                        icon.width: 22
-                        icon.height: 22
-                        onClicked: {
-                            if (audioEngine.volume > 0) {
-                                root.previousVolume = audioEngine.volume
-                                audioEngine.volume = 0
-                            } else {
-                                audioEngine.volume = root.previousVolume || 1.0
-                            }
-                        }
-                    }
-
-                    AccentSlider {
-                        id: volumeSlider
-                        from: 0
-                        to: 1
-                        value: audioEngine.volume
-                        onMoved: audioEngine.volume = value
-                        Layout.fillWidth: true
-
-                        ToolTip {
-                            parent: volumeSlider.handle
-                            visible: volumeSlider.pressed
-                            text: Math.round(volumeSlider.value * 100) + "%"
-                        }
-                    }
+                VolumeStrip {
+                    stripWidth: root.compactMode ? 72 : 90
+                    compactMode: root.compactMode
                 }
             }
         }
     }
-    
-    property real previousVolume: 1.0
 }

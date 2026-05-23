@@ -68,20 +68,21 @@ Item {
             Layout.fillWidth: true
             Layout.minimumHeight: root.minimumInteractiveHeight
             activeFocusOnTab: true
-            model: root.sections
+            model: root.sections || []
             textRole: "tabTitle"
 
             currentIndex: {
-                for (let i = 0; i < model.length; ++i) {
-                    if (model[i].id === root.activeSectionId) {
+                const items = root.sections || []
+                for (let i = 0; i < items.length; ++i) {
+                    if (items[i].id === root.activeSectionId) {
                         return i
                     }
                 }
-                return model.length > 0 ? 0 : -1
+                return items.length > 0 ? 0 : -1
             }
 
             onActivated: function(index) {
-                const selected = model[index]
+                const selected = (root.sections || [])[index]
                 if (selected) {
                     root.sectionTriggered(selected.id)
                 }

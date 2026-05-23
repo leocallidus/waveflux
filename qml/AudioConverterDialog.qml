@@ -117,6 +117,62 @@ Dialog {
         return minutes + ":" + String(seconds).padStart(2, "0")
     }
 
+    function parseDurationText(text) {
+        const normalized = String(text || "").trim()
+        if (normalized.length === 0) {
+            return 0
+        }
+        const parts = normalized.split(":")
+        let seconds = 0
+        if (parts.length === 1) {
+            seconds = Number(parts[0])
+        } else if (parts.length === 2) {
+            seconds = Number(parts[0]) * 60 + Number(parts[1])
+        } else {
+            seconds = Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2])
+        }
+        if (!isFinite(seconds) || seconds < 0) {
+            return 0
+        }
+        return Math.round(seconds * 1000)
+    }
+
+    function sourceTrimDurationMs() {
+        return Math.max(0, Number(root.sourceDurationMs) || 0)
+    }
+
+    function clampTrimStart(value) {
+        const duration = root.sourceTrimDurationMs()
+        const safeValue = Math.max(0, Math.round(Number(value) || 0))
+        if (duration <= 0) {
+            return safeValue
+        }
+        return Math.min(safeValue, Math.max(0, duration - 1000))
+    }
+
+    function clampTrimEnd(value) {
+        const duration = root.sourceTrimDurationMs()
+        const fallbackEnd = duration > 0 ? duration : Math.max(1000, audioConverterService.trimStartMs + 1000)
+        const safeValue = Math.max(0, Math.round(Number(value) || fallbackEnd))
+        const minEnd = audioConverterService.trimStartMs + 1000
+        if (duration <= 0) {
+            return Math.max(minEnd, safeValue)
+        }
+        return Math.max(minEnd, Math.min(safeValue, duration))
+    }
+
+    function setTrimStart(value) {
+        const start = root.clampTrimStart(value)
+        audioConverterService.trimStartMs = start
+        if (audioConverterService.trimEndMs <= start) {
+            audioConverterService.trimEndMs = root.clampTrimEnd(start + 1000)
+        }
+    }
+
+    function setTrimEnd(value) {
+        audioConverterService.trimEndMs = root.clampTrimEnd(value)
+    }
+
     function formatBitrateLabel(kbps) {
         const value = Math.max(0, Number(kbps) || 0)
         return value > 0 ? value + " kbps" : root.tr("audioConverter.notAvailable")
@@ -254,6 +310,7 @@ Dialog {
         root.completedOutputPath = ""
         root.followSuggestedOutputPath = false
         audioConverterService.outputFile = outputPath
+        syncEqualizerSettingsForConversion()
         const currentPreflight = audioConverterService.preflight
 
         if (currentPreflight && currentPreflight.requiresOverwriteConfirmation) {
@@ -368,10 +425,26 @@ Dialog {
     }
 
     function currentTransformSummary() {
-        return root.tr("audioConverter.speed")
-                + Number(audioConverterService.playbackRate).toFixed(2) + "x, "
-                + root.tr("audioConverter.pitch")
-                + root.pitchLabel(audioConverterService.pitchSemitones)
+        const chunks = [
+            root.tr("audioConverter.speed") + Number(audioConverterService.playbackRate).toFixed(2) + "x",
+            root.tr("audioConverter.pitch") + root.pitchLabel(audioConverterService.pitchSemitones)
+        ]
+        chunks.push(audioConverterService.applyEqualizer
+                    ? root.tr("audioConverter.equalizerCurrent")
+                    : root.tr("audioConverter.equalizerDisabled"))
+        chunks.push(audioConverterService.trimEnabled
+                    ? root.tr("audioConverter.trimRange")
+                          .arg(root.formatDuration(audioConverterService.trimStartMs))
+                          .arg(root.formatDuration(audioConverterService.trimEndMs))
+                    : root.tr("audioConverter.trimDisabled"))
+        return chunks.join(", ")
+    }
+
+    function syncEqualizerSettingsForConversion() {
+        if (!audioEngine || !audioConverterService.applyEqualizer) {
+            return
+        }
+        audioConverterService.equalizerBandGains = audioEngine.equalizerBandGains
     }
 
     function dialogTone() {
@@ -476,6 +549,9 @@ Dialog {
 
         audioConverterService.resetTransientState()
         audioConverterService.sourceFile = sourceFile
+        audioConverterService.trimEnabled = false
+        audioConverterService.trimStartMs = 0
+        audioConverterService.trimEndMs = sourceDurationMs
         if (source.format && String(source.format).trim().length > 0) {
             audioConverterService.format = String(source.format).trim()
         }
@@ -538,7 +614,7 @@ Dialog {
         if (showInPlaylistButton.visible) {
             return showInPlaylistButton
         }
-        return pitchSlider
+        return trimEndSlider.visible ? trimEndSlider : equalizerCheckBox
     }
 
     title: ""
@@ -566,6 +642,7 @@ Dialog {
         } else {
             syncOutputField()
         }
+        syncEqualizerSettingsForConversion()
         Qt.callLater(function() {
             if (outputPathField.enabled) {
                 outputPathField.forceActiveFocus()
@@ -981,9 +1058,9 @@ Dialog {
                                 textRole: "label"
                                 valueRole: "value"
                                 enabled: !audioConverterService.isRunning
-                                Accessible.name: root.tr("audioConverter.channels")
-                                Accessible.description: currentText
-                                KeyNavigation.tab: speedSlider
+                            Accessible.name: root.tr("audioConverter.channels")
+                            Accessible.description: currentText
+                            KeyNavigation.tab: speedSlider
                                 KeyNavigation.backtab: sampleRateComboBox.visible
                                                         ? sampleRateComboBox
                                                         : (bitrateComboBox.visible ? bitrateComboBox : formatComboBox)
@@ -1098,15 +1175,163 @@ Dialog {
                             enabled: !audioConverterService.isRunning
                             Accessible.name: root.tr("audioConverter.pitch")
                             Accessible.description: root.pitchLabel(audioConverterService.pitchSemitones)
-                            KeyNavigation.tab: root.firstSuccessActionControl()
+                            KeyNavigation.tab: equalizerCheckBox
                             KeyNavigation.backtab: resetTransformButton
                             value: audioConverterService.pitchSemitones
                             onMoved: audioConverterService.pitchSemitones = Math.round(value)
                         }
 
+                        CheckBox {
+                            id: equalizerCheckBox
+                            Layout.fillWidth: true
+                            text: root.tr("audioConverter.applyCurrentEqualizer")
+                            checked: audioConverterService.applyEqualizer
+                            enabled: !audioConverterService.isRunning
+                            Accessible.name: text
+                            Accessible.description: root.tr("audioConverter.applyCurrentEqualizerHint")
+                            KeyNavigation.tab: trimEnabledCheckBox
+                            KeyNavigation.backtab: pitchSlider
+                            onToggled: {
+                                audioConverterService.applyEqualizer = checked
+                                root.syncEqualizerSettingsForConversion()
+                            }
+                        }
+
                         Label {
                             Layout.fillWidth: true
                             text: root.summaryTransformText
+                            wrapMode: Text.WordWrap
+                            color: themeManager.textSecondaryColor
+                        }
+                    }
+                }
+
+                Frame {
+                    Layout.fillWidth: true
+                    padding: root.sectionPadding
+
+                    background: Rectangle {
+                        radius: themeManager.borderRadiusLarge
+                        color: root.cardFillColor
+                        border.width: 1
+                        border.color: root.cardBorderColor
+                    }
+
+                    contentItem: ColumnLayout {
+                        spacing: root.sectionSpacing
+
+                        Label {
+                            text: root.tr("audioConverter.trimSection")
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.tr("audioConverter.trimSectionHint")
+                            wrapMode: Text.WordWrap
+                            color: themeManager.textSecondaryColor
+                        }
+
+                        CheckBox {
+                            id: trimEnabledCheckBox
+                            Layout.fillWidth: true
+                            text: root.tr("audioConverter.enableTrim")
+                            checked: audioConverterService.trimEnabled
+                            enabled: !audioConverterService.isRunning && root.sourceTrimDurationMs() > 1000
+                            Accessible.name: text
+                            Accessible.description: root.tr("audioConverter.trimSectionHint")
+                            KeyNavigation.tab: trimStartField
+                            KeyNavigation.backtab: equalizerCheckBox
+                            onToggled: {
+                                audioConverterService.trimEnabled = checked
+                                if (checked && audioConverterService.trimEndMs <= audioConverterService.trimStartMs) {
+                                    audioConverterService.trimEndMs = root.sourceTrimDurationMs()
+                                }
+                            }
+                        }
+
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: root.compactLayout ? 1 : 3
+                            columnSpacing: Kirigami.Units.smallSpacing
+                            rowSpacing: Kirigami.Units.smallSpacing
+                            enabled: trimEnabledCheckBox.enabled && audioConverterService.trimEnabled
+                            opacity: enabled ? 1.0 : 0.55
+
+                            Label {
+                                text: root.tr("audioConverter.trimStart")
+                            }
+
+                            AccentSlider {
+                                id: trimStartSlider
+                                Layout.fillWidth: true
+                                from: 0
+                                to: Math.max(1000, root.sourceTrimDurationMs() - 1000)
+                                stepSize: 1000
+                                snapMode: Slider.SnapAlways
+                                enabled: parent.enabled
+                                Accessible.name: root.tr("audioConverter.trimStart")
+                                Accessible.description: root.formatDuration(audioConverterService.trimStartMs)
+                                KeyNavigation.tab: trimStartField
+                                KeyNavigation.backtab: trimEnabledCheckBox
+                                value: root.clampTrimStart(audioConverterService.trimStartMs)
+                                onMoved: root.setTrimStart(value)
+                            }
+
+                            TextField {
+                                id: trimStartField
+                                Layout.preferredWidth: 92
+                                text: root.formatDuration(audioConverterService.trimStartMs)
+                                selectByMouse: true
+                                enabled: parent.enabled
+                                horizontalAlignment: TextInput.AlignHCenter
+                                Accessible.name: root.tr("audioConverter.trimStart")
+                                KeyNavigation.tab: trimEndSlider
+                                KeyNavigation.backtab: trimStartSlider
+                                onEditingFinished: root.setTrimStart(root.parseDurationText(text))
+                            }
+
+                            Label {
+                                text: root.tr("audioConverter.trimEnd")
+                            }
+
+                            AccentSlider {
+                                id: trimEndSlider
+                                Layout.fillWidth: true
+                                from: Math.min(root.sourceTrimDurationMs(), audioConverterService.trimStartMs + 1000)
+                                to: Math.max(1000, root.sourceTrimDurationMs())
+                                stepSize: 1000
+                                snapMode: Slider.SnapAlways
+                                enabled: parent.enabled
+                                Accessible.name: root.tr("audioConverter.trimEnd")
+                                Accessible.description: root.formatDuration(audioConverterService.trimEndMs)
+                                KeyNavigation.tab: trimEndField
+                                KeyNavigation.backtab: trimStartField
+                                value: root.clampTrimEnd(audioConverterService.trimEndMs)
+                                onMoved: root.setTrimEnd(value)
+                            }
+
+                            TextField {
+                                id: trimEndField
+                                Layout.preferredWidth: 92
+                                text: root.formatDuration(audioConverterService.trimEndMs)
+                                selectByMouse: true
+                                enabled: parent.enabled
+                                horizontalAlignment: TextInput.AlignHCenter
+                                Accessible.name: root.tr("audioConverter.trimEnd")
+                                KeyNavigation.tab: root.firstSuccessActionControl()
+                                KeyNavigation.backtab: trimEndSlider
+                                onEditingFinished: root.setTrimEnd(root.parseDurationText(text))
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: audioConverterService.trimEnabled
+                                  ? root.tr("audioConverter.trimRange")
+                                        .arg(root.formatDuration(audioConverterService.trimStartMs))
+                                        .arg(root.formatDuration(audioConverterService.trimEndMs))
+                                  : root.tr("audioConverter.trimDisabled")
                             wrapMode: Text.WordWrap
                             color: themeManager.textSecondaryColor
                         }
@@ -1372,7 +1597,7 @@ Dialog {
 
         onAccepted: root.close()
 
-        contentItem: Label {
+        contentItem: Kirigami.SelectableLabel {
             text: root.tr("audioConverter.escapeRunningConfirmMessage")
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.textColor
@@ -1399,7 +1624,7 @@ Dialog {
             audioConverterService.overwriteExisting = false
         }
 
-        contentItem: Label {
+        contentItem: Kirigami.SelectableLabel {
             text: root.tr("audioConverter.confirmReplaceMessage")
                   + "\n\n"
                   + String(outputPathField.text || "").trim()

@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import WaveFlux 1.2
+import "components"
 
 Item {
     id: root
     property bool showOverlays: true
     property bool compactVisualMode: false
     property bool minimalVisualMode: false
-    property real hoverX: 0
     property var cueSegments: []
     readonly property bool denseMode: compactVisualMode || root.height < 72
     readonly property bool tinyMode: minimalVisualMode || root.height < 56
@@ -70,7 +70,7 @@ Item {
         
         waveformColor: themeManager.waveformColor
         progressColor: themeManager.progressColor
-        backgroundColor: themeManager.backgroundColor
+        backgroundColor: themeManager.waveformBackgroundColor
         
         onSeekRequested: (position) => {
             if (audioEngine.duration > 0) {
@@ -188,39 +188,23 @@ Item {
         z: 5
     }
 
-    Rectangle {
-        id: hoverLine
-        visible: root.showHoverPreview && hoverArea.containsMouse
-        width: 1
-        height: parent.height
-        x: Math.max(0, Math.min(root.width - width, root.hoverX))
-        color: Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.28)
-        z: 3
+    TrackInfoOverlay {
+        anchors.fill: parent
+        showOverlay: root.showOverlays
+        compactVisualMode: root.compactVisualMode
+        minimalVisualMode: root.minimalVisualMode
+        hoverActive: waveformHoverTooltip.hovered
+        z: 3.2
     }
 
-    Rectangle {
-        id: hoverTooltip
-        visible: hoverLine.visible && !root.denseMode
-        y: 6
-        width: hoverLabel.implicitWidth + 10
-        height: hoverLabel.implicitHeight + 6
-        x: Math.max(4, Math.min(root.width - width - 4, hoverLine.x - width * 0.5))
-        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.92)
-        border.width: 1
-        border.color: themeManager.borderColor
-        radius: themeManager.borderRadius
+    WaveformHoverTooltip {
+        id: waveformHoverTooltip
+        anchors.fill: parent
+        targetWaveformItem: waveformItem
+        showPreview: root.showHoverPreview
+        compactVisualMode: root.compactVisualMode
+        denseMode: root.denseMode
         z: 6
-
-        Label {
-            id: hoverLabel
-            anchors.centerIn: parent
-            color: themeManager.textColor
-            font.pixelSize: 10
-            font.family: themeManager.monoFontFamily
-            text: root.formatPreviewTime(
-                      waveformItem.viewToTrack(root.hoverX / Math.max(1, root.width)) * audioEngine.duration
-                  )
-        }
     }
 
     Rectangle {
@@ -254,29 +238,6 @@ Item {
         }
     }
     
-    MouseArea {
-        id: hoverArea
-        anchors.fill: parent
-        enabled: root.showHoverPreview
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-        onPositionChanged: (mouse) => {
-            root.hoverX = Math.max(0, Math.min(root.width, mouse.x))
-        }
-        onEntered: {
-            root.hoverX = Math.max(0, Math.min(root.width, hoverArea.mouseX))
-        }
-    }
-
-    function formatPreviewTime(ms) {
-        if (!ms || ms < 0) return "0:00.0"
-        const totalTenths = Math.floor(ms / 100)
-        const minutes = Math.floor(totalTenths / 600)
-        const seconds = Math.floor((totalTenths % 600) / 10)
-        const tenths = totalTenths % 10
-        return minutes + ":" + (seconds < 10 ? "0" : "") + seconds + "." + tenths
-    }
-
     function formatSegmentDuration(ms) {
         if (!ms || ms <= 0) return ""
         const totalSeconds = Math.floor(ms / 1000)

@@ -29,6 +29,7 @@ public:
     Q_INVOKABLE bool renamePlaylist(int playlistId, const QString &newName);
     Q_INVOKABLE int duplicatePlaylist(int playlistId, const QString &newName = QString());
     Q_INVOKABLE bool deletePlaylist(int playlistId);
+    Q_INVOKABLE bool deleteAllPlaylists();
 
 signals:
     void playlistsChanged();

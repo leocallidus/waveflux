@@ -92,6 +92,17 @@ int normalizePitchSemitones(int value)
 {
     return qBound(-24, value, 24);
 }
+
+QVariantList normalizeEqualizerBandGains(const QVariantList &gains)
+{
+    QVariantList normalized;
+    normalized.reserve(10);
+    for (int i = 0; i < 10; ++i) {
+        const double source = i < gains.size() ? gains.at(i).toDouble() : 0.0;
+        normalized.push_back(qBound(-24.0, source, 12.0));
+    }
+    return normalized;
+}
 } // namespace
 
 BatchAudioConverterPresetManager::BatchAudioConverterPresetManager(QObject *parent)
@@ -275,6 +286,11 @@ QVariantMap BatchAudioConverterPresetManager::normalizePresetSettings(const QVar
                       normalizePlaybackRate(settings.value(QStringLiteral("playbackRate")).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizePitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("applyEqualizer"),
+                      settings.value(QStringLiteral("applyEqualizer"), false).toBool());
+    normalized.insert(QStringLiteral("equalizerBandGains"),
+                      normalizeEqualizerBandGains(
+                          settings.value(QStringLiteral("equalizerBandGains")).toList()));
     normalized.insert(QStringLiteral("addResultsToPlaylist"),
                       normalized.value(QStringLiteral("playlistAddMode")).toString()
                           != QStringLiteral("disabled"));

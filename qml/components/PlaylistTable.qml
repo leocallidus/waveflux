@@ -37,6 +37,11 @@ Item {
     property bool suppressSortReapplyOnModelReset: false
     property bool suppressSortStatePersistence: false
     property real pendingRestoredContentY: -1
+    property bool externalDropActive: false
+    property int externalDropIndex: -1
+    property real externalDropY: 0
+    property real externalDropPointerY: 0
+    property int externalDropAutoScrollDirection: 0
     // full: title+artist+album+duration+bitrate
     // reduced: title+artist+duration
     // minimal: title+duration
@@ -59,6 +64,24 @@ Item {
     signal batchAudioConverterRequested(var filePaths)
     signal editTagsSelectionRequested(var filePaths)
     signal exportSelectionRequested(var filePaths)
+    signal externalUrlsDropped(var urls, int insertIndex)
+
+    Timer {
+        id: externalDropAutoScrollTimer
+        interval: 45
+        repeat: true
+        running: root.externalDropActive && root.externalDropAutoScrollDirection !== 0
+        onTriggered: {
+            const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
+            if (maxY <= 0) {
+                return
+            }
+            playlistView.contentY = Math.max(
+                        0,
+                        Math.min(maxY, playlistView.contentY + root.externalDropAutoScrollDirection * 18))
+            root.updateExternalDropIndicator(root.externalDropPointerY)
+        }
+    }
 
     onSearchQueryChanged: {
         if (searchQuery === debouncedSearchQuery) {
@@ -114,6 +137,21 @@ Item {
         interval: 33
         repeat: false
         onTriggered: root.appliedSearchRevision = root.searchRevision
+    }
+
+    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync()
+    onSearchFieldMaskChanged: root.scheduleFilterViewportSync()
+    onSearchQuickFilterMaskChanged: root.scheduleFilterViewportSync()
+    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync()
+
+    Timer {
+        id: filterViewportSyncTimer
+        interval: 0
+        repeat: false
+        onTriggered: {
+            root.syncViewportAfterFilterChange()
+            Qt.callLater(root.syncViewportAfterFilterChange)
+        }
     }
 
     Timer {
@@ -556,6 +594,99 @@ Item {
         pendingRestoredContentY = -1
     }
 
+    function scheduleFilterViewportSync() {
+        if (!playlistView || playlistView.height <= 0) {
+            return
+        }
+        filterViewportSyncTimer.restart()
+    }
+
+    function logicalVisibleCount() {
+        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
+        return filterActive ? root.matchCount() : trackModel.count
+    }
+
+    function clampContentYToLogicalBounds() {
+        if (!playlistView || playlistView.height <= 0) {
+            return
+        }
+        const maxY = Math.max(0, root.logicalVisibleCount() * root.rowHeight - playlistView.height)
+        playlistView.contentY = Math.max(0, Math.min(maxY, Number(playlistView.contentY) || 0))
+    }
+
+    function firstMatchingVisibleIndex() {
+        if (trackModel.count <= 0) {
+            return -1
+        }
+        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
+        if (!filterActive) {
+            return 0
+        }
+        for (let row = 0; row < trackModel.count; ++row) {
+            if (root.matchesActiveFilterAt(row)) {
+                return row
+            }
+        }
+        return -1
+    }
+
+    function firstSelectedVisibleIndex() {
+        if (!selectedFilePaths || selectedFilePaths.length === 0) {
+            return -1
+        }
+
+        const selected = {}
+        for (let i = 0; i < selectedFilePaths.length; ++i) {
+            selected[String(selectedFilePaths[i] || "")] = true
+        }
+
+        for (let row = 0; row < trackModel.count; ++row) {
+            const filePath = String(trackModel.getFilePath(row) || "")
+            if (selected[filePath] && root.matchesActiveFilterAt(row)) {
+                return row
+            }
+        }
+        return -1
+    }
+
+    function locateModelIndexFast(index) {
+        const safeIndex = Math.floor(Number(index))
+        if (!Number.isFinite(safeIndex) || safeIndex < 0 || safeIndex >= trackModel.count) {
+            return false
+        }
+
+        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
+        if (filterActive && !root.matchesActiveFilterAt(safeIndex)) {
+            return false
+        }
+
+        const visibleCount = root.logicalVisibleCount()
+        if (visibleCount <= 0) {
+            return false
+        }
+
+        const visibleRow = filterActive ? root.matchCountBefore(safeIndex) : safeIndex
+        return root.applyCenteredContentY(visibleRow, visibleCount)
+    }
+
+    function syncViewportAfterFilterChange() {
+        if (!playlistView || playlistView.height <= 0) {
+            return
+        }
+
+        if (playlistView.forceLayout) {
+            playlistView.forceLayout()
+        }
+
+        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
+        if (filterActive) {
+            playlistView.contentY = 0
+            return
+        }
+
+        root.clampContentYToLogicalBounds()
+    }
+
     function cycleIndexSort() {
         const nextState = (indexSortState + 1) % 3
         if (nextState === 0) {
@@ -666,6 +797,101 @@ Item {
         Qt.callLater(function() {
             playlistView.positionViewAtIndex(Math.floor(safeIndex), ListView.Center)
         })
+    }
+
+    function scrollToBeginning() {
+        playlistView.contentY = 0
+    }
+
+    function scrollToEnd() {
+        const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
+        playlistView.contentY = maxY
+    }
+
+    function scrollPage(direction) {
+        const safeDirection = Number(direction) < 0 ? -1 : 1
+        const pageStep = Math.max(root.rowHeight, playlistView.height - root.rowHeight)
+        const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
+        playlistView.contentY = Math.max(0, Math.min(maxY, playlistView.contentY + safeDirection * pageStep))
+    }
+
+    function externalDropInsertionIndexAt(viewY) {
+        const safeY = Math.max(0, Number(viewY) || 0)
+        const contentY = Math.max(0, Number(playlistView.contentY) || 0)
+        const contentPointY = contentY + safeY
+        const item = playlistView.itemAt(root.horizontalPadding, contentPointY)
+        if (item && item.index !== undefined && item.height > 0) {
+            const afterItem = contentPointY >= item.y + item.height * 0.5
+            return Math.max(0, Math.min(trackModel.count, item.index + (afterItem ? 1 : 0)))
+        }
+        if (contentPointY <= 0) {
+            return 0
+        }
+        return trackModel.count
+    }
+
+    function updateExternalDropIndicator(viewY) {
+        const safeY = Math.max(0, Math.min(playlistView.height, Number(viewY) || 0))
+        const contentPointY = playlistView.contentY + safeY
+        const item = playlistView.itemAt(root.horizontalPadding, contentPointY)
+        root.externalDropPointerY = safeY
+        if (item && item.index !== undefined && item.height > 0) {
+            const afterItem = contentPointY >= item.y + item.height * 0.5
+            root.externalDropIndex = Math.max(0, Math.min(trackModel.count, item.index + (afterItem ? 1 : 0)))
+            root.externalDropY = Math.max(
+                        0,
+                        Math.min(playlistView.height, item.y - playlistView.contentY + (afterItem ? item.height : 0)))
+        } else {
+            root.externalDropIndex = root.externalDropInsertionIndexAt(safeY)
+            root.externalDropY = safeY <= 0 ? 0 : playlistView.height
+        }
+        root.externalDropActive = true
+
+        const edge = Math.min(44, Math.max(24, playlistView.height * 0.18))
+        if (safeY < edge) {
+            root.externalDropAutoScrollDirection = -1
+        } else if (safeY > playlistView.height - edge) {
+            root.externalDropAutoScrollDirection = 1
+        } else {
+            root.externalDropAutoScrollDirection = 0
+        }
+    }
+
+    function clearExternalDropIndicator() {
+        root.externalDropActive = false
+        root.externalDropIndex = -1
+        root.externalDropAutoScrollDirection = 0
+    }
+
+    function externalDropViewPointFromItemPoint(itemX, itemY) {
+        return root.mapToItem(playlistView, Number(itemX) || 0, Number(itemY) || 0)
+    }
+
+    function externalDropContainsItemPoint(itemX, itemY) {
+        const point = root.externalDropViewPointFromItemPoint(itemX, itemY)
+        return point.x >= 0
+                && point.x <= playlistView.width
+                && point.y >= 0
+                && point.y <= playlistView.height
+    }
+
+    function updateExternalDropAtItemPoint(itemX, itemY) {
+        const point = root.externalDropViewPointFromItemPoint(itemX, itemY)
+        if (point.x < 0 || point.x > playlistView.width || point.y < 0 || point.y > playlistView.height) {
+            root.clearExternalDropIndicator()
+            return false
+        }
+        root.updateExternalDropIndicator(point.y)
+        return true
+    }
+
+    function externalDropIndexAtItemPoint(itemX, itemY) {
+        const point = root.externalDropViewPointFromItemPoint(itemX, itemY)
+        if (point.x < 0 || point.x > playlistView.width || point.y < 0 || point.y > playlistView.height) {
+            return -1
+        }
+        root.updateExternalDropIndicator(point.y)
+        return root.externalDropIndex
     }
 
     function applyCenteredContentY(visibleRow, visibleCount) {
@@ -1329,28 +1555,61 @@ Item {
             clip: true
             spacing: 0
             model: trackModel
-            onContentHeightChanged: root.applyPendingTrackListViewState()
-            onHeightChanged: root.applyPendingTrackListViewState()
+            onContentHeightChanged: {
+                root.applyPendingTrackListViewState()
+                root.scheduleFilterViewportSync()
+            }
+            onHeightChanged: {
+                root.applyPendingTrackListViewState()
+                root.scheduleFilterViewportSync()
+            }
 
-            ScrollBar.vertical: ScrollBar {
+            ScrollBar {
                 id: playlistScrollBar
-                width: 6
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                z: 200
+                width: appSettings.playlistScrollBarVisible ? 8 : 0
                 padding: 0
-                policy: ScrollBar.AsNeeded
+                orientation: Qt.Vertical
+                policy: appSettings.playlistScrollBarVisible ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                interactive: appSettings.playlistScrollBarVisible
+                size: playlistView.contentHeight > 0
+                      ? Math.min(1.0, playlistView.height / playlistView.contentHeight)
+                      : 1.0
+
+                Binding on position {
+                    when: !playlistScrollBar.pressed
+                    value: playlistView.contentHeight > 0
+                           ? Math.max(0, Math.min(1.0 - playlistScrollBar.size,
+                                                  playlistView.contentY / playlistView.contentHeight))
+                           : 0
+                }
+
+                onPositionChanged: {
+                    if (!pressed || playlistView.contentHeight <= playlistView.height) {
+                        return
+                    }
+                    const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
+                    playlistView.contentY = Math.max(0, Math.min(maxY, position * playlistView.contentHeight))
+                }
 
                 background: Rectangle {
-                    implicitWidth: 6
-                    radius: 3
-                    color: themeManager.backgroundColor
+                    implicitWidth: appSettings.playlistScrollBarVisible ? 8 : 0
+                    radius: 4
+                    color: Qt.rgba(themeManager.surfaceColor.r,
+                                   themeManager.surfaceColor.g,
+                                   themeManager.surfaceColor.b,
+                                   0.55)
                 }
 
                 contentItem: Rectangle {
-                    implicitWidth: 6
+                    implicitWidth: 8
                     implicitHeight: 96
-                    radius: 3
-                    color: themeManager.borderColor
-                    opacity: playlistScrollBar.policy === ScrollBar.AlwaysOn
-                             || (playlistScrollBar.active && playlistScrollBar.size < 1.0) ? 1.0 : 0.72
+                    radius: 4
+                    color: themeManager.primaryColor
+                    opacity: appSettings.playlistScrollBarVisible ? 0.88 : 0.0
 
                     Behavior on opacity {
                         NumberAnimation { duration: 120 }
@@ -1626,6 +1885,64 @@ Item {
                         playbackController.requestPlayIndex(trackDelegate.index, "playlist.double_click")
                     }
                 }
+            }
+
+            DropArea {
+                anchors.fill: parent
+                z: 100
+                onEntered: (drag) => {
+                    if (!drag.hasUrls) {
+                        return
+                    }
+                    if (drag.accept) {
+                        drag.accept(Qt.CopyAction)
+                    } else {
+                        drag.accepted = true
+                    }
+                    root.updateExternalDropIndicator(drag.y)
+                }
+                onPositionChanged: (drag) => {
+                    if (!drag.hasUrls) {
+                        root.clearExternalDropIndicator()
+                        return
+                    }
+                    if (drag.accept) {
+                        drag.accept(Qt.CopyAction)
+                    } else {
+                        drag.accepted = true
+                    }
+                    root.updateExternalDropIndicator(drag.y)
+                }
+                onExited: root.clearExternalDropIndicator()
+                onDropped: (drop) => {
+                    if (!drop.hasUrls) {
+                        root.clearExternalDropIndicator()
+                        return
+                    }
+                    const insertIndex = root.externalDropIndex >= 0
+                                      ? root.externalDropIndex
+                                      : root.externalDropInsertionIndexAt(drop.y)
+                    if (drop.acceptProposedAction) {
+                        drop.acceptProposedAction()
+                    } else if (drop.accept) {
+                        drop.accept(Qt.CopyAction)
+                    } else {
+                        drop.accepted = true
+                    }
+                    root.externalUrlsDropped(drop.urls, insertIndex)
+                    root.clearExternalDropIndicator()
+                }
+            }
+
+            Rectangle {
+                x: root.horizontalPadding
+                y: Math.max(0, Math.min(playlistView.height - height, root.externalDropY - height * 0.5))
+                width: Math.max(0, playlistView.width - root.horizontalPadding * 2)
+                height: 2
+                radius: 1
+                color: themeManager.primaryColor
+                visible: root.externalDropActive
+                z: 101
             }
 
             Label {

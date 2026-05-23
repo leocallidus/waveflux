@@ -3,6 +3,7 @@
 #include <QSignalSpy>
 
 #include "BatchAudioConverterPresetManager.h"
+#include "AppSettingsManager.h"
 
 class BatchAudioConverterPresetManagerTest : public QObject
 {
@@ -31,6 +32,9 @@ void BatchAudioConverterPresetManagerTest::normalizesCreatedPresets()
     settings.insert(QStringLiteral("channelMode"), QStringLiteral("mono"));
     settings.insert(QStringLiteral("playbackRate"), 99.0);
     settings.insert(QStringLiteral("pitchSemitones"), 99);
+    settings.insert(QStringLiteral("applyEqualizer"), true);
+    settings.insert(QStringLiteral("equalizerBandGains"),
+                    QVariantList({-99.0, -3.0, 0.0, 4.5, 99.0}));
     settings.insert(QStringLiteral("addResultsToPlaylist"), false);
 
     const QString presetId = manager.createUserPreset(QStringLiteral("  Queue Default  "), settings);
@@ -51,6 +55,14 @@ void BatchAudioConverterPresetManagerTest::normalizesCreatedPresets()
     QCOMPARE(normalizedSettings.value(QStringLiteral("channelMode")).toString(), QStringLiteral("mono"));
     QCOMPARE(normalizedSettings.value(QStringLiteral("playbackRate")).toDouble(), 4.0);
     QCOMPARE(normalizedSettings.value(QStringLiteral("pitchSemitones")).toInt(), 24);
+    QCOMPARE(normalizedSettings.value(QStringLiteral("applyEqualizer")).toBool(), true);
+    const QVariantList equalizerBandGains =
+        normalizedSettings.value(QStringLiteral("equalizerBandGains")).toList();
+    QCOMPARE(equalizerBandGains.size(), 10);
+    QCOMPARE(equalizerBandGains.at(0).toDouble(), -24.0);
+    QCOMPARE(equalizerBandGains.at(1).toDouble(), -3.0);
+    QCOMPARE(equalizerBandGains.at(3).toDouble(), 4.5);
+    QCOMPARE(equalizerBandGains.at(4).toDouble(), 12.0);
     QCOMPARE(normalizedSettings.value(QStringLiteral("addResultsToPlaylist")).toBool(), true);
     QVERIFY(!normalizedSettings.contains(QStringLiteral("retryPolicy")));
 }
@@ -85,9 +97,9 @@ void BatchAudioConverterPresetManagerTest::rejectsEmptyNames()
 {
     BatchAudioConverterPresetManager manager;
     QVERIFY(manager.createUserPreset(QStringLiteral("   "), QVariantMap()).isEmpty());
-    QCOMPARE(manager.lastError(), QStringLiteral("Preset name is empty"));
+    QCOMPARE(manager.lastError(), AppSettingsManager::translateForCurrentLanguage(QStringLiteral("error.presetNameEmpty")));
     QVERIFY(!manager.renameUserPreset(QStringLiteral("missing"), QStringLiteral("Anything")));
-    QCOMPARE(manager.lastError(), QStringLiteral("User preset not found"));
+    QCOMPARE(manager.lastError(), AppSettingsManager::translateForCurrentLanguage(QStringLiteral("error.userPresetNotFound")));
 }
 
 QTEST_MAIN(BatchAudioConverterPresetManagerTest)

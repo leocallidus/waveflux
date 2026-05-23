@@ -22,6 +22,7 @@ class TagEditor : public QObject
     Q_PROPERTY(QString genre READ genre WRITE setGenre NOTIFY genreChanged)
     Q_PROPERTY(int year READ year WRITE setYear NOTIFY yearChanged)
     Q_PROPERTY(int trackNumber READ trackNumber WRITE setTrackNumber NOTIFY trackNumberChanged)
+    Q_PROPERTY(int bpm READ bpm WRITE setBpm NOTIFY bpmChanged)
     Q_PROPERTY(QString coverImagePath READ coverImagePath WRITE setCoverImagePath NOTIFY coverImagePathChanged)
     Q_PROPERTY(QString coverPreviewSource READ coverPreviewSource NOTIFY coverPreviewSourceChanged)
     Q_PROPERTY(bool removeCover READ removeCover WRITE setRemoveCover NOTIFY removeCoverChanged)
@@ -51,6 +52,9 @@ public:
     int trackNumber() const { return m_trackNumber; }
     void setTrackNumber(int track);
 
+    int bpm() const { return m_bpm; }
+    void setBpm(int bpm);
+
     QString coverImagePath() const { return m_coverImagePath; }
     void setCoverImagePath(const QString &coverImagePath);
     QString coverPreviewSource() const { return m_coverPreviewSource; }
@@ -76,7 +80,9 @@ public:
                                       bool applyYear,
                                       int year,
                                       bool applyTrackNumber,
-                                      int trackNumber);
+                                      int trackNumber,
+                                      bool applyBpm = false,
+                                      int bpm = 0);
     Q_INVOKABLE void revertChanges();
     Q_INVOKABLE void clearCover();
     
@@ -88,6 +94,7 @@ signals:
     void genreChanged();
     void yearChanged();
     void trackNumberChanged();
+    void bpmChanged();
     void coverImagePathChanged();
     void coverPreviewSourceChanged();
     void removeCoverChanged();
@@ -105,6 +112,7 @@ private:
     QString m_genre;
     int m_year = 0;
     int m_trackNumber = 0;
+    int m_bpm = 0;
     QString m_coverImagePath;
     QString m_coverPreviewSource;
     bool m_removeCover = false;
@@ -117,6 +125,7 @@ private:
     QString m_originalGenre;
     int m_originalYear = 0;
     int m_originalTrackNumber = 0;
+    int m_originalBpm = 0;
     QString m_originalCoverImagePath;
     QString m_originalCoverPreviewSource;
     bool m_originalRemoveCover = false;

@@ -470,6 +470,53 @@ bool SmartCollectionsEngine::deleteCollection(int id)
     return true;
 }
 
+bool SmartCollectionsEngine::deleteAllCollections()
+{
+    if (!m_enabled) {
+        setLastError(localizedCollectionsText(QStringLiteral("error.smartCollectionsDisabled")));
+        return false;
+    }
+    if (!ensureConnection()) {
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(m_connectionName, false);
+    if (!db.transaction()) {
+        setLastError(db.lastError().text());
+        return false;
+    }
+
+    const auto rollbackWithError = [this, &db](const QString &error) {
+        db.rollback();
+        setLastError(error);
+        return false;
+    };
+
+    QSqlQuery deleteProgressQuery(db);
+    if (!deleteProgressQuery.exec(
+            QStringLiteral("DELETE FROM context_playback_progress WHERE context_type = 'collection'"))) {
+        return rollbackWithError(deleteProgressQuery.lastError().text());
+    }
+
+    QSqlQuery deleteCollectionsQuery(db);
+    if (!deleteCollectionsQuery.exec(QStringLiteral("DELETE FROM smart_collections"))) {
+        return rollbackWithError(deleteCollectionsQuery.lastError().text());
+    }
+    const bool changed = deleteCollectionsQuery.numRowsAffected() > 0;
+
+    if (!db.commit()) {
+        return rollbackWithError(db.lastError().text());
+    }
+
+    m_defaultsEnsured = true;
+    if (changed) {
+        ++m_revision;
+        emit collectionsChanged();
+    }
+    setLastError(QString());
+    return true;
+}
+
 QVariantList SmartCollectionsEngine::resolveCollectionTracks(int id, int overrideLimit) const
 {
     QVariantList result;

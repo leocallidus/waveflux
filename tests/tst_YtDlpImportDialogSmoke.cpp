@@ -15,6 +15,7 @@
 #include "AppSettingsManager.h"
 #include "ThemeManager.h"
 #include "YtDlpImportService.h"
+#include "AppSettingsManager.h"
 
 namespace {
 void clearSettings()
@@ -584,7 +585,7 @@ void YtDlpImportDialogSmokeTest::dialogShowsParallelRuntimeProgress()
         dialogObject->findChild<QObject *>(QStringLiteral("batchStatusLabel"));
     QVERIFY(batchStatusLabel);
     QTRY_COMPARE(batchStatusLabel->property("text").toString(),
-                 QStringLiteral("Running: 2 active downloads."));
+                 AppSettingsManager::translateForCurrentLanguage(QStringLiteral("ytDlpImport.importRunningActiveCount")).arg(2));
 
     QTRY_VERIFY_WITH_TIMEOUT([dialogObject]() {
         bool sawAlpha = false;

@@ -1,8 +1,8 @@
 param(
-    [string]$BuildDir = "E:\audioplayer\waveflux\build-win-runtime",
+    [string]$BuildDir = "build-win-runtime",
     [string]$Target = "waveflux",
     [string]$MsysPrefix = "C:\msys64\ucrt64",
-    [string]$DistDir = "E:\audioplayer\waveflux\dist\windows",
+    [string]$DistDir = "dist\windows",
     [string]$Version,
     [switch]$RunTests,
     [switch]$SkipBuild,

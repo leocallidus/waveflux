@@ -405,7 +405,7 @@ Dialog {
     }
 
     function resetTrackInfoSettings() {
-        appSettings.trackInfoEnabled = true
+        appSettings.trackInfoEnabled = false
         appSettings.trackInfoWaveformOverlayHoverOnly = true
         appSettings.trackInfoWindowTitleFormat = appSettings.defaultTrackInfoWindowTitleFormat()
         appSettings.trackInfoWaveformTooltipFormat = appSettings.defaultTrackInfoWaveformTooltipFormat()
@@ -682,8 +682,8 @@ Dialog {
     function buildTrackInfoResetChanges() {
         const changes = []
         appendResetChange(changes, root.tr("settings.trackInfoEnabled"),
-                          appSettings.trackInfoEnabled, true,
-                          localizedBoolean(appSettings.trackInfoEnabled), localizedBoolean(true))
+                          appSettings.trackInfoEnabled, false,
+                          localizedBoolean(appSettings.trackInfoEnabled), localizedBoolean(false))
         appendResetChange(changes, root.tr("settings.trackInfoWaveformOverlayHoverOnly"),
                           appSettings.trackInfoWaveformOverlayHoverOnly, true,
                           localizedBoolean(appSettings.trackInfoWaveformOverlayHoverOnly), localizedBoolean(true))
@@ -712,6 +712,22 @@ Dialog {
                                 formatColor(themeManager.progressColor), systemDefaultText)
         appendForcedResetChange(changes, root.tr("settings.accentColor"),
                                 formatColor(themeManager.accentColor), systemDefaultText)
+        const currentFont = themeManager.customFontFamily || "Default"
+        const defaultFontLabel = systemDefaultText
+        const isDefaultFont = !currentFont || currentFont === "Default"
+        appendResetChange(changes, root.tr("settings.fontFamily"),
+                          currentFont, "Default",
+                          isDefaultFont ? systemDefaultText : currentFont, systemDefaultText)
+        const currentSize = themeManager.customFontSize > 0
+                            ? (themeManager.customFontSize + "pt")
+                            : systemDefaultText
+        appendResetChange(changes, root.tr("settings.fontSize"),
+                          themeManager.customFontSize, 0, currentSize, systemDefaultText)
+        const currentPlaylistFont = themeManager.customPlaylistFontFamily || "Default"
+        const isDefaultPlaylistFont = !currentPlaylistFont || currentPlaylistFont === "Default"
+        appendResetChange(changes, root.tr("settings.playlistFontFamily"),
+                          currentPlaylistFont, "Default",
+                          isDefaultPlaylistFont ? systemDefaultText : currentPlaylistFont, systemDefaultText)
         return changes
     }
 
@@ -914,6 +930,9 @@ Dialog {
         factoryResetErrorText = ""
         if (audioEngine) {
             audioEngine.stop()
+        }
+        if (playlistProfilesManager) {
+            playlistProfilesManager.resetForFullApplicationReset()
         }
 
         const result = appSettings.performFullApplicationReset()
@@ -1559,7 +1578,7 @@ Dialog {
                                 text: root.title
                                 color: themeManager.textColor
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 13
+                                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                                 font.bold: true
                             }
 
@@ -1572,7 +1591,7 @@ Dialog {
                                 color: themeManager.textColor
                                 opacity: 0.78
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                 wrapMode: Text.WordWrap
                                 maximumLineCount: root.lowHeightMode ? 2 : 3
                                 elide: Text.ElideRight
@@ -1851,6 +1870,118 @@ Dialog {
                         forceVisible: skinRow.visible
                     }
 
+                    SettingComboRow {
+                        id: fontFamilyRow
+                        title: root.tr("settings.fontFamily")
+                        searchQuery: root.settingsSearchQuery
+                        model: themeManager.availableFonts
+                        comboWidth: 220
+
+                        onActivated: function(index) {
+                            const fontName = model[index]
+                            themeManager.customFontFamily = fontName
+                        }
+
+                        function syncSelection() {
+                            const currentFont = themeManager.customFontFamily
+                            for (let i = 0; i < model.length; ++i) {
+                                if (model[i] === currentFont) {
+                                    currentIndex = i
+                                    return
+                                }
+                            }
+                            currentIndex = 0
+                        }
+
+                        Component.onCompleted: syncSelection()
+
+                        Connections {
+                            target: themeManager
+                            function onCustomFontFamilyChanged() {
+                                fontFamilyRow.syncSelection()
+                            }
+                        }
+                    }
+
+                    SettingComboRow {
+                        id: fontSizeRow
+                        title: root.tr("settings.fontSize")
+                        searchQuery: root.settingsSearchQuery
+                        model: [
+                            { value: 0, label: root.tr("settings.valueSystemDefault") },
+                            { value: 8, label: "8 pt" },
+                            { value: 9, label: "9 pt" },
+                            { value: 10, label: "10 pt" },
+                            { value: 11, label: "11 pt" },
+                            { value: 12, label: "12 pt" },
+                            { value: 14, label: "14 pt" },
+                            { value: 16, label: "16 pt" },
+                            { value: 18, label: "18 pt" },
+                            { value: 20, label: "20 pt" },
+                            { value: 24, label: "24 pt" }
+                        ]
+
+                        onActivated: function(index) {
+                            const selected = model[index]
+                            if (selected) {
+                                themeManager.customFontSize = selected.value
+                            }
+                        }
+
+                        function syncSelection() {
+                            const size = themeManager.customFontSize
+                            for (let i = 0; i < model.length; ++i) {
+                                if (model[i].value === size) {
+                                    currentIndex = i
+                                    return
+                                }
+                            }
+                            currentIndex = 0
+                        }
+
+                        Component.onCompleted: syncSelection()
+
+                        Connections {
+                            target: themeManager
+                            function onCustomFontSizeChanged() {
+                                fontSizeRow.syncSelection()
+                            }
+                        }
+                    }
+
+                    SettingComboRow {
+                        id: playlistFontFamilyRow
+                        title: root.tr("settings.playlistFontFamily")
+                        searchQuery: root.settingsSearchQuery
+                        model: themeManager.availableFonts
+                        comboWidth: 220
+
+                        onActivated: function(index) {
+                            const fontName = model[index]
+                            themeManager.playlistFontFamily = fontName
+                        }
+
+                        function syncSelection() {
+                            const currentFont = themeManager.customPlaylistFontFamily || "Default"
+                            for (let i = 0; i < model.length; ++i) {
+                                if (model[i] === currentFont) {
+                                    currentIndex = i
+                                    return
+                                }
+                            }
+                            currentIndex = 0
+                        }
+
+                        Component.onCompleted: syncSelection()
+
+                        Connections {
+                            target: themeManager
+                            function onPlaylistFontFamilyChanged() {
+                                playlistFontFamilyRow.syncSelection()
+                            }
+                        }
+                    }
+
                     SettingToggleRow {
                         id: sidebarVisibleRow
                         title: root.tr("settings.sidebarVisible")
@@ -2127,7 +2258,7 @@ Dialog {
                             textFormat: Text.StyledText
                             color: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             wrapMode: Text.WordWrap
                         }
 
@@ -2349,7 +2480,7 @@ Dialog {
                                 textFormat: Text.StyledText
                                 color: themeManager.textMutedColor
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -3353,7 +3484,7 @@ Dialog {
                                         text: modelData.label
                                         color: themeManager.textMutedColor
                                         font.family: themeManager.fontFamily
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         elide: Text.ElideRight
                                     }
 
@@ -3438,7 +3569,7 @@ Dialog {
                             text: root.tr("settings.trackInfoSyntaxHint")
                             color: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -3550,7 +3681,7 @@ Dialog {
                             color: themeManager.textColor
                             opacity: 0.82
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
                     }
 
@@ -3594,7 +3725,7 @@ Dialog {
                             color: themeManager.textColor
                             opacity: 0.82
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
                     }
 
@@ -3638,7 +3769,7 @@ Dialog {
                             color: themeManager.textColor
                             opacity: 0.82
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
                     }
 
@@ -3682,7 +3813,7 @@ Dialog {
                             color: themeManager.textColor
                             opacity: 0.82
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
                     }
             }
@@ -3723,7 +3854,7 @@ Dialog {
                             onTextChanged: root.shortcutSearchQuery = text
                         }
 
-                        ComboBox {
+                        AccentComboBox {
                             id: shortcutGroupCombo
                             Layout.preferredWidth: 190
                             Layout.minimumHeight: root.minimumInteractiveHeight
@@ -3798,7 +3929,7 @@ Dialog {
                             text: root.tr("settings.shortcutAction")
                             color: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
 
@@ -3807,7 +3938,7 @@ Dialog {
                             text: root.tr("settings.shortcutCurrent")
                             color: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
 
@@ -3816,7 +3947,7 @@ Dialog {
                             text: root.tr("settings.shortcutDefault")
                             color: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
 
@@ -3869,7 +4000,7 @@ Dialog {
                                         text: root.shortcutGroupLabel(modelData.group) + " | " + root.shortcutContextLabel(modelData.context)
                                         color: themeManager.textMutedColor
                                         font.family: themeManager.fontFamily
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -3880,7 +4011,7 @@ Dialog {
                                                                    : root.tr("settings.shortcutNotAssignable")
                                     color: modelData.enabled ? themeManager.textColor : themeManager.textMutedColor
                                     font.family: themeManager.monoFontFamily
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                     elide: Text.ElideRight
                                 }
 
@@ -3889,7 +4020,7 @@ Dialog {
                                     text: root.shortcutDefaultLabel(modelData)
                                     color: themeManager.textMutedColor
                                     font.family: themeManager.monoFontFamily
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                     elide: Text.ElideRight
                                 }
 
@@ -4058,7 +4189,7 @@ Dialog {
                 text: root.shortcutCaptureTargetLabel
                 color: themeManager.textColor
                 font.family: themeManager.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Math.round(15 * themeManager.fontSizeMultiplier)
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -4081,7 +4212,7 @@ Dialog {
                 text: root.tr("settings.shortcutCaptureClearHint")
                 color: themeManager.textMutedColor
                 font.family: themeManager.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 wrapMode: Text.WordWrap
             }
 
@@ -4169,7 +4300,7 @@ Dialog {
                             text: root.shortcutContextLabel(modelData.context) + " | " + String(modelData.displaySequence || "")
                             color: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             elide: Text.ElideRight
                         }
                     }
@@ -4251,7 +4382,7 @@ Dialog {
                 text: root.tr("settings.factoryResetTitle")
                 color: themeManager.textColor
                 font.family: themeManager.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -4262,28 +4393,45 @@ Dialog {
                 color: themeManager.textColor
                 opacity: 0.84
                 font.family: themeManager.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 wrapMode: Text.WordWrap
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(0, factoryResetErrorLabel.implicitHeight + 18)
+                Layout.preferredHeight: errorLayout.implicitHeight + 18
                 radius: themeManager.borderRadius
                 color: Qt.rgba(0.78, 0.16, 0.16, 0.14)
                 border.width: 1
                 border.color: Qt.rgba(0.78, 0.16, 0.16, 0.45)
                 visible: root.factoryResetErrorText.length > 0
 
-                Kirigami.SelectableLabel {
-                    id: factoryResetErrorLabel
+                RowLayout {
+                    id: errorLayout
                     anchors.fill: parent
                     anchors.margins: 9
-                    text: root.factoryResetErrorText
-                    color: "#d94c4c"
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
+                    spacing: 12
+
+                    Text {
+                        id: factoryResetErrorLabel
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                        text: root.factoryResetErrorText
+                        color: "#d94c4c"
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Button {
+                        Layout.alignment: Qt.AlignVCenter
+                        text: root.tr("settings.copyError")
+                        font.family: themeManager.fontFamily
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        onClicked: {
+                            xdgPortalFilePicker.copyTextToClipboard(root.factoryResetErrorText)
+                        }
+                    }
                 }
             }
 
@@ -4367,7 +4515,7 @@ Dialog {
                     text: root.pendingResetTitle
                     color: themeManager.textColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -4378,7 +4526,7 @@ Dialog {
                     color: themeManager.textColor
                     opacity: 0.82
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     wrapMode: Text.WordWrap
                 }
 
@@ -4461,7 +4609,7 @@ Dialog {
                     color: themeManager.textColor
                     opacity: 0.82
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     wrapMode: Text.WordWrap
                 }
             }

@@ -22,6 +22,8 @@ Control {
         return 0
     }
     readonly property string currentText: itemText(modelEntry(currentIndex), "")
+    readonly property var currentValue: valueAt(currentIndex)
+    readonly property int count: modelCount
 
     signal activated(int index)
 
@@ -44,22 +46,36 @@ Control {
         return model[index]
     }
 
-    function itemText(entry, fallbackText) {
-        if (textRole && textRole.length > 0
+    function valueAt(index) {
+        let entry = modelEntry(index)
+        if (valueRole && valueRole.length > 0
                 && entry !== undefined
                 && entry !== null
                 && typeof entry === "object"
+                && entry[valueRole] !== undefined
+                && entry[valueRole] !== null) {
+            return entry[valueRole]
+        }
+        return entry
+    }
+
+    function itemText(entry, fallbackText) {
+        if (entry === undefined || entry === null) {
+            return ""
+        }
+
+        if (typeof entry !== "object") {
+            return String(entry)
+        }
+
+        if (textRole && textRole.length > 0
                 && entry[textRole] !== undefined
                 && entry[textRole] !== null) {
             return String(entry[textRole])
         }
 
-        if (fallbackText !== undefined && fallbackText !== null) {
+        if (fallbackText !== undefined && fallbackText !== null && fallbackText !== "") {
             return String(fallbackText)
-        }
-
-        if (entry === undefined || entry === null) {
-            return ""
         }
 
         return String(entry)
@@ -122,7 +138,7 @@ Control {
     contentItem: Text {
         text: control.currentText
         font.family: themeManager.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
         color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
@@ -133,7 +149,7 @@ Control {
         y: (control.height - height) * 0.5
         text: "\u25be"
         color: control.enabled ? themeManager.textSecondaryColor : themeManager.textMutedColor
-        font.pixelSize: 11
+        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
     }
 
     MouseArea {
@@ -159,6 +175,9 @@ Control {
         width: control.width
         padding: 6
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        onOpened: {
+            listView.positionViewAtIndex(control.currentIndex, ListView.Center)
+        }
 
         background: Rectangle {
             radius: themeManager.borderRadiusLarge
@@ -176,12 +195,14 @@ Control {
         contentItem: ListView {
             id: listView
             clip: true
-            implicitHeight: contentHeight
+            implicitHeight: Math.min(260, contentHeight)
             model: popup.visible ? control.model : null
             currentIndex: control.currentIndex
             spacing: 2
             boundsBehavior: Flickable.StopAtBounds
-            ScrollIndicator.vertical: ScrollIndicator {}
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
 
             delegate: ItemDelegate {
                 required property int index
@@ -195,7 +216,7 @@ Control {
                 contentItem: Text {
                     text: control.itemText(modelData, typeof model !== "undefined" && model.text !== undefined ? model.text : "")
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     color: parent.enabled ? themeManager.textColor : themeManager.textMutedColor
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight

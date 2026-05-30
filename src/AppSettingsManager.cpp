@@ -4,7 +4,9 @@
 #include <KLocalizedString>
 
 #include <QDir>
+#include <QDirIterator>
 #include <QCoreApplication>
+#include <cstdio>
 #include <QFileInfo>
 #include <QLocale>
 #include <QProcess>
@@ -12,6 +14,9 @@
 #include <QHash>
 #include <QSet>
 #include <QStandardPaths>
+#ifdef QT_SQL_LIB
+#include <QSqlDatabase>
+#endif
 #include <QUrl>
 #include <QUrlQuery>
 #include <functional>
@@ -537,6 +542,11 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("main.exportError"), QStringLiteral("Export Error")},
         {QStringLiteral("main.exportComplete"), QStringLiteral("Export Complete")},
         {QStringLiteral("main.lastError"), QStringLiteral("Last error: ")},
+        {QStringLiteral("githubStarToast.title"), QStringLiteral("Enjoying WaveFlux?")},
+        {QStringLiteral("githubStarToast.message"),
+         QStringLiteral("If this app makes listening easier, a GitHub star helps other people find it.")},
+        {QStringLiteral("githubStarToast.star"), QStringLiteral("Star on GitHub")},
+        {QStringLiteral("githubStarToast.close"), QStringLiteral("Close")},
         {QStringLiteral("error.fileUnavailable"), QStringLiteral("File is unavailable: %1")},
         {QStringLiteral("error.midiUnsupported"), QStringLiteral("MIDI playback is not supported yet: %1")},
         {QStringLiteral("error.trackerUnsupported"),
@@ -685,6 +695,9 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.waveformBackgroundColor"), QStringLiteral("Waveform Background Color:")},
         {QStringLiteral("settings.progressColor"), QStringLiteral("Progress Color:")},
         {QStringLiteral("settings.accentColor"), QStringLiteral("Accent Color:")},
+        {QStringLiteral("settings.fontFamily"), QStringLiteral("Font Family:")},
+        {QStringLiteral("settings.fontSize"), QStringLiteral("Font Size:")},
+        {QStringLiteral("settings.playlistFontFamily"), QStringLiteral("Playlist Font:")},
         {QStringLiteral("settings.language"), QStringLiteral("Language:")},
         {QStringLiteral("settings.languageAuto"), QStringLiteral("Auto (System)")},
         {QStringLiteral("settings.languageEnglish"), QStringLiteral("English")},
@@ -1039,7 +1052,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Light")},
         {QStringLiteral("settings.reset"), QStringLiteral("Reset")},
         {QStringLiteral("settings.close"), QStringLiteral("Close")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.3.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.3.1")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("A minimalist audio player with waveform visualization")},
         {QStringLiteral("player.previous"), QStringLiteral("Previous")},
@@ -1131,6 +1144,13 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("audioConverter.applyCurrentEqualizerHint"), QStringLiteral("Bake the current equalizer band gains into the converted file.")},
         {QStringLiteral("audioConverter.equalizerCurrent"), QStringLiteral("Equalizer: current")},
         {QStringLiteral("audioConverter.equalizerDisabled"), QStringLiteral("Equalizer: off")},
+        {QStringLiteral("audioConverter.applyReverb"), QStringLiteral("Apply reverb")},
+        {QStringLiteral("audioConverter.applyReverbHint"), QStringLiteral("Bake a room reverb effect into the converted file.")},
+        {QStringLiteral("audioConverter.reverbRoomSize"), QStringLiteral("Room size: ")},
+        {QStringLiteral("audioConverter.reverbWetLevel"), QStringLiteral("Reverb mix: ")},
+        {QStringLiteral("audioConverter.reverbDamping"), QStringLiteral("Damping: ")},
+        {QStringLiteral("audioConverter.reverbEnabled"), QStringLiteral("Reverb: %1% mix")},
+        {QStringLiteral("audioConverter.reverbDisabled"), QStringLiteral("Reverb: off")},
         {QStringLiteral("audioConverter.trimSection"), QStringLiteral("Trim")},
         {QStringLiteral("audioConverter.trimSectionHint"), QStringLiteral("Convert only a selected part of the source track.")},
         {QStringLiteral("audioConverter.enableTrim"), QStringLiteral("Trim converted track")},
@@ -1450,6 +1470,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.factoryResetConfirm"), QStringLiteral("Delete Everything")},
         {QStringLiteral("settings.factoryResetFailed"),
          QStringLiteral("Some files could not be deleted. Close WaveFlux and remove the listed paths manually.")},
+        {QStringLiteral("settings.copyError"), QStringLiteral("Copy Error")},
         {QStringLiteral("settings.valueEnabled"), QStringLiteral("Enabled")},
         {QStringLiteral("settings.valueDisabled"), QStringLiteral("Disabled")},
         {QStringLiteral("settings.valueSystemDefault"), QStringLiteral("System default")},
@@ -1688,10 +1709,14 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("About WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Version:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.3.0")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.3.1")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux is a focused desktop audio player for local libraries and internet streams, with waveform visualization, queue control, and precise playback tools.")},
+#ifdef Q_OS_WIN
+        {QStringLiteral("help.aboutLicense"), QStringLiteral("Built as a native Windows application.")},
+#else
         {QStringLiteral("help.aboutLicense"), QStringLiteral("Built as a native Qt/KDE desktop application.")},
+#endif
         {QStringLiteral("help.aboutTabAbout"), QStringLiteral("About")},
         {QStringLiteral("help.aboutTabComponents"), QStringLiteral("Components")},
         {QStringLiteral("help.aboutTabAuthor"), QStringLiteral("Author")},
@@ -1707,8 +1732,13 @@ const QHash<QString, QString> &englishTexts()
          QStringLiteral("Tracker module playback and waveform rendering for MOD/XM/S3M/IT-style formats.")},
         {QStringLiteral("help.aboutComponentSQLite"),
          QStringLiteral("Local media library database, smart collections, playback context, and listening statistics.")},
+#ifdef Q_OS_WIN
+        {QStringLiteral("help.aboutComponentDesktop"),
+         QStringLiteral("Windows media controls, system tray, file associations, and native notifications.")},
+#else
         {QStringLiteral("help.aboutComponentDesktop"),
          QStringLiteral("MPRIS, system tray, MIME/desktop integration, file manager actions, and XDG portals where available.")},
+#endif
         {QStringLiteral("help.aboutAuthorLabel"), QStringLiteral("Author:")},
         {QStringLiteral("help.aboutAuthorName"), QStringLiteral("leocallidus")},
         {QStringLiteral("help.aboutAuthorUrl"), QStringLiteral("https://github.com/leocallidus")},
@@ -1899,6 +1929,11 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("main.exportError"), QStringLiteral("Ошибка экспорта")},
         {QStringLiteral("main.exportComplete"), QStringLiteral("Экспорт завершен")},
         {QStringLiteral("main.lastError"), QStringLiteral("Последняя ошибка: ")},
+        {QStringLiteral("githubStarToast.title"), QStringLiteral("Нравится WaveFlux?")},
+        {QStringLiteral("githubStarToast.message"),
+         QStringLiteral("Если приложение делает прослушивание удобнее, звезда на GitHub поможет другим найти его.")},
+        {QStringLiteral("githubStarToast.star"), QStringLiteral("Звезда на GitHub")},
+        {QStringLiteral("githubStarToast.close"), QStringLiteral("Закрыть")},
         {QStringLiteral("error.fileUnavailable"), QStringLiteral("Файл недоступен: %1")},
         {QStringLiteral("error.midiUnsupported"), QStringLiteral("Воспроизведение MIDI пока не поддерживается: %1")},
         {QStringLiteral("error.trackerUnsupported"),
@@ -2047,6 +2082,9 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.waveformBackgroundColor"), QStringLiteral("Цвет фона волны:")},
         {QStringLiteral("settings.progressColor"), QStringLiteral("Цвет прогресса:")},
         {QStringLiteral("settings.accentColor"), QStringLiteral("Акцентный цвет:")},
+        {QStringLiteral("settings.fontFamily"), QStringLiteral("Шрифт:")},
+        {QStringLiteral("settings.fontSize"), QStringLiteral("Размер шрифта:")},
+        {QStringLiteral("settings.playlistFontFamily"), QStringLiteral("Шрифт плейлиста:")},
         {QStringLiteral("settings.language"), QStringLiteral("Язык:")},
         {QStringLiteral("settings.languageAuto"), QStringLiteral("Авто (системный)")},
         {QStringLiteral("settings.languageEnglish"), QStringLiteral("Английский")},
@@ -2404,7 +2442,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Светлая")},
         {QStringLiteral("settings.reset"), QStringLiteral("Сбросить")},
         {QStringLiteral("settings.close"), QStringLiteral("Закрыть")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.3.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.3.1")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("Минималистичный аудиоплеер с визуализацией волны")},
         {QStringLiteral("player.previous"), QStringLiteral("Предыдущий")},
@@ -2497,6 +2535,13 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("audioConverter.applyCurrentEqualizerHint"), QStringLiteral("Встроить текущие полосы эквалайзера в конвертированный файл.")},
         {QStringLiteral("audioConverter.equalizerCurrent"), QStringLiteral("Эквалайзер: текущий")},
         {QStringLiteral("audioConverter.equalizerDisabled"), QStringLiteral("Эквалайзер: выкл.")},
+        {QStringLiteral("audioConverter.applyReverb"), QStringLiteral("Применить реверберацию")},
+        {QStringLiteral("audioConverter.applyReverbHint"), QStringLiteral("Встроить эффект помещения в конвертированный файл.")},
+        {QStringLiteral("audioConverter.reverbRoomSize"), QStringLiteral("Размер помещения: ")},
+        {QStringLiteral("audioConverter.reverbWetLevel"), QStringLiteral("Микс реверберации: ")},
+        {QStringLiteral("audioConverter.reverbDamping"), QStringLiteral("Затухание: ")},
+        {QStringLiteral("audioConverter.reverbEnabled"), QStringLiteral("Реверберация: микс %1%")},
+        {QStringLiteral("audioConverter.reverbDisabled"), QStringLiteral("Реверберация: выкл.")},
         {QStringLiteral("audioConverter.trimSection"), QStringLiteral("Обрезка")},
         {QStringLiteral("audioConverter.trimSectionHint"), QStringLiteral("Конвертировать только выбранный фрагмент исходного трека.")},
         {QStringLiteral("audioConverter.enableTrim"), QStringLiteral("Обрезать конвертируемый трек")},
@@ -2816,6 +2861,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.factoryResetConfirm"), QStringLiteral("Удалить всё")},
         {QStringLiteral("settings.factoryResetFailed"),
          QStringLiteral("Некоторые файлы не удалось удалить. Закройте WaveFlux и удалите указанные пути вручную.")},
+        {QStringLiteral("settings.copyError"), QStringLiteral("Копировать ошибку")},
         {QStringLiteral("settings.valueEnabled"), QStringLiteral("Включено")},
         {QStringLiteral("settings.valueDisabled"), QStringLiteral("Выключено")},
         {QStringLiteral("settings.valueSystemDefault"), QStringLiteral("Системное значение")},
@@ -3054,10 +3100,14 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("О WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Версия:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.3.0")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.3.1")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux — сфокусированный настольный аудиоплеер для локальной медиатеки и интернет-стримов с визуализацией волны, очередью и точным управлением воспроизведением.")},
+#ifdef Q_OS_WIN
+        {QStringLiteral("help.aboutLicense"), QStringLiteral("Собрано как нативное приложение для Windows.")},
+#else
         {QStringLiteral("help.aboutLicense"), QStringLiteral("Собрано как нативное настольное приложение на Qt/KDE.")},
+#endif
         {QStringLiteral("help.aboutTabAbout"), QStringLiteral("О программе")},
         {QStringLiteral("help.aboutTabComponents"), QStringLiteral("Компоненты")},
         {QStringLiteral("help.aboutTabAuthor"), QStringLiteral("Автор")},
@@ -3073,8 +3123,13 @@ const QHash<QString, QString> &russianTexts()
          QStringLiteral("Воспроизведение tracker-модулей и отрисовка волны для форматов MOD/XM/S3M/IT.")},
         {QStringLiteral("help.aboutComponentSQLite"),
          QStringLiteral("Локальная база медиатеки, умные коллекции, контекст воспроизведения и статистика прослушивания.")},
+#ifdef Q_OS_WIN
+        {QStringLiteral("help.aboutComponentDesktop"),
+         QStringLiteral("Управление воспроизведением Windows, системный трей, файловые ассоциации и нативные уведомления.")},
+#else
         {QStringLiteral("help.aboutComponentDesktop"),
          QStringLiteral("MPRIS, системный трей, MIME/desktop-интеграция, действия файлового менеджера и XDG-порталы при наличии.")},
+#endif
         {QStringLiteral("help.aboutAuthorLabel"), QStringLiteral("Автор:")},
         {QStringLiteral("help.aboutAuthorName"), QStringLiteral("leocallidus")},
         {QStringLiteral("help.aboutAuthorUrl"), QStringLiteral("https://github.com/leocallidus")},
@@ -3517,9 +3572,41 @@ QVariantMap AppSettingsManager::performFullApplicationReset()
     QStringList removedPaths;
     QStringList failedPaths;
 
+    const bool sqliteLibraryWasEnabled = m_sqliteLibraryEnabled;
+    setSqliteLibraryEnabled(false);
+
     m_fullApplicationResetPending = true;
     m_saveSettingsPending = false;
     m_saveSettingsTimer.stop();
+
+    // Release and close all active SQLite connections to unlock the database files
+#ifdef QT_SQL_LIB
+    {
+        const QStringList connections = QSqlDatabase::connectionNames();
+        for (const QString &connName : connections) {
+            {
+                QSqlDatabase db = QSqlDatabase::database(connName, false);
+                if (db.isOpen()) {
+                    db.close();
+                }
+            }
+            QSqlDatabase::removeDatabase(connName);
+        }
+    }
+#endif
+
+    // Explicitly delete playlist profiles JSON first to ensure it's deleted even if directory deletion fails due to database file locks
+    const QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).trimmed();
+    if (!dataPath.isEmpty()) {
+        const QString playlistPath = dataPath + QStringLiteral("/playlist_profiles.json");
+        if (QFile::exists(playlistPath)) {
+            if (QFile::remove(playlistPath)) {
+                removedPaths.push_back(playlistPath);
+            } else {
+                failedPaths.push_back(playlistPath);
+            }
+        }
+    }
 
     auto removeDirectory = [&removedPaths, &failedPaths](QStandardPaths::StandardLocation location) {
         const QString path = QStandardPaths::writableLocation(location).trimmed();
@@ -3532,6 +3619,19 @@ QVariantMap AppSettingsManager::performFullApplicationReset()
             return;
         }
 
+        // Try to delete individual files in directory first so we clean up as much as possible
+        // even if some locked files (like SQLite database) fail to delete on Windows
+        QDirIterator it(path, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QString filePath = it.next();
+            if (QFile::remove(filePath)) {
+                removedPaths.push_back(filePath);
+            } else {
+                failedPaths.push_back(filePath);
+            }
+        }
+
+        // Now try to remove the directory itself
         if (dir.removeRecursively()) {
             removedPaths.push_back(path);
         } else {
@@ -3550,7 +3650,19 @@ QVariantMap AppSettingsManager::performFullApplicationReset()
     removeDirectory(QStandardPaths::AppDataLocation);
     removeDirectory(QStandardPaths::CacheLocation);
 
-    result.insert(QStringLiteral("ok"), failedPaths.isEmpty());
+    if (sqliteLibraryWasEnabled) {
+        m_sqliteLibraryEnabled = true;
+        emit sqliteLibraryEnabledChanged();
+    }
+    if (m_trackInfoEnabled) {
+        m_trackInfoEnabled = false;
+        emit trackInfoEnabledChanged();
+    }
+
+    // Consider reset OK as long as critical playlist profiles JSON and other non-locked files are successfully removed
+    const QString playlistPath = dataPath + QStringLiteral("/playlist_profiles.json");
+    bool playlistSuccessfullyRemoved = !QFile::exists(playlistPath);
+    result.insert(QStringLiteral("ok"), playlistSuccessfullyRemoved);
     result.insert(QStringLiteral("removedPaths"), removedPaths);
     result.insert(QStringLiteral("failedPaths"), failedPaths);
     return result;
@@ -4371,7 +4483,7 @@ void AppSettingsManager::loadSettings()
         m_settings.value("autoAddTracksFromPlaylistFolder", true).toBool();
     m_playlistScrollBarVisible = m_settings.value("playlistScrollBarVisible", true).toBool();
     m_playSearchResultsInOrder = m_settings.value("playSearchResultsInOrder", false).toBool();
-    m_trackInfoEnabled = m_settings.value("trackInfo.enabled", true).toBool();
+    m_trackInfoEnabled = m_settings.value("trackInfo.enabled", false).toBool();
     m_trackInfoWaveformOverlayHoverOnly =
         m_settings.value("trackInfo.waveformOverlayHoverOnly", true).toBool();
     QString windowTitleFormat =
@@ -4640,6 +4752,14 @@ QVariantMap AppSettingsManager::normalizeBatchAudioConverterLastSettings(const Q
     normalized.insert(QStringLiteral("equalizerBandGains"),
                       normalizeEqualizerBandGains(
                           settings.value(QStringLiteral("equalizerBandGains")).toList()));
+    normalized.insert(QStringLiteral("applyReverb"),
+                      settings.value(QStringLiteral("applyReverb"), false).toBool());
+    normalized.insert(QStringLiteral("reverbRoomSize"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbRoomSize"), 0.55).toDouble(), 1.0));
+    normalized.insert(QStringLiteral("reverbDamping"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbDamping"), 0.35).toDouble(), 1.0));
+    normalized.insert(QStringLiteral("reverbWetLevel"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbWetLevel"), 0.28).toDouble(), 1.0));
     normalized.insert(QStringLiteral("addResultsToPlaylist"),
                       normalized.value(QStringLiteral("playlistAddMode")).toString()
                           != QStringLiteral("disabled"));
@@ -4676,6 +4796,14 @@ QVariantMap AppSettingsManager::normalizeBatchAudioConverterPresetSettings(const
     normalized.insert(QStringLiteral("equalizerBandGains"),
                       normalizeEqualizerBandGains(
                           settings.value(QStringLiteral("equalizerBandGains")).toList()));
+    normalized.insert(QStringLiteral("applyReverb"),
+                      settings.value(QStringLiteral("applyReverb"), false).toBool());
+    normalized.insert(QStringLiteral("reverbRoomSize"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbRoomSize"), 0.55).toDouble(), 1.0));
+    normalized.insert(QStringLiteral("reverbDamping"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbDamping"), 0.35).toDouble(), 1.0));
+    normalized.insert(QStringLiteral("reverbWetLevel"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbWetLevel"), 0.28).toDouble(), 1.0));
     normalized.insert(QStringLiteral("addResultsToPlaylist"),
                       normalized.value(QStringLiteral("playlistAddMode")).toString()
                           != QStringLiteral("disabled"));
@@ -4845,4 +4973,18 @@ QVariantMap AppSettingsManager::normalizeTrackInfoOverlayFormats(const QVariantM
         normalized.insert(key, normalizeTrackInfoFormat(formats.value(key, fallback.value(key)).toString()));
     }
     return normalized;
+}
+
+#ifdef Q_OS_WIN
+extern "C" __declspec(dllimport) int __stdcall MessageBeep(unsigned int uType);
+#endif
+
+void AppSettingsManager::playSystemWarningSound() const
+{
+#ifdef Q_OS_WIN
+    MessageBeep(0x00000030); // MB_ICONWARNING
+#else
+    std::fprintf(stderr, "\a");
+    std::fflush(stderr);
+#endif
 }

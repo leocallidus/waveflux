@@ -9,8 +9,10 @@ import "IconResolver.js" as IconResolver
 Item {
     id: root
 
-    property string fallbackTitle: audioEngine.currentFile ? audioEngine.currentFile.split('/').pop() : tr("main.noTrack")
+    property string fallbackTitle: audioEngine.currentFile ? (audioEngine.title ? audioEngine.title : audioEngine.currentFile.split('/').pop()) : tr("main.noTrack")
     property string stageTitle: trackModel.currentTitle ? trackModel.currentTitle : fallbackTitle
+    property string fallbackArtist: audioEngine.currentFile && audioEngine.artist ? audioEngine.artist : ""
+    property string stageArtist: trackModel.currentArtist ? trackModel.currentArtist : fallbackArtist
     property bool playlistVisible: true
     property int pendingTrashIndex: -1
     property string pendingTrashFilePath: ""
@@ -953,7 +955,7 @@ Item {
                 z: 3
                 text: audioEngine ? audioEngine.remoteTrackerDownloadStatus : ""
                 color: themeManager.textSecondaryColor
-                font.pixelSize: 10
+                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                 elide: Text.ElideRight
                 width: Math.min(220, parent.width * 0.42)
                 horizontalAlignment: Text.AlignRight
@@ -1028,7 +1030,7 @@ Item {
                             text: root.waveformKeyboardBadgeText
                             color: "#ffffff"
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 10
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1090,7 +1092,7 @@ Item {
                                     visible: parent.width >= 72 && appSettings.cueWaveformOverlayLabelsEnabled
                                     elide: Text.ElideRight
                                     color: isActive ? themeManager.primaryColor : themeManager.textSecondaryColor
-                                    font.pixelSize: 8
+                                    font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                                     font.family: themeManager.monoFontFamily
                                     text: segmentDuration.length > 0
                                           ? (segmentName + " " + segmentDuration)
@@ -1319,7 +1321,7 @@ Item {
                         text: root.formatTime(audioEngine.position)
                         color: themeManager.primaryColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         font.bold: true
                         Layout.preferredWidth: 36
                         horizontalAlignment: Text.AlignRight
@@ -1329,14 +1331,14 @@ Item {
                         text: "/"
                         color: themeManager.textMutedColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
                         text: root.formatTime(audioEngine.duration)
                         color: themeManager.textSecondaryColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         Layout.preferredWidth: 36
                     }
 
@@ -1380,7 +1382,7 @@ Item {
                             text: playbackController.queueCount > 99 ? "99+" : String(playbackController.queueCount)
                             color: themeManager.backgroundColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 8
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             padding: 2
 
@@ -1413,7 +1415,7 @@ Item {
                             text: "\u2605"
                             color: themeManager.primaryColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 8
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             padding: 2
 
@@ -1695,7 +1697,7 @@ Item {
                                     text: "::"
                                     color: themeManager.textMutedColor
                                     font.family: themeManager.monoFontFamily
-                                    font.pixelSize: 9
+                                    font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                                 }
 
                                 MouseArea {
@@ -1724,7 +1726,7 @@ Item {
                                 text: String(queueItem.index + 1)
                                 color: themeManager.primaryColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 9
+                                font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                                 Layout.preferredWidth: 18
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -1734,7 +1736,7 @@ Item {
                                 text: queueItem.displayName
                                 color: themeManager.textColor
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 10
+                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                 elide: Text.ElideRight
                             }
 
@@ -1742,7 +1744,7 @@ Item {
                                 text: root.formatTime(queueItem.duration)
                                 color: themeManager.textMutedColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 9
+                                font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                                 Layout.preferredWidth: 32
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -1788,7 +1790,7 @@ Item {
                         text: root.tr("queue.empty")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                     }
                 }
             }
@@ -1875,7 +1877,7 @@ Item {
                                 text: parent.text
                                 color: themeManager.textMutedColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 12
+                                font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -1893,7 +1895,7 @@ Item {
                             color: themeManager.textColor
                             placeholderTextColor: themeManager.textMutedColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             background: Rectangle {
                                 radius: themeManager.borderRadius
                                 color: Qt.rgba(themeManager.backgroundColor.r,
@@ -2061,7 +2063,7 @@ Item {
                             text: (trackDelegate.index + 1) + "."
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 10
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             Layout.preferredWidth: 24
                             horizontalAlignment: Text.AlignRight
                         }
@@ -2071,7 +2073,7 @@ Item {
                             text: "Q" + String(trackDelegate.queuePosition + 1)
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.primaryColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 9
+                            font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             opacity: 0.82
                         }
@@ -2087,7 +2089,7 @@ Item {
                             }
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             font.bold: trackDelegate.activeTrack
                             elide: Text.ElideRight
                         }
@@ -2096,7 +2098,7 @@ Item {
                             text: trackDelegate.duration > 0 ? root.formatTime(trackDelegate.duration) : ""
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 10
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             visible: trackDelegate.duration > 0
                         }
                     }
@@ -2227,7 +2229,7 @@ Item {
                               : root.tr("playlist.dropHint")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                     }
@@ -2240,7 +2242,7 @@ Item {
                         text: root.tr("playlist.noMatches")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                     }
@@ -2382,12 +2384,12 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     text: {
-                        const artist = trackModel.currentArtist
+                        const artist = root.stageArtist
                         return artist ? (artist + " - " + root.stageTitle) : root.stageTitle
                     }
                     color: themeManager.textColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     elide: Text.ElideRight
                 }
 
@@ -2395,7 +2397,7 @@ Item {
                     text: trackModel.count + " " + root.tr("playlist.tracks")
                     color: themeManager.textMutedColor
                     font.family: themeManager.monoFontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                 }
             }
         }

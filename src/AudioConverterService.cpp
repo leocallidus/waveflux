@@ -891,6 +891,50 @@ void AudioConverterService::setEqualizerBandGains(const QVariantList &gains)
     emit equalizerBandGainsChanged();
 }
 
+void AudioConverterService::setApplyReverb(bool applyReverb)
+{
+    if (m_applyReverb == applyReverb) {
+        return;
+    }
+
+    m_applyReverb = applyReverb;
+    emit applyReverbChanged();
+    emit preflightChanged();
+}
+
+void AudioConverterService::setReverbRoomSize(double roomSize)
+{
+    const double normalized = normalizeUnitInterval(roomSize, 0.55);
+    if (qFuzzyCompare(m_reverbRoomSize, normalized)) {
+        return;
+    }
+
+    m_reverbRoomSize = normalized;
+    emit reverbRoomSizeChanged();
+}
+
+void AudioConverterService::setReverbDamping(double damping)
+{
+    const double normalized = normalizeUnitInterval(damping, 0.35);
+    if (qFuzzyCompare(m_reverbDamping, normalized)) {
+        return;
+    }
+
+    m_reverbDamping = normalized;
+    emit reverbDampingChanged();
+}
+
+void AudioConverterService::setReverbWetLevel(double wetLevel)
+{
+    const double normalized = normalizeUnitInterval(wetLevel, 0.28);
+    if (qFuzzyCompare(m_reverbWetLevel, normalized)) {
+        return;
+    }
+
+    m_reverbWetLevel = normalized;
+    emit reverbWetLevelChanged();
+}
+
 void AudioConverterService::setTrimEnabled(bool enabled)
 {
     if (m_trimEnabled == enabled) {
@@ -963,8 +1007,10 @@ void AudioConverterService::teardownConversionPipeline()
     m_convertElement = nullptr;
     m_resampleElement = nullptr;
     m_pitchElement = nullptr;
+    m_reverbElement = nullptr;
     m_equalizerElement = nullptr;
     m_postConvertElement = nullptr;
+    m_finalConvertElement = nullptr;
     m_capsFilterElement = nullptr;
     m_encoderElement = nullptr;
     m_muxerElement = nullptr;
@@ -1060,6 +1106,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
         || !ensureFactory("pitch", QStringLiteral("pitch"))
         || !ensureFactory("capsfilter", QStringLiteral("capsfilter"))
         || !ensureFactory("audioconvert", QStringLiteral("post-audioconvert"))
+        || (m_applyReverb && !ensureFactory("freeverb", QStringLiteral("freeverb")))
         || (m_applyEqualizer && !ensureFactory("equalizer-nbands", QStringLiteral("equalizer-nbands")))
         || !ensureFactory(profile->gstreamerMuxer, QString::fromLatin1(profile->gstreamerMuxer))
         || (!QString::fromLatin1(profile->gstreamerEncoder).isEmpty()
@@ -1084,10 +1131,14 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     m_convertElement = gst_element_factory_make("audioconvert", "converter-convert");
     m_resampleElement = gst_element_factory_make("audioresample", "converter-resample");
     m_pitchElement = gst_element_factory_make("pitch", "converter-pitch");
+    m_reverbElement = m_applyReverb
+        ? gst_element_factory_make("freeverb", "converter-reverb")
+        : nullptr;
     m_equalizerElement = m_applyEqualizer
         ? gst_element_factory_make("equalizer-nbands", "converter-equalizer")
         : nullptr;
     m_postConvertElement = gst_element_factory_make("audioconvert", "converter-post-convert");
+    m_finalConvertElement = gst_element_factory_make("audioconvert", "converter-final-convert");
     m_capsFilterElement = gst_element_factory_make("capsfilter", "converter-caps");
     m_muxerElement = QString::fromLatin1(profile->gstreamerMuxer).isEmpty()
         ? nullptr
@@ -1101,7 +1152,9 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     }
 
     if (!m_pipeline || !m_decodeBin || !m_convertElement || !m_resampleElement
-        || !m_pitchElement || !m_postConvertElement || !m_capsFilterElement || !m_sinkElement
+        || !m_pitchElement || !m_postConvertElement || !m_finalConvertElement
+        || !m_capsFilterElement || !m_sinkElement
+        || (m_applyReverb && !m_reverbElement)
         || (m_applyEqualizer && !m_equalizerElement)
         || (!QString::fromLatin1(profile->gstreamerMuxer).isEmpty() && !m_muxerElement)
         || (QString::fromLatin1(profile->gstreamerEncoder) != QStringLiteral("identity") && !m_encoderElement)) {
@@ -1132,6 +1185,14 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                                 m_equalizerBandGains.at(i).toDouble(),
                                 nullptr);
         }
+    }
+    if (m_reverbElement) {
+        g_object_set(m_reverbElement,
+                     "room-size", m_reverbRoomSize,
+                     "damping", m_reverbDamping,
+                     "level", m_reverbWetLevel,
+                     "width", 1.0,
+                     nullptr);
     }
 
     GstCaps *caps = gst_caps_new_simple("audio/x-raw",
@@ -1167,10 +1228,14 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     gst_bin_add(GST_BIN(m_pipeline), m_convertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_resampleElement);
     gst_bin_add(GST_BIN(m_pipeline), m_pitchElement);
+    if (m_reverbElement) {
+        gst_bin_add(GST_BIN(m_pipeline), m_reverbElement);
+    }
     if (m_equalizerElement) {
         gst_bin_add(GST_BIN(m_pipeline), m_equalizerElement);
     }
     gst_bin_add(GST_BIN(m_pipeline), m_postConvertElement);
+    gst_bin_add(GST_BIN(m_pipeline), m_finalConvertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_capsFilterElement);
     if (m_encoderElement) {
         gst_bin_add(GST_BIN(m_pipeline), m_encoderElement);
@@ -1180,7 +1245,6 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     }
     gst_bin_add(GST_BIN(m_pipeline), m_sinkElement);
 
-    GstElement *tailStart = m_capsFilterElement;
     bool linkOk = linkWithDiagnostics(m_convertElement,
                                       m_resampleElement,
                                       QStringLiteral("Failed to link converter -> resampler"),
@@ -1194,16 +1258,31 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                                QStringLiteral("Failed to link pitch -> post-convert"),
                                errorMessage)
         && linkWithDiagnostics(m_postConvertElement,
-                               m_applyEqualizer ? m_equalizerElement : m_capsFilterElement,
-                               m_applyEqualizer
-                                   ? QStringLiteral("Failed to link post-convert -> equalizer")
-                                   : QStringLiteral("Failed to link post-convert -> caps filter"),
+                               m_applyReverb ? m_reverbElement
+                                             : (m_applyEqualizer ? m_equalizerElement
+                                                                 : m_finalConvertElement),
+                               m_applyReverb
+                                   ? QStringLiteral("Failed to link post-convert -> reverb")
+                                   : (m_applyEqualizer
+                                      ? QStringLiteral("Failed to link post-convert -> equalizer")
+                                      : QStringLiteral("Failed to link post-convert -> final convert")),
                                errorMessage)
+        && (!m_applyReverb
+            || linkWithDiagnostics(m_reverbElement,
+                                   m_applyEqualizer ? m_equalizerElement : m_finalConvertElement,
+                                   m_applyEqualizer
+                                       ? QStringLiteral("Failed to link reverb -> equalizer")
+                                       : QStringLiteral("Failed to link reverb -> final convert"),
+                                   errorMessage))
         && (!m_applyEqualizer
             || linkWithDiagnostics(m_equalizerElement,
-                                   m_capsFilterElement,
-                                   QStringLiteral("Failed to link equalizer -> caps filter"),
-                                   errorMessage));
+                                   m_finalConvertElement,
+                                   QStringLiteral("Failed to link equalizer -> final convert"),
+                                   errorMessage))
+        && linkWithDiagnostics(m_finalConvertElement,
+                               m_capsFilterElement,
+                               QStringLiteral("Failed to link final convert -> caps filter"),
+                               errorMessage);
     if (!linkOk) {
         teardownConversionPipeline();
         cleanupTemporaryTrackerSource();
@@ -1212,7 +1291,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
 
     if (m_encoderElement) {
         if (m_muxerElement) {
-            linkOk = linkWithDiagnostics(tailStart,
+            linkOk = linkWithDiagnostics(m_capsFilterElement,
                                          m_encoderElement,
                                          QStringLiteral("Failed to link caps filter -> encoder"),
                                          errorMessage)
@@ -1225,7 +1304,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                                        QStringLiteral("Failed to link muxer -> sink"),
                                        errorMessage);
         } else {
-            linkOk = linkWithDiagnostics(tailStart,
+            linkOk = linkWithDiagnostics(m_capsFilterElement,
                                          m_encoderElement,
                                          QStringLiteral("Failed to link caps filter -> encoder"),
                                          errorMessage)
@@ -1236,7 +1315,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
         }
     } else {
         if (m_muxerElement) {
-            linkOk = linkWithDiagnostics(tailStart,
+            linkOk = linkWithDiagnostics(m_capsFilterElement,
                                          m_muxerElement,
                                          QStringLiteral("Failed to link caps filter -> muxer"),
                                          errorMessage)
@@ -1245,7 +1324,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                                        QStringLiteral("Failed to link muxer -> sink"),
                                        errorMessage);
         } else {
-            linkOk = linkWithDiagnostics(tailStart,
+            linkOk = linkWithDiagnostics(m_capsFilterElement,
                                          m_sinkElement,
                                          QStringLiteral("Failed to link caps filter -> sink"),
                                          errorMessage);
@@ -1763,6 +1842,15 @@ int AudioConverterService::normalizePitchSemitones(int pitchSemitones)
     return qBound(-24, pitchSemitones, 24);
 }
 
+double AudioConverterService::normalizeUnitInterval(double value, double fallback)
+{
+    if (!qIsFinite(value)) {
+        return fallback;
+    }
+
+    return qBound(0.0, value, 1.0);
+}
+
 QVariantList AudioConverterService::normalizeEqualizerBandGains(const QVariantList &gains)
 {
     QVariantList normalized;
@@ -1857,7 +1945,9 @@ QString AudioConverterService::uniqueOutputPath(const QString &path)
     return candidate;
 }
 
-QStringList AudioConverterService::requiredGStreamerElements(const FormatProfile *profile, bool includeEqualizer)
+QStringList AudioConverterService::requiredGStreamerElements(const FormatProfile *profile,
+                                                             bool includeEqualizer,
+                                                             bool includeReverb)
 {
     QStringList elements = {
         QStringLiteral("uridecodebin"),
@@ -1870,6 +1960,9 @@ QStringList AudioConverterService::requiredGStreamerElements(const FormatProfile
 
     if (includeEqualizer) {
         elements.push_back(QStringLiteral("equalizer-nbands"));
+    }
+    if (includeReverb) {
+        elements.push_back(QStringLiteral("freeverb"));
     }
 
     if (profile) {
@@ -1921,7 +2014,9 @@ QVariantMap AudioConverterService::buildPreflight() const
     const QString outputPath = normalizeLocalPath(m_outputFile);
     const bool sameAsSource = !sourcePath.isEmpty() && sourcePath == outputPath;
     const FormatProfile *profile = findFormatProfile(m_format);
-    const QStringList requiredElements = requiredGStreamerElements(profile, m_applyEqualizer);
+    const QStringList requiredElements = requiredGStreamerElements(profile,
+                                                                   m_applyEqualizer,
+                                                                   m_applyReverb);
     const QStringList missingElements = missingGStreamerElements(requiredElements);
 
     result.insert(QStringLiteral("canStart"), false);
@@ -1955,6 +2050,10 @@ QVariantMap AudioConverterService::buildPreflight() const
     summary.insert(QStringLiteral("pitchSemitones"), m_pitchSemitones);
     summary.insert(QStringLiteral("applyEqualizer"), m_applyEqualizer);
     summary.insert(QStringLiteral("equalizerBandGains"), m_equalizerBandGains);
+    summary.insert(QStringLiteral("applyReverb"), m_applyReverb);
+    summary.insert(QStringLiteral("reverbRoomSize"), m_reverbRoomSize);
+    summary.insert(QStringLiteral("reverbDamping"), m_reverbDamping);
+    summary.insert(QStringLiteral("reverbWetLevel"), m_reverbWetLevel);
     summary.insert(QStringLiteral("trimEnabled"), m_trimEnabled);
     summary.insert(QStringLiteral("trimStartMs"), m_trimStartMs);
     summary.insert(QStringLiteral("trimEndMs"), m_trimEndMs);

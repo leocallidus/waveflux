@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -432,6 +432,10 @@ Dialog {
         chunks.push(audioConverterService.applyEqualizer
                     ? root.tr("audioConverter.equalizerCurrent")
                     : root.tr("audioConverter.equalizerDisabled"))
+        chunks.push(audioConverterService.applyReverb
+                    ? root.tr("audioConverter.reverbEnabled")
+                          .arg(Math.round(Number(audioConverterService.reverbWetLevel) * 100))
+                    : root.tr("audioConverter.reverbDisabled"))
         chunks.push(audioConverterService.trimEnabled
                     ? root.tr("audioConverter.trimRange")
                           .arg(root.formatDuration(audioConverterService.trimStartMs))
@@ -715,7 +719,7 @@ Dialog {
 
                         Label {
                             text: root.tr("audioConverter.title")
-                            font.pixelSize: 25
+                            font.pixelSize: Math.round(25 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
 
@@ -731,7 +735,7 @@ Dialog {
                                   ? root.sourceDisplayName
                                   : root.fileNameFromPath(root.sourceFile)
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 15
+                            font.pixelSize: Math.round(15 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
 
@@ -902,7 +906,7 @@ Dialog {
                                           ? root.tr("audioConverter.badgeConflict")
                                           : root.tr("audioConverter.badgeAttention")
                                     color: root.preflightNoticeColor()
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                     font.bold: true
                                 }
                             }
@@ -1181,7 +1185,7 @@ Dialog {
                             onMoved: audioConverterService.pitchSemitones = Math.round(value)
                         }
 
-                        CheckBox {
+                        AccentCheckBox {
                             id: equalizerCheckBox
                             Layout.fillWidth: true
                             text: root.tr("audioConverter.applyCurrentEqualizer")
@@ -1189,11 +1193,84 @@ Dialog {
                             enabled: !audioConverterService.isRunning
                             Accessible.name: text
                             Accessible.description: root.tr("audioConverter.applyCurrentEqualizerHint")
-                            KeyNavigation.tab: trimEnabledCheckBox
+                            KeyNavigation.tab: reverbCheckBox
                             KeyNavigation.backtab: pitchSlider
                             onToggled: {
                                 audioConverterService.applyEqualizer = checked
                                 root.syncEqualizerSettingsForConversion()
+                            }
+                        }
+
+                        AccentCheckBox {
+                            id: reverbCheckBox
+                            Layout.fillWidth: true
+                            text: root.tr("audioConverter.applyReverb")
+                            checked: audioConverterService.applyReverb
+                            enabled: !audioConverterService.isRunning
+                            Accessible.name: text
+                            Accessible.description: root.tr("audioConverter.applyReverbHint")
+                            KeyNavigation.tab: reverbRoomSlider
+                            KeyNavigation.backtab: equalizerCheckBox
+                            onToggled: audioConverterService.applyReverb = checked
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            enabled: !audioConverterService.isRunning && audioConverterService.applyReverb
+
+                            Label {
+                                text: root.tr("audioConverter.reverbRoomSize")
+                                      + Math.round(Number(audioConverterService.reverbRoomSize) * 100) + "%"
+                            }
+                            AccentSlider {
+                                id: reverbRoomSlider
+                                Layout.fillWidth: true
+                                from: 0.0
+                                to: 1.0
+                                stepSize: 0.01
+                                enabled: parent.enabled
+                                Accessible.name: root.tr("audioConverter.reverbRoomSize")
+                                KeyNavigation.tab: reverbWetSlider
+                                KeyNavigation.backtab: reverbCheckBox
+                                value: audioConverterService.reverbRoomSize
+                                onMoved: audioConverterService.reverbRoomSize = value
+                            }
+
+                            Label {
+                                text: root.tr("audioConverter.reverbWetLevel")
+                                      + Math.round(Number(audioConverterService.reverbWetLevel) * 100) + "%"
+                            }
+                            AccentSlider {
+                                id: reverbWetSlider
+                                Layout.fillWidth: true
+                                from: 0.0
+                                to: 1.0
+                                stepSize: 0.01
+                                enabled: parent.enabled
+                                Accessible.name: root.tr("audioConverter.reverbWetLevel")
+                                KeyNavigation.tab: reverbDampingSlider
+                                KeyNavigation.backtab: reverbRoomSlider
+                                value: audioConverterService.reverbWetLevel
+                                onMoved: audioConverterService.reverbWetLevel = value
+                            }
+
+                            Label {
+                                text: root.tr("audioConverter.reverbDamping")
+                                      + Math.round(Number(audioConverterService.reverbDamping) * 100) + "%"
+                            }
+                            AccentSlider {
+                                id: reverbDampingSlider
+                                Layout.fillWidth: true
+                                from: 0.0
+                                to: 1.0
+                                stepSize: 0.01
+                                enabled: parent.enabled
+                                Accessible.name: root.tr("audioConverter.reverbDamping")
+                                KeyNavigation.tab: trimEnabledCheckBox
+                                KeyNavigation.backtab: reverbWetSlider
+                                value: audioConverterService.reverbDamping
+                                onMoved: audioConverterService.reverbDamping = value
                             }
                         }
 
@@ -1232,7 +1309,7 @@ Dialog {
                             color: themeManager.textSecondaryColor
                         }
 
-                        CheckBox {
+                        AccentCheckBox {
                             id: trimEnabledCheckBox
                             Layout.fillWidth: true
                             text: root.tr("audioConverter.enableTrim")
@@ -1241,7 +1318,7 @@ Dialog {
                             Accessible.name: text
                             Accessible.description: root.tr("audioConverter.trimSectionHint")
                             KeyNavigation.tab: trimStartField
-                            KeyNavigation.backtab: equalizerCheckBox
+                            KeyNavigation.backtab: reverbDampingSlider
                             onToggled: {
                                 audioConverterService.trimEnabled = checked
                                 if (checked && audioConverterService.trimEndMs <= audioConverterService.trimStartMs) {
@@ -1371,7 +1448,7 @@ Dialog {
                                     id: stateBadgeLabel
                                     anchors.centerIn: parent
                                     text: root.statusBadgeText
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                     font.bold: true
                                     color: root.toneTextColor(root.statusTone)
                                 }

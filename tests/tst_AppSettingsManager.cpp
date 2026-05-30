@@ -92,6 +92,7 @@ private slots:
     void persistsTrackInfoSettingsAndNormalizesFormats();
     void persistsYtDlpImportHistoryAndSanitizesSecrets();
     void signalsOnlyOnEffectiveChangesAndPersistsBurstUpdates();
+    void fullApplicationResetRestoresRuntimeDefaults();
     void resolvesImportToolRuntimeDeterministically();
     void usesDashVersionForRealFfmpegContract();
 };
@@ -126,7 +127,7 @@ void AppSettingsManagerTest::defaultsNewPlaylistFolderAutoAddToEnabled()
     QCOMPARE(settings.autoAddTracksFromPlaylistFolder(), true);
     QCOMPARE(settings.autoCheckUpdates(), true);
     QCOMPARE(settings.includePrereleaseUpdates(), false);
-    QCOMPARE(settings.trackInfoEnabled(), true);
+    QCOMPARE(settings.trackInfoEnabled(), false);
     QCOMPARE(settings.trackInfoWaveformOverlayHoverOnly(), true);
     QCOMPARE(settings.trackInfoWindowTitleFormat(), settings.defaultTrackInfoWindowTitleFormat());
     QCOMPARE(settings.trackInfoWaveformTooltipFormat(), QString());
@@ -643,6 +644,22 @@ void AppSettingsManagerTest::signalsOnlyOnEffectiveChangesAndPersistsBurstUpdate
     QCOMPARE(persisted.value(QStringLiteral("waveformHeight")).toInt(), 140);
     QCOMPARE(static_cast<quint32>(persisted.value(QStringLiteral("shuffleSeed")).toULongLong()), 42u);
     persisted.endGroup();
+}
+
+void AppSettingsManagerTest::fullApplicationResetRestoresRuntimeDefaults()
+{
+    AppSettingsManager settings;
+    settings.setSqliteLibraryEnabled(true);
+    settings.setTrackInfoEnabled(true);
+
+    const QVariantMap resetResult = settings.performFullApplicationReset();
+    QCOMPARE(resetResult.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(settings.sqliteLibraryEnabled(), true);
+    QCOMPARE(settings.trackInfoEnabled(), false);
+
+    AppSettingsManager reloaded;
+    QCOMPARE(reloaded.sqliteLibraryEnabled(), true);
+    QCOMPARE(reloaded.trackInfoEnabled(), false);
 }
 
 void AppSettingsManagerTest::resolvesImportToolRuntimeDeterministically()

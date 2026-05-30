@@ -3,6 +3,7 @@
 
 #include <QDateTime>
 #include <QRegularExpression>
+#include <QtGlobal>
 
 namespace {
 const QRegularExpression kUserIdPattern(QStringLiteral("^batch:(\\d+)$"));
@@ -291,6 +292,14 @@ QVariantMap BatchAudioConverterPresetManager::normalizePresetSettings(const QVar
     normalized.insert(QStringLiteral("equalizerBandGains"),
                       normalizeEqualizerBandGains(
                           settings.value(QStringLiteral("equalizerBandGains")).toList()));
+    normalized.insert(QStringLiteral("applyReverb"),
+                      settings.value(QStringLiteral("applyReverb"), false).toBool());
+    normalized.insert(QStringLiteral("reverbRoomSize"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbRoomSize"), 0.55).toDouble(), 1.0));
+    normalized.insert(QStringLiteral("reverbDamping"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbDamping"), 0.35).toDouble(), 1.0));
+    normalized.insert(QStringLiteral("reverbWetLevel"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbWetLevel"), 0.28).toDouble(), 1.0));
     normalized.insert(QStringLiteral("addResultsToPlaylist"),
                       normalized.value(QStringLiteral("playlistAddMode")).toString()
                           != QStringLiteral("disabled"));

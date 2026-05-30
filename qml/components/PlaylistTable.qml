@@ -6,6 +6,7 @@ import "../IconResolver.js" as IconResolver
 
 Item {
     id: root
+    clip: true
 
     property string searchQuery: ""
     property string debouncedSearchQuery: ""
@@ -65,6 +66,17 @@ Item {
     signal editTagsSelectionRequested(var filePaths)
     signal exportSelectionRequested(var filePaths)
     signal externalUrlsDropped(var urls, int insertIndex)
+    signal tablePressed()
+
+    TapHandler {
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        gesturePolicy: TapHandler.WithinBounds
+        onPressedChanged: {
+            if (pressed) {
+                root.tablePressed()
+            }
+        }
+    }
 
     Timer {
         id: externalDropAutoScrollTimer
@@ -1323,8 +1335,8 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                             text: "#"
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
@@ -1334,8 +1346,8 @@ Item {
                                   ? "▲"
                                   : (root.indexSortState === 2 ? "▼" : "")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 8
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1360,8 +1372,8 @@ Item {
                             text: root.tr("table.title")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
@@ -1373,8 +1385,8 @@ Item {
                                   ? "▼"
                                   : (root.titleSortState === 2 ? "▲" : "")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 8
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1400,8 +1412,8 @@ Item {
                             text: root.tr("table.artist")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
@@ -1413,8 +1425,8 @@ Item {
                                   ? "▼"
                                   : (root.artistSortState === 2 ? "▲" : "")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 8
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1440,8 +1452,8 @@ Item {
                             text: root.tr("table.album")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
@@ -1453,8 +1465,8 @@ Item {
                                   ? "▼"
                                   : (root.albumSortState === 2 ? "▲" : "")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 8
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1479,8 +1491,8 @@ Item {
                             horizontalAlignment: Text.AlignRight
                             text: root.tr("table.duration")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
@@ -1492,8 +1504,8 @@ Item {
                                   ? "▼"
                                   : (root.durationSortState === 2 ? "▲" : "")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 8
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1519,8 +1531,8 @@ Item {
                             text: root.tr("table.bitrate")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 10
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
@@ -1532,8 +1544,8 @@ Item {
                                   ? "▼"
                                   : (root.bitrateSortState === 2 ? "▲" : "")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 8
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
                     }
@@ -1740,7 +1752,7 @@ Item {
                             text: root.formatTrackNumber(trackDelegate.index)
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -1751,7 +1763,7 @@ Item {
                             text: "Q" + String(trackDelegate.queuePosition + 1)
                             color: themeManager.primaryColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 9
+                            font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             opacity: trackDelegate.highlighted ? 1.0 : 0.82
                         }
@@ -1765,8 +1777,8 @@ Item {
                                                     trackDelegate.displayName)
                         elide: Text.ElideRight
                         color: trackDelegate.highlighted ? themeManager.primaryColor : themeManager.textColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.family: themeManager.playlistFontFamily
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         font.bold: trackDelegate.highlighted
                     }
 
@@ -1777,8 +1789,8 @@ Item {
                         text: trackDelegate.artist
                         elide: Text.ElideRight
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.family: themeManager.playlistFontFamily
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
@@ -1788,8 +1800,8 @@ Item {
                         text: trackDelegate.album
                         elide: Text.ElideRight
                         color: themeManager.textMutedColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.family: themeManager.playlistFontFamily
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
@@ -1798,7 +1810,7 @@ Item {
                         text: root.formatDuration(trackDelegate.duration)
                         color: themeManager.textSecondaryColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
@@ -1809,7 +1821,7 @@ Item {
                         color: trackDelegate.highlighted ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.8)
                                                        : themeManager.textMutedColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
                 }
 
@@ -1822,6 +1834,7 @@ Item {
                     ToolTip.text: hoveredCellTooltipText
                     ToolTip.visible: containsMouse && hoveredCellTooltipText.length > 0
                     onPressed: function(mouse) {
+                        root.tablePressed()
                         if (mouse.button !== Qt.LeftButton) {
                             return
                         }

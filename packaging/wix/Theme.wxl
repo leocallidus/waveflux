@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US">
+  <!-- Customize Maintenance Mode strings to offer clear "Reinstall" and "Uninstall" options -->
+  <String Id="MaintenanceTypeDlgRepairButton" Value="&amp;Reinstall" />
+  <String Id="MaintenanceTypeDlgRepairTitle" Value="Reinstall" />
+  <String Id="MaintenanceTypeDlgRepairDescription" Value="Reinstalls all files and shortcuts of WaveFlux cleanly to default settings." />
+  <String Id="MaintenanceTypeDlgRemoveButton" Value="&amp;Uninstall" />
+  <String Id="MaintenanceTypeDlgRemoveTitle" Value="Uninstall" />
+  <String Id="MaintenanceTypeDlgRemoveDescription" Value="Uninstalls the application from your computer." />
+</WixLocalization>

@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -769,7 +769,7 @@ Dialog {
 
                             Label {
                                 text: root.tr("ytDlpImport.dialogTitle")
-                                font.pixelSize: 22
+                                font.pixelSize: Math.round(22 * themeManager.fontSizeMultiplier)
                                 font.bold: true
                                 color: themeManager.textColor
                             }
@@ -1005,7 +1005,7 @@ Dialog {
                                             Layout.fillWidth: true
                                             spacing: Kirigami.Units.smallSpacing
 
-                                            CheckBox {
+                                            AccentCheckBox {
                                                 checked: root.isSourceSelected(modelData.sourceId)
                                                 onToggled: root.setSourceSelected(modelData.sourceId, checked)
                                             }
@@ -1636,7 +1636,7 @@ Dialog {
                             text: String(finalSummary.headlineText || "")
                             color: themeManager.textColor
                             font.bold: true
-                            font.pixelSize: 16
+                            font.pixelSize: Math.round(16 * themeManager.fontSizeMultiplier)
                             wrapMode: Text.WordWrap
                         }
 
@@ -1693,7 +1693,7 @@ Dialog {
                                         wrapMode: Text.WordWrap
                                     }
 
-                                    CheckBox {
+                                    AccentCheckBox {
                                         visible: Boolean(modelData.retryAllowed) && String(modelData.itemId || "").length > 0
                                         text: root.tr("batchAudioConverter.retrySelected")
                                         checked: root.isReportItemSelected(modelData.itemId)

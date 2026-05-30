@@ -730,8 +730,8 @@ Rectangle {
                             text: name
                             color: themeManager.textColor
                             elide: Text.ElideRight
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -739,8 +739,8 @@ Rectangle {
                             text: root.tr("playlists.trackCount").arg(trackCount)
                             color: themeManager.textMutedColor
                             elide: Text.ElideRight
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 9
+                            font.family: themeManager.playlistFontFamily
+                            font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                         }
                     }
 

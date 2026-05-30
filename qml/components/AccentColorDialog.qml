@@ -169,7 +169,7 @@ Dialog {
                     text: root.title
                     color: themeManager.textColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 14
+                    font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -179,7 +179,7 @@ Dialog {
                     text: root.colorToHex(root.workingColor)
                     color: themeManager.textMutedColor
                     font.family: themeManager.monoFontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     elide: Text.ElideRight
                 }
             }
@@ -430,7 +430,7 @@ Dialog {
                             text: "Hex"
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         TextField {
@@ -438,7 +438,7 @@ Dialog {
                             Layout.fillWidth: true
                             color: themeManager.textColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                             selectByMouse: true
                             placeholderText: "#00A7C6"
                             background: Rectangle {

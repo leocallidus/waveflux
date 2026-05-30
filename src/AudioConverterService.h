@@ -27,6 +27,10 @@ class AudioConverterService : public QObject
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
     Q_PROPERTY(bool applyEqualizer READ applyEqualizer WRITE setApplyEqualizer NOTIFY applyEqualizerChanged)
     Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains WRITE setEqualizerBandGains NOTIFY equalizerBandGainsChanged)
+    Q_PROPERTY(bool applyReverb READ applyReverb WRITE setApplyReverb NOTIFY applyReverbChanged)
+    Q_PROPERTY(double reverbRoomSize READ reverbRoomSize WRITE setReverbRoomSize NOTIFY reverbRoomSizeChanged)
+    Q_PROPERTY(double reverbDamping READ reverbDamping WRITE setReverbDamping NOTIFY reverbDampingChanged)
+    Q_PROPERTY(double reverbWetLevel READ reverbWetLevel WRITE setReverbWetLevel NOTIFY reverbWetLevelChanged)
     Q_PROPERTY(bool trimEnabled READ trimEnabled WRITE setTrimEnabled NOTIFY trimEnabledChanged)
     Q_PROPERTY(qint64 trimStartMs READ trimStartMs WRITE setTrimStartMs NOTIFY trimStartMsChanged)
     Q_PROPERTY(qint64 trimEndMs READ trimEndMs WRITE setTrimEndMs NOTIFY trimEndMsChanged)
@@ -73,6 +77,10 @@ public:
     int pitchSemitones() const { return m_pitchSemitones; }
     bool applyEqualizer() const { return m_applyEqualizer; }
     QVariantList equalizerBandGains() const { return m_equalizerBandGains; }
+    bool applyReverb() const { return m_applyReverb; }
+    double reverbRoomSize() const { return m_reverbRoomSize; }
+    double reverbDamping() const { return m_reverbDamping; }
+    double reverbWetLevel() const { return m_reverbWetLevel; }
     bool trimEnabled() const { return m_trimEnabled; }
     qint64 trimStartMs() const { return m_trimStartMs; }
     qint64 trimEndMs() const { return m_trimEndMs; }
@@ -108,6 +116,10 @@ public slots:
     void setPitchSemitones(int pitchSemitones);
     void setApplyEqualizer(bool applyEqualizer);
     void setEqualizerBandGains(const QVariantList &gains);
+    void setApplyReverb(bool applyReverb);
+    void setReverbRoomSize(double roomSize);
+    void setReverbDamping(double damping);
+    void setReverbWetLevel(double wetLevel);
     void setTrimEnabled(bool enabled);
     void setTrimStartMs(qint64 startMs);
     void setTrimEndMs(qint64 endMs);
@@ -124,6 +136,10 @@ signals:
     void pitchSemitonesChanged();
     void applyEqualizerChanged();
     void equalizerBandGainsChanged();
+    void applyReverbChanged();
+    void reverbRoomSizeChanged();
+    void reverbDampingChanged();
+    void reverbWetLevelChanged();
     void trimEnabledChanged();
     void trimStartMsChanged();
     void trimEndMsChanged();
@@ -147,12 +163,15 @@ private:
     static int normalizeSampleRate(int sampleRate, const QString &format);
     static double normalizePlaybackRate(double playbackRate);
     static int normalizePitchSemitones(int pitchSemitones);
+    static double normalizeUnitInterval(double value, double fallback);
     static QVariantList normalizeEqualizerBandGains(const QVariantList &gains);
     static const FormatProfile *findFormatProfile(const QString &format);
     static QVariantMap toVariantMap(const FormatProfile &profile);
     static QString replaceExtension(const QString &path, const QString &extension);
     static QString uniqueOutputPath(const QString &path);
-    static QStringList requiredGStreamerElements(const FormatProfile *profile, bool includeEqualizer = false);
+    static QStringList requiredGStreamerElements(const FormatProfile *profile,
+                                                 bool includeEqualizer = false,
+                                                 bool includeReverb = false);
     static QStringList missingGStreamerElements(const QStringList &requiredElements);
     static bool hasGStreamerElementFactory(const QString &factoryName);
 
@@ -199,6 +218,10 @@ private:
     int m_pitchSemitones = 0;
     bool m_applyEqualizer = false;
     QVariantList m_equalizerBandGains;
+    bool m_applyReverb = false;
+    double m_reverbRoomSize = 0.55;
+    double m_reverbDamping = 0.35;
+    double m_reverbWetLevel = 0.28;
     bool m_trimEnabled = false;
     qint64 m_trimStartMs = 0;
     qint64 m_trimEndMs = 0;
@@ -215,8 +238,10 @@ private:
     GstElement *m_convertElement = nullptr;
     GstElement *m_resampleElement = nullptr;
     GstElement *m_pitchElement = nullptr;
+    GstElement *m_reverbElement = nullptr;
     GstElement *m_equalizerElement = nullptr;
     GstElement *m_postConvertElement = nullptr;
+    GstElement *m_finalConvertElement = nullptr;
     GstElement *m_capsFilterElement = nullptr;
     GstElement *m_encoderElement = nullptr;
     GstElement *m_muxerElement = nullptr;

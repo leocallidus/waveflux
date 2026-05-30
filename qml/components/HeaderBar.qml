@@ -238,7 +238,7 @@ Rectangle {
             color: themeManager.textColor
             opacity: mouseArea.containsMouse || mouseArea.pressed ? 1.0 : 0.86
             font.family: themeManager.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             font.bold: mouseArea.containsMouse || mouseArea.pressed
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -317,7 +317,7 @@ Rectangle {
             text: menuItem.text
             color: menuItem.enabled ? root.menuHighlightText : themeManager.textMutedColor
             font.family: themeManager.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             font.bold: menuItem.highlighted
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
@@ -331,7 +331,7 @@ Rectangle {
             horizontalAlignment: Text.AlignHCenter
             text: menuItem.checked ? "\u2713" : ""
             color: menuItem.enabled ? themeManager.primaryColor : themeManager.textMutedColor
-            font.pixelSize: 13
+            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
             font.bold: true
         }
 
@@ -340,7 +340,7 @@ Rectangle {
             text: "\u203a"
             visible: menuItem.subMenu
             color: menuItem.enabled ? themeManager.textSecondaryColor : themeManager.textMutedColor
-            font.pixelSize: 13
+            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
         }
     }
 
@@ -437,7 +437,7 @@ Rectangle {
                     text: "WAVEFLUX"
                     font.family: themeManager.fontFamily
                     font.bold: true
-                    font.pixelSize: 12
+                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                     color: themeManager.primaryColor
                     opacity: root.mobileLayout ? 0.0 : 1.0
                     visible: !root.mobileLayout
@@ -504,7 +504,7 @@ Rectangle {
                                      : root.tr("header.searchManualPlaceholder")
                     color: themeManager.textColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     background: Item {}
                     onTextEdited: function() {
                         root.handleSearchTextEdited(text)
@@ -586,7 +586,7 @@ Rectangle {
                 text: root.metadataTitle
                 color: themeManager.primaryColor
                 font.family: themeManager.monoFontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -598,7 +598,7 @@ Rectangle {
                 text: "|"
                 color: themeManager.textMutedColor
                 font.family: themeManager.monoFontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             }
 
             Label {
@@ -606,7 +606,7 @@ Rectangle {
                 text: root.metadataAlbum
                 color: themeManager.textSecondaryColor
                 font.family: themeManager.monoFontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 elide: Text.ElideRight
                 Layout.fillWidth: true
                 Layout.minimumWidth: 40
@@ -617,7 +617,7 @@ Rectangle {
                 text: "|"
                 color: themeManager.textMutedColor
                 font.family: themeManager.monoFontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             }
 
             Label {
@@ -625,7 +625,7 @@ Rectangle {
                 text: root.metadataTech
                 color: themeManager.primaryColor
                 font.family: themeManager.monoFontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 elide: Text.ElideRight
                 Layout.maximumWidth: 120
             }

@@ -7,5 +7,5 @@ Exec=waveflux %U
 Icon=waveflux
 Terminal=false
 Categories=AudioVideo;Audio;Player;Qt;
-MimeType=audio/aac;audio/ac3;audio/aiff;audio/basic;audio/flac;audio/m4a;audio/mp2;audio/mp3;audio/mp4;audio/mpeg;audio/ogg;audio/opus;audio/vorbis;audio/wav;audio/webm;audio/x-669;audio/x-aac;audio/x-aiff;audio/x-amf;audio/x-flac;audio/x-it;audio/x-m4a;audio/x-matroska;audio/x-mod;audio/x-mp2;audio/x-mp3;audio/x-mpeg;audio/x-ms-wma;audio/x-s3m;audio/x-stm;audio/x-wav;audio/x-xm;audio/x-vorbis+ogg;application/ogg;
+MimeType=inode/directory;audio/aac;audio/ac3;audio/aiff;audio/basic;audio/flac;audio/m4a;audio/mp2;audio/mp3;audio/mp4;audio/mpeg;audio/ogg;audio/opus;audio/vorbis;audio/wav;audio/webm;audio/x-669;audio/x-aac;audio/x-aiff;audio/x-amf;audio/x-flac;audio/x-it;audio/x-m4a;audio/x-matroska;audio/x-mod;audio/x-mp2;audio/x-mp3;audio/x-mpeg;audio/x-ms-wma;audio/x-s3m;audio/x-stm;audio/x-wav;audio/x-xm;audio/x-vorbis+ogg;application/ogg;
 StartupNotify=true

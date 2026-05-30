@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-CheckBox {
+RadioButton {
     id: control
 
     spacing: 8
@@ -10,7 +10,7 @@ CheckBox {
     indicator: Rectangle {
         implicitWidth: 20
         implicitHeight: 20
-        radius: 5
+        radius: 10
         color: {
             if (!control.enabled) {
                 return Qt.rgba(themeManager.surfaceColor.r,
@@ -50,39 +50,19 @@ CheckBox {
         Behavior on border.color { ColorAnimation { duration: 120 } }
         Behavior on border.width { NumberAnimation { duration: 80 } }
 
-        // Checkmark icon — use a canvas for a clean vector checkmark
-        Canvas {
-            id: checkCanvas
+        // Inner dot
+        Rectangle {
             anchors.centerIn: parent
-            width: 12
-            height: 12
+            width: 8
+            height: 8
+            radius: 4
+            color: themeManager.darkMode ? "#08131d" : "#ffffff"
             visible: control.checked
+            scale: control.checked ? 1.0 : 0.0
             opacity: control.checked ? 1.0 : 0.0
-            scale: control.checked ? 1.0 : 0.6
 
-            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-            Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-
-            onPaint: {
-                var ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-                ctx.strokeStyle = themeManager.darkMode ? "#08131d" : "#ffffff"
-                ctx.lineWidth = 2.0
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                ctx.beginPath()
-                ctx.moveTo(2.0, 6.0)
-                ctx.lineTo(4.8, 9.2)
-                ctx.lineTo(10.0, 3.0)
-                ctx.stroke()
-            }
-
-            // Repaint when dark mode changes
-            Connections {
-                target: themeManager
-                function onDarkModeChanged() { checkCanvas.requestPaint() }
-            }
-            Component.onCompleted: checkCanvas.requestPaint()
+            Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
+            Behavior on opacity { NumberAnimation { duration: 100 } }
         }
     }
 

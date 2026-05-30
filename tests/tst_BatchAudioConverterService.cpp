@@ -142,6 +142,10 @@ void BatchAudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(service.channelMode(), QStringLiteral("stereo"));
     QCOMPARE(service.playbackRate(), 1.0);
     QCOMPARE(service.pitchSemitones(), 0);
+    QCOMPARE(service.applyReverb(), false);
+    QCOMPARE(service.reverbRoomSize(), 0.55);
+    QCOMPARE(service.reverbDamping(), 0.35);
+    QCOMPARE(service.reverbWetLevel(), 0.28);
     QCOMPARE(service.addResultsToPlaylist(), true);
     QCOMPARE(service.totalCount(), 0);
     QCOMPARE(service.currentIndex(), -1);
@@ -163,6 +167,10 @@ void BatchAudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(settings.value(QStringLiteral("channelMode")).toString(), QStringLiteral("stereo"));
     QCOMPARE(settings.value(QStringLiteral("playbackRate")).toDouble(), 1.0);
     QCOMPARE(settings.value(QStringLiteral("pitchSemitones")).toInt(), 0);
+    QCOMPARE(settings.value(QStringLiteral("applyReverb")).toBool(), false);
+    QCOMPARE(settings.value(QStringLiteral("reverbRoomSize")).toDouble(), 0.55);
+    QCOMPARE(settings.value(QStringLiteral("reverbDamping")).toDouble(), 0.35);
+    QCOMPARE(settings.value(QStringLiteral("reverbWetLevel")).toDouble(), 0.28);
     QCOMPARE(settings.value(QStringLiteral("addResultsToPlaylist")).toBool(), true);
     QCOMPARE(service.jobMetadata(), QVariantMap());
 }

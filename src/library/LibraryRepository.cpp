@@ -708,15 +708,29 @@ void LibraryRepository::configure(bool enabled, const QString &databasePath)
     }
 
     Worker *worker = m_worker;
-    QMetaObject::invokeMethod(
-        m_worker,
-        [worker, enabled, databasePath]() {
-            if (!worker) {
-                return;
-            }
+    if (!enabled) {
+        if (QThread::currentThread() == m_thread) {
             worker->configure(enabled, databasePath);
-        },
-        Qt::QueuedConnection);
+        } else {
+            QMetaObject::invokeMethod(
+                m_worker,
+                [worker, enabled, databasePath]() {
+                    if (worker) {
+                        worker->configure(enabled, databasePath);
+                    }
+                },
+                Qt::BlockingQueuedConnection);
+        }
+    } else {
+        QMetaObject::invokeMethod(
+            m_worker,
+            [worker, enabled, databasePath]() {
+                if (worker) {
+                    worker->configure(enabled, databasePath);
+                }
+            },
+            Qt::QueuedConnection);
+    }
 }
 
 void LibraryRepository::enqueueUpsertTrack(const LibraryTrackUpsertData &track)

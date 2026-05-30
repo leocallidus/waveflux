@@ -2794,6 +2794,7 @@ void PlaybackController::onCurrentFileChanged(const QString &filePath)
         }
     } else if (!filePath.isEmpty()) {
         setActiveTrackIndex(-1);
+        m_trackModel->setCurrentIndexSilently(-1);
         traceTransitionEvent("current_file_changed_unresolved", fileTransitionId, {
             {QStringLiteral("filePath"), filePath}
         });

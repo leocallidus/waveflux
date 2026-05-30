@@ -74,7 +74,7 @@ PACKAGE_NAME="waveflux"
 VERSION_OVERRIDE=""
 RPM_RELEASE="1"
 ARCH_OVERRIDE=""
-PACKAGER="WaveFlux Maintainers <noreply@example.com>"
+PACKAGER="leocallidus <leoalekseev27@gmail.com>"
 INCLUDE_DEBUG=0
 INSTALL_BUILD_DEPS=0
 SKIP_BUILD_DEPS_CHECK=0
@@ -248,7 +248,7 @@ sed \
     -e "s|@SOURCE_ARCHIVE@|$(escape_sed "${SRC_ARCHIVE}")|g" \
     -e "s|@SOURCE_DIRNAME@|$(escape_sed "${SRC_BASENAME}")|g" \
     -e "s|@PACKAGER@|$(escape_sed "${PACKAGER}")|g" \
-    "${SPEC_TEMPLATE}" > "${SPEC_PATH}"
+    "${SPEC_TEMPLATE}" | tr -d '\r' > "${SPEC_PATH}"
 
 RPMBUILD_ARGS=(
     -bb "${SPEC_PATH}"

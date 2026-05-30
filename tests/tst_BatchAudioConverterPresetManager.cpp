@@ -35,6 +35,10 @@ void BatchAudioConverterPresetManagerTest::normalizesCreatedPresets()
     settings.insert(QStringLiteral("applyEqualizer"), true);
     settings.insert(QStringLiteral("equalizerBandGains"),
                     QVariantList({-99.0, -3.0, 0.0, 4.5, 99.0}));
+    settings.insert(QStringLiteral("applyReverb"), true);
+    settings.insert(QStringLiteral("reverbRoomSize"), 99.0);
+    settings.insert(QStringLiteral("reverbDamping"), -1.0);
+    settings.insert(QStringLiteral("reverbWetLevel"), 0.44);
     settings.insert(QStringLiteral("addResultsToPlaylist"), false);
 
     const QString presetId = manager.createUserPreset(QStringLiteral("  Queue Default  "), settings);
@@ -63,6 +67,10 @@ void BatchAudioConverterPresetManagerTest::normalizesCreatedPresets()
     QCOMPARE(equalizerBandGains.at(1).toDouble(), -3.0);
     QCOMPARE(equalizerBandGains.at(3).toDouble(), 4.5);
     QCOMPARE(equalizerBandGains.at(4).toDouble(), 12.0);
+    QCOMPARE(normalizedSettings.value(QStringLiteral("applyReverb")).toBool(), true);
+    QCOMPARE(normalizedSettings.value(QStringLiteral("reverbRoomSize")).toDouble(), 1.0);
+    QCOMPARE(normalizedSettings.value(QStringLiteral("reverbDamping")).toDouble(), 0.0);
+    QCOMPARE(normalizedSettings.value(QStringLiteral("reverbWetLevel")).toDouble(), 0.44);
     QCOMPARE(normalizedSettings.value(QStringLiteral("addResultsToPlaylist")).toBool(), true);
     QVERIFY(!normalizedSettings.contains(QStringLiteral("retryPolicy")));
 }

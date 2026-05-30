@@ -92,7 +92,7 @@ Dialog {
                           + "  " + root.tr("updates.availableVersion") + " " + updateChecker.latestVersion
                     color: themeManager.textSecondaryColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     wrapMode: Text.WordWrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
@@ -119,7 +119,7 @@ Dialog {
                 text: (updateChecker.releaseName || updateChecker.latestTag || updateChecker.latestVersion)
                 color: themeManager.textColor
                 font.family: themeManager.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                 font.bold: true
                 wrapMode: Text.WordWrap
                 maximumLineCount: root.compactLayout ? 1 : 2
@@ -132,7 +132,7 @@ Dialog {
                 text: root.tr("updates.publishedAt") + " " + root.publishedText()
                 color: themeManager.textMutedColor
                 font.family: themeManager.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 elide: Text.ElideRight
             }
         }
@@ -143,7 +143,7 @@ Dialog {
             text: root.tr("updates.changes")
             color: themeManager.textColor
             font.family: themeManager.fontFamily
-            font.pixelSize: 12
+            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
             font.bold: true
         }
 
@@ -176,7 +176,7 @@ Dialog {
                     selectedTextColor: themeManager.backgroundColor
                     selectionColor: themeManager.primaryColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                     background: Item {}
                 }
             }

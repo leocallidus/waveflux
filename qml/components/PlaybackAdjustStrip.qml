@@ -55,7 +55,7 @@ RowLayout {
         text: title
         color: themeManager.textMutedColor
         font.family: themeManager.fontFamily
-        font.pixelSize: 9
+        font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
     }
 
     Rectangle {
@@ -146,7 +146,7 @@ RowLayout {
     ToolButton {
         text: root.resetText
         font.family: themeManager.monoFontFamily
-        font.pixelSize: 9
+        font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
         implicitWidth: root.compactMode ? 22 : 24
         implicitHeight: root.compactMode ? 22 : 24
         opacity: Math.abs(root.value - root.neutralValue) > 0.0001 ? 1.0 : 0.5

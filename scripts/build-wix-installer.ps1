@@ -1,8 +1,8 @@
 param(
-    [string]$BuildDir = "E:\audioplayer\waveflux\build-win-runtime",
+    [string]$BuildDir = "build-win-runtime",
     [string]$Target = "waveflux",
     [string]$MsysPrefix = "C:\msys64\ucrt64",
-    [string]$DistDir = "E:\audioplayer\waveflux\dist\windows",
+    [string]$DistDir = "dist\windows",
     [string]$WixExe = "C:\Program Files\WiX Toolset v6.0\bin\wix.exe",
     [string]$Version,
     [switch]$RunTests,
@@ -106,7 +106,7 @@ function New-DirectoryNode {
     return [pscustomobject]@{
         Name = $Name
         RelativePath = $RelativePath
-        DirectoryId = $(if ([string]::IsNullOrEmpty($RelativePath)) { "INSTALLFOLDER" } else { Get-SafeId -Prefix "Dir_" -Text $RelativePath })
+        DirectoryId = $(if ([string]::IsNullOrEmpty($RelativePath)) { "APPLICATIONFOLDER" } else { Get-SafeId -Prefix "Dir_" -Text $RelativePath })
         Files = New-Object System.Collections.Generic.List[object]
         Children = New-Object System.Collections.Generic.List[object]
     }
@@ -246,7 +246,7 @@ $builder = [System.Text.StringBuilder]::new()
 [void]$builder.AppendLine('<?xml version="1.0" encoding="UTF-8"?>')
 [void]$builder.AppendLine('<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">')
 [void]$builder.AppendLine('  <Fragment>')
-[void]$builder.AppendLine('    <DirectoryRef Id="INSTALLFOLDER">')
+[void]$builder.AppendLine('    <DirectoryRef Id="APPLICATIONFOLDER">')
 Write-DirectoryXml -Builder $builder -Node $rootNode -IndentLevel 3 -ComponentIds $componentIds
 [void]$builder.AppendLine('    </DirectoryRef>')
 [void]$builder.AppendLine('  </Fragment>')
@@ -262,10 +262,20 @@ $builder.ToString() | Set-Content -LiteralPath $filesWxsPath -Encoding UTF8
 
 $upgradeCode = "8F8B7194-78CB-4E14-96F7-9D0B9A6C7F77"
 $startMenuShortcutGuid = "0F6A3B3A-3D29-4CE1-A605-1B4D4C3E2A11"
+$licenseRtfPath = Join-Path $repoRoot "packaging\wix\LICENSE.rtf"
+if (-not (Test-Path -LiteralPath $licenseRtfPath)) {
+    throw "RTF license file was not found at '$licenseRtfPath'."
+}
+$wxlPath = Join-Path $repoRoot "packaging\wix\Theme.wxl"
+if (-not (Test-Path -LiteralPath $wxlPath)) {
+    throw "WiX localization wxl file was not found at '$wxlPath'."
+}
 
 & $wixExePath build `
     $templatePath `
     $filesWxsPath `
+    $wxlPath `
+    -ext WixToolset.UI.wixext `
     -arch x64 `
     -d ProductName=WaveFlux `
     -d Manufacturer=WaveFlux `
@@ -273,6 +283,7 @@ $startMenuShortcutGuid = "0F6A3B3A-3D29-4CE1-A605-1B4D4C3E2A11"
     -d UpgradeCode=$upgradeCode `
     -d InstallDirName=WaveFlux `
     -d IconPath=$iconPath `
+    -d LicenseRtfPath=$licenseRtfPath `
     -d StartMenuShortcutGuid=$startMenuShortcutGuid `
     -o $msiPath
 

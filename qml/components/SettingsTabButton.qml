@@ -86,7 +86,7 @@ Button {
                 text: String(control.resultCount)
                 color: themeManager.primaryColor
                 font.family: themeManager.monoFontFamily
-                font.pixelSize: 9
+                font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
                 font.bold: true
             }
         }

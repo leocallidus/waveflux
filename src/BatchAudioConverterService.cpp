@@ -313,6 +313,10 @@ QVariantMap BatchAudioConverterService::settings() const
     result.insert(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones);
     result.insert(QStringLiteral("applyEqualizer"), m_settings.applyEqualizer);
     result.insert(QStringLiteral("equalizerBandGains"), m_settings.equalizerBandGains);
+    result.insert(QStringLiteral("applyReverb"), m_settings.applyReverb);
+    result.insert(QStringLiteral("reverbRoomSize"), m_settings.reverbRoomSize);
+    result.insert(QStringLiteral("reverbDamping"), m_settings.reverbDamping);
+    result.insert(QStringLiteral("reverbWetLevel"), m_settings.reverbWetLevel);
     result.insert(QStringLiteral("addResultsToPlaylist"), m_settings.addResultsToPlaylist);
     return result;
 }
@@ -363,7 +367,8 @@ QVariantMap BatchAudioConverterService::runtimeDiagnostics() const
 
     const bool heavyDspProfile = !qFuzzyCompare(m_settings.playbackRate, 1.0)
         || m_settings.pitchSemitones != 0
-        || m_settings.applyEqualizer;
+        || m_settings.applyEqualizer
+        || m_settings.applyReverb;
     const int dspAdjustedItemCount = heavyDspProfile ? runnableItemCount : 0;
 
     QVariantMap metrics;
@@ -923,6 +928,10 @@ bool BatchAudioConverterService::applySettingsMap(const QVariantMap &settings)
     if (settings.contains(QStringLiteral("equalizerBandGains"))) {
         setEqualizerBandGains(settings.value(QStringLiteral("equalizerBandGains")).toList());
     }
+    setApplyReverb(settings.value(QStringLiteral("applyReverb"), m_settings.applyReverb).toBool());
+    setReverbRoomSize(settings.value(QStringLiteral("reverbRoomSize"), m_settings.reverbRoomSize).toDouble());
+    setReverbDamping(settings.value(QStringLiteral("reverbDamping"), m_settings.reverbDamping).toDouble());
+    setReverbWetLevel(settings.value(QStringLiteral("reverbWetLevel"), m_settings.reverbWetLevel).toDouble());
     return true;
 }
 
@@ -1483,6 +1492,59 @@ void BatchAudioConverterService::setEqualizerBandGains(const QVariantList &gains
     emitSettingsChanged();
 }
 
+void BatchAudioConverterService::setApplyReverb(bool applyReverb)
+{
+    if (!canMutateConfiguration() || m_settings.applyReverb == applyReverb) {
+        return;
+    }
+
+    m_settings.applyReverb = applyReverb;
+    emit applyReverbChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setReverbRoomSize(double roomSize)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double normalized = normalizeUnitInterval(roomSize, 0.55);
+    if (qFuzzyCompare(m_settings.reverbRoomSize, normalized)) {
+        return;
+    }
+    m_settings.reverbRoomSize = normalized;
+    emit reverbRoomSizeChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setReverbDamping(double damping)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double normalized = normalizeUnitInterval(damping, 0.35);
+    if (qFuzzyCompare(m_settings.reverbDamping, normalized)) {
+        return;
+    }
+    m_settings.reverbDamping = normalized;
+    emit reverbDampingChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setReverbWetLevel(double wetLevel)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double normalized = normalizeUnitInterval(wetLevel, 0.28);
+    if (qFuzzyCompare(m_settings.reverbWetLevel, normalized)) {
+        return;
+    }
+    m_settings.reverbWetLevel = normalized;
+    emit reverbWetLevelChanged();
+    emitSettingsChanged();
+}
+
 void BatchAudioConverterService::setAddResultsToPlaylist(bool addResultsToPlaylist)
 {
     if (!canMutateConfiguration()) {
@@ -1666,6 +1728,15 @@ double BatchAudioConverterService::normalizePlaybackRate(double playbackRate)
 int BatchAudioConverterService::normalizePitchSemitones(int pitchSemitones)
 {
     return qBound(-24, pitchSemitones, 24);
+}
+
+double BatchAudioConverterService::normalizeUnitInterval(double value, double fallback)
+{
+    if (!qIsFinite(value)) {
+        return fallback;
+    }
+
+    return qBound(0.0, value, 1.0);
 }
 
 QVariantList BatchAudioConverterService::normalizeEqualizerBandGains(const QVariantList &gains)
@@ -1868,6 +1939,10 @@ QVariantMap BatchAudioConverterService::effectiveSettingsToVariantMap(
     result.insert(QStringLiteral("pitchSemitones"), settings.pitchSemitones);
     result.insert(QStringLiteral("applyEqualizer"), settings.applyEqualizer);
     result.insert(QStringLiteral("equalizerBandGains"), settings.equalizerBandGains);
+    result.insert(QStringLiteral("applyReverb"), settings.applyReverb);
+    result.insert(QStringLiteral("reverbRoomSize"), settings.reverbRoomSize);
+    result.insert(QStringLiteral("reverbDamping"), settings.reverbDamping);
+    result.insert(QStringLiteral("reverbWetLevel"), settings.reverbWetLevel);
     result.insert(QStringLiteral("addResultsToPlaylist"), settings.addResultsToPlaylist);
     result.insert(QStringLiteral("capturedAtMs"), settings.capturedAtMs);
     return result;
@@ -1895,6 +1970,13 @@ BatchAudioConverterService::effectiveSettingsFromVariantMap(const QVariantMap &s
     snapshot.applyEqualizer = settings.value(QStringLiteral("applyEqualizer"), false).toBool();
     snapshot.equalizerBandGains = normalizeEqualizerBandGains(
         settings.value(QStringLiteral("equalizerBandGains")).toList());
+    snapshot.applyReverb = settings.value(QStringLiteral("applyReverb"), false).toBool();
+    snapshot.reverbRoomSize = normalizeUnitInterval(
+        settings.value(QStringLiteral("reverbRoomSize"), 0.55).toDouble(), 0.55);
+    snapshot.reverbDamping = normalizeUnitInterval(
+        settings.value(QStringLiteral("reverbDamping"), 0.35).toDouble(), 0.35);
+    snapshot.reverbWetLevel = normalizeUnitInterval(
+        settings.value(QStringLiteral("reverbWetLevel"), 0.28).toDouble(), 0.28);
     snapshot.addResultsToPlaylist = snapshot.playlistAddMode != DisabledPlaylistAddMode;
     snapshot.capturedAtMs = qMax<qint64>(0, settings.value(QStringLiteral("capturedAtMs")).toLongLong());
     return snapshot;
@@ -2102,6 +2184,10 @@ QStringList BatchAudioConverterService::settingsDiffKeys(const QVariantMap &prev
         QStringLiteral("pitchSemitones"),
         QStringLiteral("applyEqualizer"),
         QStringLiteral("equalizerBandGains"),
+        QStringLiteral("applyReverb"),
+        QStringLiteral("reverbRoomSize"),
+        QStringLiteral("reverbDamping"),
+        QStringLiteral("reverbWetLevel"),
         QStringLiteral("addResultsToPlaylist")
     };
 
@@ -2853,6 +2939,10 @@ BatchAudioConverterService::currentSettingsSnapshot() const
     snapshot.pitchSemitones = m_settings.pitchSemitones;
     snapshot.applyEqualizer = m_settings.applyEqualizer;
     snapshot.equalizerBandGains = m_settings.equalizerBandGains;
+    snapshot.applyReverb = m_settings.applyReverb;
+    snapshot.reverbRoomSize = m_settings.reverbRoomSize;
+    snapshot.reverbDamping = m_settings.reverbDamping;
+    snapshot.reverbWetLevel = m_settings.reverbWetLevel;
     snapshot.addResultsToPlaylist = m_settings.playlistAddMode != DisabledPlaylistAddMode;
     snapshot.capturedAtMs = nowMs();
     return snapshot;
@@ -3261,6 +3351,14 @@ bool BatchAudioConverterService::refreshPlannedOutputs(QString *errorMessage)
                                    m_settings.playbackRate);
         item.reportMetadata.insert(QStringLiteral("plannedSettingsPitchSemitones"),
                                    m_settings.pitchSemitones);
+        item.reportMetadata.insert(QStringLiteral("plannedSettingsApplyReverb"),
+                                   m_settings.applyReverb);
+        item.reportMetadata.insert(QStringLiteral("plannedSettingsReverbRoomSize"),
+                                   m_settings.reverbRoomSize);
+        item.reportMetadata.insert(QStringLiteral("plannedSettingsReverbDamping"),
+                                   m_settings.reverbDamping);
+        item.reportMetadata.insert(QStringLiteral("plannedSettingsReverbWetLevel"),
+                                   m_settings.reverbWetLevel);
         item.reportMetadata.insert(QStringLiteral("plannedSettingsAddResultsToPlaylist"),
                                    m_settings.playlistAddMode != DisabledPlaylistAddMode);
         if (item.state == Pending || item.state == Running) {
@@ -3494,6 +3592,10 @@ void BatchAudioConverterService::startNextPendingItem()
     m_worker->setPitchSemitones(m_settings.pitchSemitones);
     m_worker->setApplyEqualizer(m_settings.applyEqualizer);
     m_worker->setEqualizerBandGains(m_settings.equalizerBandGains);
+    m_worker->setApplyReverb(m_settings.applyReverb);
+    m_worker->setReverbRoomSize(m_settings.reverbRoomSize);
+    m_worker->setReverbDamping(m_settings.reverbDamping);
+    m_worker->setReverbWetLevel(m_settings.reverbWetLevel);
     m_worker->setOverwriteExisting(m_items[nextIndex].conflictResolution.willOverwriteExisting);
 
     if (!m_worker->startConversion()) {

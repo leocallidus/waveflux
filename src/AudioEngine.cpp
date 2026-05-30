@@ -15,6 +15,7 @@
 #include <QVariantMap>
 #include <QDebug>
 #include <QFileInfo>
+#include <QUrl>
 #include <QStringList>
 #include <QtGlobal>
 #include "DiagnosticsFlags.h"
@@ -43,7 +44,10 @@ bool isLikelyWindowsAbsolutePath(const QString &path)
 
 QString localPathFromAudioSource(const QString &source)
 {
-    const QString normalized = source.trimmed();
+    QString normalized = source.trimmed();
+    if (normalized.contains(QLatin1Char('%'))) {
+        normalized = QUrl::fromPercentEncoding(normalized.toUtf8());
+    }
     if (normalized.isEmpty()) {
         return {};
     }
@@ -167,7 +171,10 @@ qint64 probeMetadataDurationMs(const QString &source)
 
 QString buildPlaybackUri(const QString &source)
 {
-    const QString normalized = source.trimmed();
+    QString normalized = source.trimmed();
+    if (normalized.contains(QLatin1Char('%'))) {
+        normalized = QUrl::fromPercentEncoding(normalized.toUtf8());
+    }
     if (normalized.isEmpty()) {
         return {};
     }

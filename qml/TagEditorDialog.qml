@@ -84,7 +84,7 @@ Dialog {
                 text: root.tr("tagEditor.title")
                 color: Kirigami.Theme.textColor
                 font.bold: true
-                font.pixelSize: 14
+                font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignVCenter
@@ -244,7 +244,7 @@ Dialog {
                                     anchors.centerIn: parent
                                     text: "\u266A"
                                     opacity: 0.42
-                                    font.pixelSize: 28
+                                    font.pixelSize: Math.round(28 * themeManager.fontSizeMultiplier)
                                     visible: !coverPreviewImage.visible
                                 }
                             }

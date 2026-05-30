@@ -97,7 +97,7 @@ Rectangle {
                         text: root.tr("sidebar.spectrumAnalyzer")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -141,7 +141,7 @@ Rectangle {
                         text: root.tr("sidebar.technicalSpecs")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -156,7 +156,7 @@ Rectangle {
                             text: root.tr("sidebar.engine")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -168,14 +168,14 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
                             text: root.tr("sidebar.codec")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -187,7 +187,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -195,7 +195,7 @@ Rectangle {
                             text: root.tr("sidebar.sampleRate")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -208,7 +208,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -216,7 +216,7 @@ Rectangle {
                             text: root.tr("sidebar.bitrate")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -229,7 +229,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -237,7 +237,7 @@ Rectangle {
                             text: root.tr("sidebar.bitDepth")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -250,7 +250,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -258,7 +258,7 @@ Rectangle {
                             text: root.tr("sidebar.bpm")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -272,7 +272,7 @@ Rectangle {
                             elide: Text.ElideRight
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
                     }
                 }
@@ -286,7 +286,7 @@ Rectangle {
                         text: root.tr("sidebar.trackerModule")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -302,7 +302,7 @@ Rectangle {
                             text: root.tr("sidebar.trackerType")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -315,7 +315,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -323,7 +323,7 @@ Rectangle {
                             text: root.tr("sidebar.trackerChannels")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -336,7 +336,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -344,7 +344,7 @@ Rectangle {
                             text: root.tr("sidebar.trackerPatterns")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -357,7 +357,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -365,7 +365,7 @@ Rectangle {
                             text: root.tr("sidebar.trackerInstruments")
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -378,7 +378,7 @@ Rectangle {
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
                             font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
                     }
 
@@ -388,7 +388,7 @@ Rectangle {
                         text: root.trackerMessage
                         color: themeManager.textSecondaryColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         wrapMode: Text.WordWrap
                         maximumLineCount: 4
                         elide: Text.ElideRight
@@ -403,7 +403,7 @@ Rectangle {
                         text: root.tr("sidebar.albumArt")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -439,7 +439,7 @@ Rectangle {
                             visible: root.albumArt.length === 0
                             text: "♪"
                             color: themeManager.textMutedColor
-                            font.pixelSize: 40
+                            font.pixelSize: Math.round(40 * themeManager.fontSizeMultiplier)
                         }
                     }
                 }

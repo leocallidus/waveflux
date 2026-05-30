@@ -51,7 +51,7 @@ Rectangle {
                     text: root.titleText
                     color: root.mutedTextColor
                     font.family: root.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                     font.bold: true
                     font.letterSpacing: 1.2
                 }
@@ -61,7 +61,7 @@ Rectangle {
                     color: root.textColor
                     opacity: 0.82
                     font.family: root.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }

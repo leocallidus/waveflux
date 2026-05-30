@@ -67,6 +67,25 @@ target_link_libraries(tst_app_settings_manager PRIVATE
 
 add_test(NAME tst_app_settings_manager COMMAND tst_app_settings_manager)
 
+qt_add_executable(tst_playlist_profiles_manager
+    tst_PlaylistProfilesManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/PlaylistProfilesManager.cpp
+)
+
+target_include_directories(tst_playlist_profiles_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_playlist_profiles_manager PRIVATE
+    Qt6::Core
+    Qt6::Test
+    KF6::I18n
+)
+
+add_test(NAME tst_playlist_profiles_manager COMMAND tst_playlist_profiles_manager)
+
 qt_add_executable(tst_update_checker
     tst_UpdateChecker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp

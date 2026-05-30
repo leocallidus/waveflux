@@ -153,7 +153,7 @@ Item {
                         text: root.formatTime(audioEngine.position)
                         color: themeManager.primaryColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                         font.bold: true
                     }
 
@@ -161,14 +161,14 @@ Item {
                         text: "/"
                         color: themeManager.textMutedColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
                         text: root.formatTime(audioEngine.duration)
                         color: themeManager.textSecondaryColor
                         font.family: themeManager.monoFontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                     }
                 }
 

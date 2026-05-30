@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
 
 #include <memory>
@@ -10,9 +11,20 @@
 #include <taglib/fileref.h>
 #include <taglib/flacfile.h>
 #include <taglib/mpegfile.h>
+#include <taglib/taglib.h>
 #include <taglib/tiostream.h>
 
 namespace WaveFlux::TagLibPath {
+
+#if TAGLIB_MAJOR_VERSION >= 2
+using StreamOffset = TagLib::offset_t;
+using StreamBlockOffset = TagLib::offset_t;
+using StreamBlockLength = size_t;
+#else
+using StreamOffset = long;
+using StreamBlockOffset = unsigned long;
+using StreamBlockLength = unsigned long;
+#endif
 
 class NativePath
 {
@@ -82,24 +94,22 @@ public:
     }
 
     void insert(const TagLib::ByteVector &data,
-                TagLib::offset_t start = 0,
-                size_t replace = 0) override
+                StreamBlockOffset start = 0,
+                StreamBlockLength replace = 0) override
     {
         if (!ensureWritable()) {
             return;
         }
 
-        const TagLib::offset_t fileLength = length();
-        const TagLib::offset_t boundedStart = qBound<TagLib::offset_t>(0, start, fileLength);
-        const TagLib::offset_t maxReplace = qMax<TagLib::offset_t>(0, fileLength - boundedStart);
-        const TagLib::offset_t boundedReplace = qMin<TagLib::offset_t>(
-            static_cast<TagLib::offset_t>(replace),
-            maxReplace);
+        const qint64 fileLength = qMax<qint64>(0, static_cast<qint64>(length()));
+        const qint64 boundedStart = qBound<qint64>(0, static_cast<qint64>(start), fileLength);
+        const qint64 maxReplace = qMax<qint64>(0, fileLength - boundedStart);
+        const qint64 boundedReplace = qMin<qint64>(static_cast<qint64>(replace), maxReplace);
 
-        seek(boundedStart + boundedReplace, Beginning);
+        seek(static_cast<StreamOffset>(boundedStart + boundedReplace), Beginning);
         const QByteArray tail = m_file.readAll();
 
-        seek(boundedStart, Beginning);
+        seek(static_cast<StreamOffset>(boundedStart), Beginning);
         if (data.size() > 0) {
             (void)m_file.write(data.data(), data.size());
         }
@@ -112,23 +122,21 @@ public:
         (void)m_file.seek(static_cast<qint64>(boundedStart) + data.size());
     }
 
-    void removeBlock(TagLib::offset_t start = 0, size_t lengthToRemove = 0) override
+    void removeBlock(StreamBlockOffset start = 0, StreamBlockLength lengthToRemove = 0) override
     {
         if (!ensureWritable()) {
             return;
         }
 
-        const TagLib::offset_t fileLength = length();
-        const TagLib::offset_t boundedStart = qBound<TagLib::offset_t>(0, start, fileLength);
-        const TagLib::offset_t maxRemove = qMax<TagLib::offset_t>(0, fileLength - boundedStart);
-        const TagLib::offset_t boundedRemove = qMin<TagLib::offset_t>(
-            static_cast<TagLib::offset_t>(lengthToRemove),
-            maxRemove);
+        const qint64 fileLength = qMax<qint64>(0, static_cast<qint64>(length()));
+        const qint64 boundedStart = qBound<qint64>(0, static_cast<qint64>(start), fileLength);
+        const qint64 maxRemove = qMax<qint64>(0, fileLength - boundedStart);
+        const qint64 boundedRemove = qMin<qint64>(static_cast<qint64>(lengthToRemove), maxRemove);
 
-        seek(boundedStart + boundedRemove, Beginning);
+        seek(static_cast<StreamOffset>(boundedStart + boundedRemove), Beginning);
         const QByteArray tail = m_file.readAll();
 
-        seek(boundedStart, Beginning);
+        seek(static_cast<StreamOffset>(boundedStart), Beginning);
         if (!tail.isEmpty()) {
             (void)m_file.write(tail);
         }
@@ -148,7 +156,7 @@ public:
         return m_file.isOpen();
     }
 
-    void seek(TagLib::offset_t offset, Position p = Beginning) override
+    void seek(StreamOffset offset, Position p = Beginning) override
     {
         if (!m_file.isOpen()) {
             return;
@@ -174,17 +182,17 @@ public:
     {
     }
 
-    TagLib::offset_t tell() const override
+    StreamOffset tell() const override
     {
-        return m_file.isOpen() ? static_cast<TagLib::offset_t>(m_file.pos()) : 0;
+        return m_file.isOpen() ? static_cast<StreamOffset>(m_file.pos()) : 0;
     }
 
-    TagLib::offset_t length() override
+    StreamOffset length() override
     {
-        return m_file.isOpen() ? static_cast<TagLib::offset_t>(m_file.size()) : 0;
+        return m_file.isOpen() ? static_cast<StreamOffset>(m_file.size()) : 0;
     }
 
-    void truncate(TagLib::offset_t newLength) override
+    void truncate(StreamOffset newLength) override
     {
         if (!ensureWritable()) {
             return;
@@ -202,7 +210,9 @@ private:
     {
         m_file.setFileName(m_path);
 
-        if (!openReadOnly && m_file.open(QIODevice::ReadWrite)) {
+        const QFileInfo fileInfo(m_path);
+        const bool existingRegularFile = fileInfo.exists() && fileInfo.isFile();
+        if (!openReadOnly && existingRegularFile && m_file.open(QIODevice::ReadWrite)) {
             m_readOnly = false;
             return true;
         }
@@ -278,7 +288,11 @@ public:
         : m_stream(std::make_unique<QtFileStream>(path, false))
     {
         if (m_stream && m_stream->isOpen()) {
+#if TAGLIB_MAJOR_VERSION >= 2
             m_file = std::make_unique<TagLib::MPEG::File>(m_stream.get(), readProperties);
+#else
+            m_file = std::make_unique<TagLib::MPEG::File>(m_stream.get(), nullptr, readProperties);
+#endif
         }
     }
 
@@ -299,7 +313,11 @@ public:
         : m_stream(std::make_unique<QtFileStream>(path, false))
     {
         if (m_stream && m_stream->isOpen()) {
+#if TAGLIB_MAJOR_VERSION >= 2
             m_file = std::make_unique<TagLib::FLAC::File>(m_stream.get(), readProperties);
+#else
+            m_file = std::make_unique<TagLib::FLAC::File>(m_stream.get(), nullptr, readProperties);
+#endif
         }
     }
 

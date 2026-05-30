@@ -39,6 +39,7 @@ private slots:
     void autoAddsNewFileFromDominantPlaylistFolder();
     void disablesAutoAddWhenSettingIsOff();
     void ignoresFolderChangesWithoutAbsoluteMajority();
+    void metadataReadDoesNotCreateMissingFile();
 };
 
 void tst_TrackModel::insertsDroppedUrlsAtRequestedIndex()
@@ -146,6 +147,23 @@ void tst_TrackModel::disablesAutoAddWhenSettingIsOff()
     QTest::qWait(1500);
     QCOMPARE(model.rowCount(), 3);
     QCOMPARE(countSpy.count(), 0);
+}
+
+void tst_TrackModel::metadataReadDoesNotCreateMissingFile()
+{
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "temporary dir should be valid");
+
+    const QString missingTrack = tempDir.filePath(QStringLiteral("deleted.mp3"));
+    QVERIFY(!QFileInfo::exists(missingTrack));
+
+    TrackModel model;
+    model.addFile(missingTrack);
+
+    QCOMPARE(model.rowCount(), 1);
+    QTest::qWait(500);
+    QVERIFY2(!QFileInfo::exists(missingTrack),
+             qPrintable(QStringLiteral("metadata read created missing file: %1").arg(missingTrack)));
 }
 
 void tst_TrackModel::ignoresFolderChangesWithoutAbsoluteMajority()

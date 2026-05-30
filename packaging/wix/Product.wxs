@@ -1,25 +1,141 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="$(var.ProductName)"
            Manufacturer="$(var.Manufacturer)"
            Version="$(var.ProductVersion)"
            UpgradeCode="$(var.UpgradeCode)"
            Language="1033"
-           Scope="perMachine"
+           Scope="perUserOrMachine"
            InstallerVersion="500"
            Compressed="yes">
 
     <SummaryInformation Description="$(var.ProductName) Installer"
                         Manufacturer="$(var.Manufacturer)" />
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="AppInstallerIcon" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="AppInstallerIcon" />
 
+    <!-- Enable dual-purpose package (Per-User or Per-Machine) -->
+    <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
+    <Property Id="WixAppFolder" Value="WixPerMachineFolder" />
+    <Property Id="ApplicationFolderName" Value="$(var.InstallDirName)" />
+    <WixVariable Id="WixUISupportPerUser" Value="1" />
+    <WixVariable Id="WixUISupportPerMachine" Value="1" />
+    <WixVariable Id="WixUINoModify" Value="1" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtfPath)" />
+
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="$(var.InstallDirName)" />
+      <Directory Id="APPLICATIONFOLDER" Name="$(var.InstallDirName)">
+        <Component Id="AppRegistrationComponent" Guid="9F2B8D83-3D28-4BA1-A706-2C4D5C3E2A12">
+          <RegistryValue Root="HKMU" Key="Software\RegisteredApplications" Name="WaveFlux" Type="string" Value="Software\WaveFlux\Capabilities" KeyPath="yes" />
+          
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities" Name="ApplicationName" Type="string" Value="WaveFlux" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities" Name="ApplicationDescription" Type="string" Value="WaveFlux - Focused desktop audio player with waveform visualization" />
+          
+          <!-- File associations capability mapping -->
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".mp3" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".ogg" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".wav" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".flac" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".m4a" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".aac" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".opus" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".wma" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".mp4" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".m3u" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".m3u8" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".pls" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".xspf" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".mod" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".s3m" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".it" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".xm" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".mptm" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\WaveFlux\Capabilities\FileAssociations" Name=".mtm" Type="string" Value="WaveFlux.AssocFile" />
+
+          <!-- ProgID registration for WaveFlux.AssocFile -->
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile" Type="string" Value="WaveFlux Audio File" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\DefaultIcon" Type="string" Value="[APPLICATIONFOLDER]waveflux.exe,0" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\shell\open\command" Type="string" Value="&quot;[APPLICATIONFOLDER]waveflux.exe&quot; &quot;%1&quot;" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".mp3" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".ogg" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".wav" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".flac" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".m4a" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".aac" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".opus" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".wma" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".mp4" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".m3u" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".m3u8" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".pls" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".xspf" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".mod" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".s3m" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".it" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".xm" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".mptm" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\WaveFlux.AssocFile\SupportedTypes" Name=".mtm" Type="string" Value="" />
+
+          <!-- Applications registration for waveflux.exe -->
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe" Name="FriendlyAppName" Type="string" Value="WaveFlux" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".mp3" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".ogg" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".wav" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".flac" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".m4a" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".aac" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".opus" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".wma" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".mp4" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".m3u" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".m3u8" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".pls" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".xspf" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".mod" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".s3m" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".it" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".xm" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".mptm" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\SupportedTypes" Name=".mtm" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\Applications\waveflux.exe\shell\open\command" Type="string" Value="&quot;[APPLICATIONFOLDER]waveflux.exe&quot; &quot;%1&quot;" />
+
+          <!-- Register under Software\Clients\Media as an AudioPlayer -->
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux" Type="string" Value="WaveFlux" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities" Name="ApplicationName" Type="string" Value="WaveFlux" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities" Name="ApplicationDescription" Type="string" Value="WaveFlux audio player" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".mp3" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".ogg" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".wav" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".flac" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".m4a" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".aac" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".opus" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".wma" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".mp4" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".m3u" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".m3u8" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".pls" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".xspf" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".mod" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".s3m" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".it" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".xm" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".mptm" Type="string" Value="WaveFlux.AssocFile" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\Capabilities\FileAssociations" Name=".mtm" Type="string" Value="WaveFlux.AssocFile" />
+          
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\InstallInfo" Name="ReinstallCommand" Type="string" Value="&quot;[APPLICATIONFOLDER]waveflux.exe&quot; --register" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\InstallInfo" Name="HideIconsCommand" Type="string" Value="&quot;[APPLICATIONFOLDER]waveflux.exe&quot; --hide-icons" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\InstallInfo" Name="ShowIconsCommand" Type="string" Value="&quot;[APPLICATIONFOLDER]waveflux.exe&quot; --show-icons" />
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\InstallInfo" Name="IconsVisible" Type="integer" Value="1" />
+          
+          <RegistryValue Root="HKMU" Key="Software\Clients\Media\WaveFlux\shell\open\command" Type="string" Value="&quot;[APPLICATIONFOLDER]waveflux.exe&quot;" />
+        </Component>
+      </Directory>
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
@@ -28,12 +144,12 @@
           <Shortcut Id="StartMenuWaveFluxShortcut"
                     Name="$(var.ProductName)"
                     Description="WaveFlux audio player"
-                    Target="[INSTALLFOLDER]waveflux.exe"
-                    WorkingDirectory="INSTALLFOLDER" />
+                    Target="[APPLICATIONFOLDER]waveflux.exe"
+                    WorkingDirectory="APPLICATIONFOLDER" />
           <RemoveFolder Id="RemoveProgramMenuWaveFluxFolder"
                         Directory="ProgramMenuWaveFluxFolder"
                         On="uninstall" />
-          <RegistryValue Root="HKLM"
+          <RegistryValue Root="HKMU"
                          Key="Software\$(var.Manufacturer)\$(var.ProductName)"
                          Name="StartMenuShortcut"
                          Type="integer"
@@ -43,9 +159,25 @@
       </Directory>
     </StandardDirectory>
 
+    <UI>
+      <ui:WixUI Id="WixUI_InstallDir" />
+      
+      <!-- Customize UI sequence: WelcomeDlg -> LicenseAgreementDlg (Standard) -->
+      <!-- LicenseAgreementDlg -> Back: WelcomeDlg (Standard), Next: Step 3 (Install Scope) -->
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallScopeDlg" />
+      
+      <!-- Step 3 (Install Scope) -> Back: LicenseAgreementDlg, Next: Step 4 (Install Dir) -->
+      <Publish Dialog="InstallScopeDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" />
+      
+      <!-- Step 4 (Install Dir) -> Back: InstallScopeDlg -->
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="InstallScopeDlg" />
+    </UI>
+
     <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">
       <ComponentGroupRef Id="WaveFluxFiles" />
       <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="AppRegistrationComponent" />
     </Feature>
   </Package>
 </Wix>

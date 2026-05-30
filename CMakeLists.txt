@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(waveflux VERSION 1.3.0 LANGUAGES CXX)
+project(waveflux VERSION 1.3.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CheckCXXSourceCompiles)
@@ -256,6 +256,7 @@ qt_add_qml_module(waveflux
         qml/components/AccentSlider.qml
         qml/components/AccentSwitch.qml
         qml/components/AccentCheckBox.qml
+        qml/components/AccentRadioButton.qml
         qml/components/AccentComboBox.qml
         qml/components/PlaybackAdjustStrip.qml
         qml/components/VolumeStrip.qml

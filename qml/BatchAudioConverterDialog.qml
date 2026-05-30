@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -712,7 +712,7 @@ Dialog {
 
                         Label {
                             text: root.tr("batchAudioConverter.title")
-                            font.pixelSize: 22
+                            font.pixelSize: Math.round(22 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             color: themeManager.textColor
                         }
@@ -1169,7 +1169,7 @@ Dialog {
                         }
                     }
 
-                    CheckBox {
+                    AccentCheckBox {
                         Layout.fillWidth: true
                         text: root.tr("audioConverter.applyCurrentEqualizer")
                         checked: batchAudioConverterService.applyEqualizer
@@ -1179,6 +1179,58 @@ Dialog {
                         onToggled: {
                             batchAudioConverterService.applyEqualizer = checked
                             root.syncEqualizerSettingsForConversion()
+                        }
+                    }
+
+                    AccentCheckBox {
+                        Layout.fillWidth: true
+                        text: root.tr("audioConverter.applyReverb")
+                        checked: batchAudioConverterService.applyReverb
+                        enabled: !batchAudioConverterService.isRunning
+                        Accessible.name: text
+                        Accessible.description: root.tr("audioConverter.applyReverbHint")
+                        onToggled: batchAudioConverterService.applyReverb = checked
+                    }
+
+                    SettingSliderRow {
+                        title: root.tr("audioConverter.reverbRoomSize")
+                        rowEnabled: !batchAudioConverterService.isRunning
+                                    && batchAudioConverterService.applyReverb
+                        from: 0.0
+                        to: 1.0
+                        stepSize: 0.01
+                        value: batchAudioConverterService.reverbRoomSize
+                        valueText: Math.round(Number(batchAudioConverterService.reverbRoomSize) * 100) + "%"
+                        onMoved: function(value) {
+                            batchAudioConverterService.reverbRoomSize = value
+                        }
+                    }
+
+                    SettingSliderRow {
+                        title: root.tr("audioConverter.reverbWetLevel")
+                        rowEnabled: !batchAudioConverterService.isRunning
+                                    && batchAudioConverterService.applyReverb
+                        from: 0.0
+                        to: 1.0
+                        stepSize: 0.01
+                        value: batchAudioConverterService.reverbWetLevel
+                        valueText: Math.round(Number(batchAudioConverterService.reverbWetLevel) * 100) + "%"
+                        onMoved: function(value) {
+                            batchAudioConverterService.reverbWetLevel = value
+                        }
+                    }
+
+                    SettingSliderRow {
+                        title: root.tr("audioConverter.reverbDamping")
+                        rowEnabled: !batchAudioConverterService.isRunning
+                                    && batchAudioConverterService.applyReverb
+                        from: 0.0
+                        to: 1.0
+                        stepSize: 0.01
+                        value: batchAudioConverterService.reverbDamping
+                        valueText: Math.round(Number(batchAudioConverterService.reverbDamping) * 100) + "%"
+                        onMoved: function(value) {
+                            batchAudioConverterService.reverbDamping = value
                         }
                     }
                 }
@@ -1358,7 +1410,7 @@ Dialog {
                                     RowLayout {
                                         Layout.fillWidth: true
 
-                                        CheckBox {
+                                        AccentCheckBox {
                                             checked: root.isItemSelected(modelData.itemId)
                                             enabled: !batchAudioConverterService.isRunning
                                             onToggled: root.setItemSelected(modelData.itemId, checked)
@@ -1421,7 +1473,7 @@ Dialog {
                                         Layout.fillWidth: true
                                         text: String(modelData.outputFile || "")
                                         color: themeManager.textSecondaryColor
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         elide: Text.ElideMiddle
                                     }
 
@@ -1430,7 +1482,7 @@ Dialog {
                                         visible: !compactMode && String(modelData.outputFile || "").length > 0
                                         text: root.previewNamingText(modelData)
                                         color: themeManager.textMutedColor
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         wrapMode: Text.WordWrap
                                     }
 
@@ -1443,7 +1495,7 @@ Dialog {
                                               + root.tr("batchAudioConverter.previewFinalizationPattern")
                                                     .arg(root.previewFinalizationLabel(modelData))
                                         color: themeManager.textMutedColor
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         wrapMode: Text.WordWrap
                                     }
 
@@ -1458,7 +1510,7 @@ Dialog {
                                         color: String(modelData.errorText || "").length > 0
                                                ? Kirigami.Theme.negativeTextColor
                                                : themeManager.textMutedColor
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         wrapMode: Text.WordWrap
                                     }
 

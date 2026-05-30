@@ -30,6 +30,7 @@ public:
     Q_INVOKABLE int duplicatePlaylist(int playlistId, const QString &newName = QString());
     Q_INVOKABLE bool deletePlaylist(int playlistId);
     Q_INVOKABLE bool deleteAllPlaylists();
+    Q_INVOKABLE bool resetForFullApplicationReset();
 
 signals:
     void playlistsChanged();

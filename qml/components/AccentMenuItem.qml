@@ -56,7 +56,7 @@ MenuItem {
             text: control.text
             color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
             font.family: themeManager.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             font.bold: control.highlighted
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter

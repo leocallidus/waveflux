@@ -427,7 +427,7 @@ Dialog {
                     Label {
                         text: dialogRoot.tr("collections.template")
                         color: themeManager.textMutedColor
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         font.bold: true
                     }
 
@@ -442,7 +442,7 @@ Dialog {
                     Label {
                         text: dialogRoot.tr("collections.name")
                         color: themeManager.textMutedColor
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         font.bold: true
                     }
 
@@ -459,7 +459,7 @@ Dialog {
                         Label {
                             text: dialogRoot.tr("collections.logic")
                             color: themeManager.textMutedColor
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         AccentComboBox {
@@ -511,7 +511,7 @@ Dialog {
                             text: dialogRoot.tr("collections.rules")
                             color: themeManager.textMutedColor
                             font.bold: true
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         Item { Layout.fillWidth: true }
@@ -697,7 +697,7 @@ Dialog {
                         text: dialogRoot.tr("collections.sort")
                         color: themeManager.textMutedColor
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     RowLayout {
@@ -726,7 +726,7 @@ Dialog {
                         Label {
                             text: dialogRoot.tr("collections.limit")
                             color: themeManager.textMutedColor
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         }
 
                         SpinBox {
@@ -741,7 +741,7 @@ Dialog {
                         Label {
                             text: dialogRoot.tr("collections.limitHint")
                             color: themeManager.textMutedColor
-                            font.pixelSize: 10
+                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                         }
 
                         Item { Layout.fillWidth: true }
@@ -765,7 +765,7 @@ Dialog {
                     text: dialogRoot.errorText
                     color: "#d66"
                     wrapMode: Text.WordWrap
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                 }
             }
 

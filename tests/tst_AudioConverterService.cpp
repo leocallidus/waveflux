@@ -6,6 +6,7 @@
 #include <QTemporaryDir>
 #include <gst/gst.h>
 #include <taglib/tag.h>
+#include <limits>
 
 #include "AudioConverterService.h"
 #include "AppSettingsManager.h"
@@ -156,6 +157,7 @@ private slots:
     void completesWavConversionForValidInput();
     void completesTrimmedWavConversion();
     void completesMp3ConversionForValidInput();
+    void completesReverbedMonoWavConversion();
     void completesWebmConversionForValidInput();
     void completesMp3ToMp3ConversionForValidInput();
     void preservesReasonableDurationForPitchShiftedMp3();
@@ -191,6 +193,10 @@ void AudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(service.pitchSemitones(), 0);
     QCOMPARE(service.applyEqualizer(), false);
     QCOMPARE(service.equalizerBandGains().size(), 10);
+    QCOMPARE(service.applyReverb(), false);
+    QCOMPARE(service.reverbRoomSize(), 0.55);
+    QCOMPARE(service.reverbDamping(), 0.35);
+    QCOMPARE(service.reverbWetLevel(), 0.28);
     QCOMPARE(service.isRunning(), false);
     QCOMPARE(service.progress(), 0.0);
     QVERIFY(!service.statusText().trimmed().isEmpty());
@@ -214,6 +220,10 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     QSignalSpy pitchSpy(&service, &AudioConverterService::pitchSemitonesChanged);
     QSignalSpy equalizerEnabledSpy(&service, &AudioConverterService::applyEqualizerChanged);
     QSignalSpy equalizerGainsSpy(&service, &AudioConverterService::equalizerBandGainsChanged);
+    QSignalSpy reverbEnabledSpy(&service, &AudioConverterService::applyReverbChanged);
+    QSignalSpy reverbRoomSpy(&service, &AudioConverterService::reverbRoomSizeChanged);
+    QSignalSpy reverbDampingSpy(&service, &AudioConverterService::reverbDampingChanged);
+    QSignalSpy reverbWetSpy(&service, &AudioConverterService::reverbWetLevelChanged);
 
     service.setFormat(QStringLiteral("FLAC"));
     service.setBitrate(111);
@@ -223,6 +233,10 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     service.setPitchSemitones(-200);
     service.setApplyEqualizer(true);
     service.setEqualizerBandGains({-99.0, -1.5, 0.0, 3.25, 99.0});
+    service.setApplyReverb(true);
+    service.setReverbRoomSize(99.0);
+    service.setReverbDamping(-2.0);
+    service.setReverbWetLevel(std::numeric_limits<double>::quiet_NaN());
 
     QCOMPARE(service.format(), QStringLiteral("flac"));
     QCOMPARE(service.bitrate(), 0);
@@ -237,6 +251,10 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     QCOMPARE(service.equalizerBandGains().at(3).toDouble(), 3.25);
     QCOMPARE(service.equalizerBandGains().at(4).toDouble(), 12.0);
     QCOMPARE(service.equalizerBandGains().at(9).toDouble(), 0.0);
+    QCOMPARE(service.applyReverb(), true);
+    QCOMPARE(service.reverbRoomSize(), 1.0);
+    QCOMPARE(service.reverbDamping(), 0.0);
+    QCOMPARE(service.reverbWetLevel(), 0.28);
     QCOMPARE(formatSpy.count(), 1);
     QVERIFY(bitrateSpy.count() >= 1);
     QCOMPARE(sampleRateSpy.count(), 2);
@@ -245,6 +263,10 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     QCOMPARE(pitchSpy.count(), 1);
     QCOMPARE(equalizerEnabledSpy.count(), 1);
     QCOMPARE(equalizerGainsSpy.count(), 1);
+    QCOMPARE(reverbEnabledSpy.count(), 1);
+    QCOMPARE(reverbRoomSpy.count(), 1);
+    QCOMPARE(reverbDampingSpy.count(), 1);
+    QCOMPARE(reverbWetSpy.count(), 0);
 
     service.setFormat(QStringLiteral("mp3"));
     service.setSampleRate(88200);
@@ -381,6 +403,7 @@ void AudioConverterServiceTest::exposesStructuredPreflightStates()
     const QVariantList missingElements = currentPreflight.value(QStringLiteral("missingGStreamerElements")).toList();
     QVERIFY(requiredElements.contains(QStringLiteral("uridecodebin")));
     QVERIFY(requiredElements.contains(QStringLiteral("pitch")));
+    QVERIFY(!requiredElements.contains(QStringLiteral("freeverb")));
     if (missingElements.isEmpty()) {
         QCOMPARE(currentPreflight.value(QStringLiteral("canStart")).toBool(), true);
         QCOMPARE(currentPreflight.value(QStringLiteral("severity")).toString(), QStringLiteral("none"));
@@ -617,6 +640,50 @@ void AudioConverterServiceTest::completesMp3ConversionForValidInput()
     QCOMPARE(failedSpy.count(), 0);
     QCOMPARE(service.isRunning(), false);
     QVERIFY(QFileInfo::exists(service.outputFile()));
+    QCOMPARE(service.lastConversionMetrics().value(QStringLiteral("terminationKey")).toString(),
+             QStringLiteral("succeeded"));
+    QVERIFY(temporaryConverterArtifacts(tempDir.path()).isEmpty());
+}
+
+void AudioConverterServiceTest::completesReverbedMonoWavConversion()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("freeverb")
+        || !hasFactory("capsfilter")
+        || !hasFactory("wavenc")
+        || !hasFactory("filesink")) {
+        QSKIP("Required GStreamer reverb conversion elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("dry.wav"));
+    writeSilentWavFile(sourcePath, 44100, 1, 750);
+
+    AudioConverterService service;
+    QSignalSpy finishedSpy(&service, &AudioConverterService::conversionFinished);
+    QSignalSpy failedSpy(&service, &AudioConverterService::conversionFailed);
+
+    const QString outputPath = tempDir.filePath(QStringLiteral("reverbed-mono.wav"));
+    service.setSourceFile(sourcePath);
+    service.setFormat(QStringLiteral("wav"));
+    service.setChannelMode(QStringLiteral("mono"));
+    service.setApplyReverb(true);
+    service.setReverbRoomSize(0.85);
+    service.setReverbWetLevel(0.42);
+    service.setOutputFile(outputPath);
+
+    const QVariantList requiredElements =
+        service.preflight().value(QStringLiteral("requiredGStreamerElements")).toList();
+    QVERIFY(requiredElements.contains(QStringLiteral("freeverb")));
+    QVERIFY(service.startConversion());
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(failedSpy.count(), 0);
+    QVERIFY(QFileInfo::exists(outputPath));
     QCOMPARE(service.lastConversionMetrics().value(QStringLiteral("terminationKey")).toString(),
              QStringLiteral("succeeded"));
     QVERIFY(temporaryConverterArtifacts(tempDir.path()).isEmpty());

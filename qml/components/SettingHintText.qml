@@ -100,7 +100,7 @@ Item {
         textFormat: Text.StyledText
         color: root.resolvedHintColor
         font.family: themeManager.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
         wrapMode: Text.WordWrap
         opacity: rowEnabled ? 1.0 : 0.6
     }

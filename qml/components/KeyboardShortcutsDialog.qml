@@ -251,7 +251,7 @@ Dialog {
                         color: themeManager.textColor
                         wrapMode: Text.WordWrap
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                     }
                 }
             }
@@ -283,7 +283,7 @@ Dialog {
                         color: themeManager.primaryColor
                         font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
@@ -293,7 +293,7 @@ Dialog {
                         color: themeManager.primaryColor
                         font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
@@ -303,7 +303,7 @@ Dialog {
                         color: themeManager.primaryColor
                         font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
 
                     Label {
@@ -313,7 +313,7 @@ Dialog {
                         color: themeManager.primaryColor
                         font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                     }
                 }
             }
@@ -349,7 +349,7 @@ Dialog {
                         color: themeManager.textSecondaryColor
                         font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         leftPadding: 2
                     }
 
@@ -379,7 +379,7 @@ Dialog {
                                 text: delegateRoot.row.action || ""
                                 color: themeManager.textColor
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 12
+                                font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                                 wrapMode: Text.WordWrap
                             }
 
@@ -392,7 +392,7 @@ Dialog {
                                        ? themeManager.textMutedColor
                                        : themeManager.primaryColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                 font.bold: true
                                 elide: Text.ElideRight
                             }
@@ -404,7 +404,7 @@ Dialog {
                                 verticalAlignment: Text.AlignVCenter
                                 color: themeManager.textMutedColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                 elide: Text.ElideRight
                             }
 
@@ -414,7 +414,7 @@ Dialog {
                                 verticalAlignment: Text.AlignVCenter
                                 color: themeManager.textSecondaryColor
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                 wrapMode: Text.WordWrap
                             }
                         }

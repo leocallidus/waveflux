@@ -42,6 +42,10 @@ class BatchAudioConverterService : public QObject
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
     Q_PROPERTY(bool applyEqualizer READ applyEqualizer WRITE setApplyEqualizer NOTIFY applyEqualizerChanged)
     Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains WRITE setEqualizerBandGains NOTIFY equalizerBandGainsChanged)
+    Q_PROPERTY(bool applyReverb READ applyReverb WRITE setApplyReverb NOTIFY applyReverbChanged)
+    Q_PROPERTY(double reverbRoomSize READ reverbRoomSize WRITE setReverbRoomSize NOTIFY reverbRoomSizeChanged)
+    Q_PROPERTY(double reverbDamping READ reverbDamping WRITE setReverbDamping NOTIFY reverbDampingChanged)
+    Q_PROPERTY(double reverbWetLevel READ reverbWetLevel WRITE setReverbWetLevel NOTIFY reverbWetLevelChanged)
     Q_PROPERTY(bool addResultsToPlaylist READ addResultsToPlaylist WRITE setAddResultsToPlaylist NOTIFY addResultsToPlaylistChanged)
     Q_PROPERTY(bool canAddSucceededResultsToPlaylist READ canAddSucceededResultsToPlaylist NOTIFY finalSummaryChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY itemsChanged)
@@ -132,6 +136,10 @@ public:
         int pitchSemitones = 0;
         bool applyEqualizer = false;
         QVariantList equalizerBandGains;
+        bool applyReverb = false;
+        double reverbRoomSize = 0.55;
+        double reverbDamping = 0.35;
+        double reverbWetLevel = 0.28;
         bool addResultsToPlaylist = true;
     };
 
@@ -149,6 +157,10 @@ public:
         int pitchSemitones = 0;
         bool applyEqualizer = false;
         QVariantList equalizerBandGains;
+        bool applyReverb = false;
+        double reverbRoomSize = 0.55;
+        double reverbDamping = 0.35;
+        double reverbWetLevel = 0.28;
         bool addResultsToPlaylist = true;
         qint64 capturedAtMs = 0;
     };
@@ -231,6 +243,10 @@ public:
     int pitchSemitones() const { return m_settings.pitchSemitones; }
     bool applyEqualizer() const { return m_settings.applyEqualizer; }
     QVariantList equalizerBandGains() const { return m_settings.equalizerBandGains; }
+    bool applyReverb() const { return m_settings.applyReverb; }
+    double reverbRoomSize() const { return m_settings.reverbRoomSize; }
+    double reverbDamping() const { return m_settings.reverbDamping; }
+    double reverbWetLevel() const { return m_settings.reverbWetLevel; }
     bool addResultsToPlaylist() const { return m_settings.addResultsToPlaylist; }
     bool canAddSucceededResultsToPlaylist() const;
     bool isRunning() const { return m_isRunning; }
@@ -321,6 +337,10 @@ public slots:
     void setPitchSemitones(int pitchSemitones);
     void setApplyEqualizer(bool applyEqualizer);
     void setEqualizerBandGains(const QVariantList &gains);
+    void setApplyReverb(bool applyReverb);
+    void setReverbRoomSize(double roomSize);
+    void setReverbDamping(double damping);
+    void setReverbWetLevel(double wetLevel);
     void setAddResultsToPlaylist(bool addResultsToPlaylist);
 
 signals:
@@ -347,6 +367,10 @@ signals:
     void pitchSemitonesChanged();
     void applyEqualizerChanged();
     void equalizerBandGainsChanged();
+    void applyReverbChanged();
+    void reverbRoomSizeChanged();
+    void reverbDampingChanged();
+    void reverbWetLevelChanged();
     void addResultsToPlaylistChanged();
     void batchStarted();
     void batchFinished();
@@ -371,6 +395,7 @@ private:
     static int normalizeSampleRate(int sampleRate);
     static double normalizePlaybackRate(double playbackRate);
     static int normalizePitchSemitones(int pitchSemitones);
+    static double normalizeUnitInterval(double value, double fallback);
     static QVariantList normalizeEqualizerBandGains(const QVariantList &gains);
     static QString uniqueOutputPath(const QString &path,
                                     const QSet<QString> &reservedPaths,

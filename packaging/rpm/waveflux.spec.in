@@ -55,8 +55,10 @@ cmake --build build -j%{_smp_build_ncpus}
 %install
 DESTDIR=%{buildroot} cmake --install build
 
-install -Dm0644 packaging/debian/waveflux.desktop \
+install -Dm0644 /dev/null \
   %{buildroot}%{_datadir}/applications/waveflux.desktop
+tr -d '\r' < packaging/debian/waveflux.desktop \
+  > %{buildroot}%{_datadir}/applications/waveflux.desktop
 install -Dm0644 resources/icons/waveflux.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/waveflux.svg
 install -Dm0644 README.md \

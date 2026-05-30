@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 Dialog {
     id: root
@@ -73,17 +74,36 @@ Dialog {
                 text: root.tr("help.aboutDialogTitle")
                 color: themeManager.textColor
                 font.family: themeManager.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                 font.bold: true
                 elide: Text.ElideRight
             }
 
-            Button {
-                text: "\u00d7"
-                flat: true
+            Rectangle {
                 implicitWidth: 28
-                implicitHeight: 24
-                onClicked: root.close()
+                implicitHeight: 28
+                radius: 14
+                color: closeHover.hovered
+                       ? Qt.rgba(themeManager.textColor.r,
+                                 themeManager.textColor.g,
+                                 themeManager.textColor.b,
+                                 themeManager.darkMode ? 0.18 : 0.10)
+                       : "transparent"
+
+                Behavior on color { ColorAnimation { duration: 100 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "\u00d7"
+                    font.pixelSize: Math.round(16 * themeManager.fontSizeMultiplier)
+                    font.bold: true
+                    color: closeHover.hovered
+                           ? themeManager.textColor
+                           : themeManager.textSecondaryColor
+                }
+
+                HoverHandler { id: closeHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: root.close() }
             }
         }
 
@@ -120,7 +140,7 @@ Dialog {
                     text: root.tr("help.aboutVersionLabel") + " " + root.tr("help.aboutVersionValue")
                     color: themeManager.textSecondaryColor
                     font.family: themeManager.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                     elide: Text.ElideRight
                 }
             }
@@ -131,19 +151,77 @@ Dialog {
             Layout.fillWidth: true
             currentIndex: root.activeSection === "components" ? 1 : (root.activeSection === "author" ? 2 : 0)
 
+            background: Rectangle {
+                color: "transparent"
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: root.frameColor
+                    opacity: 0.5
+                }
+            }
+
             onCurrentIndexChanged: {
                 root.activeSection = currentIndex === 1 ? "components" : (currentIndex === 2 ? "author" : "about")
             }
 
-            TabButton {
+            component AboutTabButton: TabButton {
+                id: tabBtn
+                implicitHeight: 36
+                contentItem: Text {
+                    text: tabBtn.text
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    font.bold: tabBtn.checked
+                    color: tabBtn.checked ? themeManager.primaryColor : themeManager.textSecondaryColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
+                background: Rectangle {
+                    color: tabBtn.checked
+                           ? Qt.rgba(themeManager.primaryColor.r,
+                                     themeManager.primaryColor.g,
+                                     themeManager.primaryColor.b,
+                                     themeManager.darkMode ? 0.14 : 0.08)
+                           : tabBtn.hovered
+                             ? Qt.rgba(themeManager.textColor.r,
+                                       themeManager.textColor.g,
+                                       themeManager.textColor.b,
+                                       themeManager.darkMode ? 0.08 : 0.04)
+                             : "transparent"
+                    radius: themeManager.borderRadius
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        width: parent.width * 0.6
+                        height: 2
+                        radius: 1
+                        color: themeManager.primaryColor
+                        visible: tabBtn.checked
+                        scale: tabBtn.checked ? 1.0 : 0.0
+
+                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                    }
+
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
+            }
+
+            AboutTabButton {
                 text: root.tr("help.aboutTabAbout")
             }
 
-            TabButton {
+            AboutTabButton {
                 text: root.tr("help.aboutTabComponents")
             }
 
-            TabButton {
+            AboutTabButton {
                 text: root.tr("help.aboutTabAuthor")
             }
         }
@@ -179,7 +257,7 @@ Dialog {
                             color: themeManager.textColor
                             wrapMode: Text.WordWrap
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 13
+                            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                         }
 
                         Label {
@@ -188,7 +266,7 @@ Dialog {
                             color: themeManager.primaryColor
                             wrapMode: Text.WordWrap
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                         }
                     }
 
@@ -205,7 +283,7 @@ Dialog {
                                 { name: "TagLib", detail: root.tr("help.aboutComponentTagLib") },
                                 { name: "libopenmpt", detail: root.tr("help.aboutComponentOpenMpt") },
                                 { name: "SQLite", detail: root.tr("help.aboutComponentSQLite") },
-                                { name: "Linux desktop integration", detail: root.tr("help.aboutComponentDesktop") }
+                                { name: Qt.platform.os === "windows" ? "Windows desktop integration" : "Linux desktop integration", detail: root.tr("help.aboutComponentDesktop") }
                             ]
 
                             delegate: Rectangle {
@@ -229,7 +307,7 @@ Dialog {
                                         color: themeManager.textColor
                                         font.family: themeManager.fontFamily
                                         font.bold: true
-                                        font.pixelSize: 12
+                                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                                         elide: Text.ElideRight
                                     }
 
@@ -238,7 +316,7 @@ Dialog {
                                         text: modelData.detail
                                         color: themeManager.textSecondaryColor
                                         font.family: themeManager.fontFamily
-                                        font.pixelSize: 11
+                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                         wrapMode: Text.WordWrap
                                     }
                                 }
@@ -265,7 +343,7 @@ Dialog {
                             text: root.tr("help.aboutAuthorLabel") + " " + root.tr("help.aboutAuthorName")
                             color: themeManager.textColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 13
+                            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
                             font.bold: true
                             wrapMode: Text.WordWrap
                         }
@@ -276,7 +354,7 @@ Dialog {
                             text: root.tr("help.aboutAuthorUrl")
                             color: themeManager.primaryColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                             elide: Text.ElideRight
 
                             HoverHandler {
@@ -294,7 +372,7 @@ Dialog {
                             text: root.tr("help.aboutYearLabel") + " " + root.tr("help.aboutYearValue")
                             color: themeManager.textSecondaryColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -311,6 +389,7 @@ Dialog {
 
             Button {
                 text: root.tr("settings.close")
+                accent: true
                 onClicked: root.close()
             }
         }

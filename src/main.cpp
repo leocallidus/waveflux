@@ -10,6 +10,11 @@
 #include <QCommandLineParser>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QCryptographicHash>
+#include <QStandardPaths>
+#include <QDataStream>
 #include <QDebug>
 #include <QTimer>
 #include <QUrl>
@@ -103,14 +108,31 @@ void applyWindowsAppIdentity()
 }
 #endif
 
+bool isLikelyWindowsAbsolutePath(const QString &path)
+{
+    return path.size() >= 3
+        && path.at(1) == QLatin1Char(':')
+        && (path.at(2) == QLatin1Char('\\') || path.at(2) == QLatin1Char('/'))
+        && path.at(0).isLetter();
+}
+
 QList<QUrl> startupUrlsFromArguments(const QStringList &arguments)
 {
     QList<QUrl> urls;
     urls.reserve(arguments.size());
 
     for (const QString &argument : arguments) {
-        const QString trimmed = argument.trimmed();
+        QString trimmed = argument.trimmed();
         if (trimmed.isEmpty()) {
+            continue;
+        }
+
+        if (trimmed.contains(QLatin1Char('%'))) {
+            trimmed = QUrl::fromPercentEncoding(trimmed.toUtf8());
+        }
+
+        if (isLikelyWindowsAbsolutePath(trimmed)) {
+            urls.push_back(QUrl::fromLocalFile(trimmed));
             continue;
         }
 
@@ -129,6 +151,63 @@ QList<QUrl> startupUrlsFromArguments(const QStringList &arguments)
     }
 
     return urls;
+}
+
+bool containsLocalDirectory(const QList<QUrl> &urls)
+{
+    for (const QUrl &url : urls) {
+        if (!url.isLocalFile()) {
+            continue;
+        }
+
+        const QFileInfo fileInfo(url.toLocalFile());
+        if (fileInfo.exists() && fileInfo.isDir()) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void openStartupUrls(const QList<QUrl> &urls,
+                     TrackModel &trackModel,
+                     PlaybackController &playbackController,
+                     AudioEngine &audioEngine,
+                     const AppSettingsManager &appSettingsManager,
+                     const QString &playbackSource)
+{
+    if (urls.isEmpty()) {
+        return;
+    }
+
+    const bool hasDirectory = containsLocalDirectory(urls);
+    if (!hasDirectory && appSettingsManager.playExternalOpenWithoutPlaylist()) {
+        trackModel.setCurrentIndex(-1);
+        audioEngine.loadUrl(urls.constFirst());
+        return;
+    }
+
+    const int firstAddedIndex = hasDirectory ? 0 : trackModel.rowCount();
+    if (hasDirectory) {
+        trackModel.clear();
+        for (const QUrl &url : urls) {
+            if (url.isLocalFile()) {
+                const QFileInfo fileInfo(url.toLocalFile());
+                if (fileInfo.exists() && fileInfo.isDir()) {
+                    trackModel.addFolder(url);
+                    continue;
+                }
+            }
+
+            trackModel.addUrl(url);
+        }
+    } else {
+        trackModel.addUrls(urls);
+    }
+
+    if (trackModel.rowCount() > firstAddedIndex) {
+        playbackController.requestPlayIndex(firstAddedIndex, playbackSource);
+    }
 }
 } // namespace
 
@@ -160,6 +239,26 @@ int main(int argc, char *argv[])
             QStringLiteral("Enable experimental reverse playback for this session."));
         parser.addOption(reversePlaybackOption);
         parser.process(app);
+
+        const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        const QString localServerName = QStringLiteral("WaveFluxLocalServer_") + QString::fromUtf8(QCryptographicHash::hash(appDataPath.toUtf8(), QCryptographicHash::Sha1).toHex());
+
+        {
+            QLocalSocket socket;
+            socket.connectToServer(localServerName);
+            if (socket.waitForConnected(1000)) {
+                QByteArray block;
+                {
+                    QDataStream out(&block, QIODevice::WriteOnly);
+                    out << parser.positionalArguments();
+                }
+                socket.write(block);
+                socket.waitForBytesWritten(1000);
+                socket.disconnectFromServer();
+                return 0;
+            }
+        }
+
         const bool reversePlaybackEnabledByCli = parser.isSet(reversePlaybackOption);
         const QList<QUrl> startupUrls = startupUrlsFromArguments(parser.positionalArguments());
 
@@ -552,6 +651,39 @@ int main(int argc, char *argv[])
         windowsMediaControlsService.setMainWindow(mainWindow);
 #endif
 
+        QLocalServer server;
+        QObject::connect(&server, &QLocalServer::newConnection, [&]() {
+            QLocalSocket *clientConnection = server.nextPendingConnection();
+            QObject::connect(clientConnection, &QLocalSocket::readyRead, [clientConnection, &trackModel, &playbackController, &audioEngine, &appSettingsManager, &mainWindow]() {
+                QDataStream in(clientConnection);
+                QStringList arguments;
+                in >> arguments;
+                if (!arguments.isEmpty()) {
+                    const QList<QUrl> urls = startupUrlsFromArguments(arguments);
+                    openStartupUrls(urls,
+                                    trackModel,
+                                    playbackController,
+                                    audioEngine,
+                                    appSettingsManager,
+                                    QStringLiteral("main.external_open_files"));
+                }
+                if (mainWindow) {
+                    if (mainWindow->windowState() & Qt::WindowMinimized) {
+                        mainWindow->setWindowState(Qt::WindowNoState);
+                    }
+                    mainWindow->show();
+                    mainWindow->raise();
+                    mainWindow->requestActivate();
+                }
+            });
+            QObject::connect(clientConnection, &QLocalSocket::disconnected,
+                             clientConnection, &QLocalSocket::deleteLater);
+        });
+        QLocalServer::removeServer(localServerName);
+        if (!server.listen(localServerName)) {
+            qWarning() << "Could not start local socket server:" << server.errorString();
+        }
+
         QTimer playlistMemoryCheckpointTimer;
         playlistMemoryCheckpointTimer.setSingleShot(true);
         playlistMemoryCheckpointTimer.setInterval(450);
@@ -593,16 +725,12 @@ int main(int argc, char *argv[])
 
         sessionManager.restoreSession();
         if (!startupUrls.isEmpty()) {
-            if (appSettingsManager.playExternalOpenWithoutPlaylist()) {
-                audioEngine.loadUrl(startupUrls.constFirst());
-            } else {
-                const int firstAddedIndex = trackModel.rowCount();
-                trackModel.addUrls(startupUrls);
-                if (trackModel.rowCount() > firstAddedIndex) {
-                    playbackController.requestPlayIndex(firstAddedIndex,
-                                                        QStringLiteral("main.startup_open_files"));
-                }
-            }
+            openStartupUrls(startupUrls,
+                            trackModel,
+                            playbackController,
+                            audioEngine,
+                            appSettingsManager,
+                            QStringLiteral("main.startup_open_files"));
         }
         if (mainWindow && appSettingsManager.autoScrollToCurrentTrackOnStartup()) {
             QTimer::singleShot(250, mainWindow, [mainWindow]() {

@@ -37,7 +37,7 @@ Rectangle {
             text: root.title
             color: root.titleColor
             font.family: root.fontFamily
-            font.pixelSize: 10
+            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
             font.bold: true
             font.letterSpacing: 1.2
             visible: text.length > 0

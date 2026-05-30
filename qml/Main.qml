@@ -41,8 +41,12 @@ Kirigami.ApplicationWindow {
     property color bgColor: themeManager.backgroundColor
     property color accentColor: themeManager.accentColor
     property color textColor: themeManager.textColor
-    property string fallbackTitle: audioEngine.currentFile ? audioEngine.currentFile.split('/').pop() : root.tr("main.noTrack")
+    property string fallbackTitle: audioEngine.currentFile ? (audioEngine.title ? audioEngine.title : audioEngine.currentFile.split('/').pop()) : root.tr("main.noTrack")
     property string stageTitle: trackModel.currentTitle ? trackModel.currentTitle : fallbackTitle
+    property string fallbackArtist: audioEngine.currentFile && audioEngine.artist ? audioEngine.artist : ""
+    property string stageArtist: trackModel.currentArtist ? trackModel.currentArtist : fallbackArtist
+    property string fallbackAlbum: audioEngine.currentFile && audioEngine.album ? audioEngine.album : ""
+    property string stageAlbum: trackModel.currentAlbum ? trackModel.currentAlbum : fallbackAlbum
     // Windowed adaptive breakpoints for normal skin.
     // Keep these thresholds centralized to avoid per-component "magic numbers".
     readonly property int bpUltra: 620
@@ -69,15 +73,26 @@ Kirigami.ApplicationWindow {
     // Derived adaptive flags for normal skin layout.
     readonly property bool showCollectionsSidebar: appSettings.collectionsSidebarVisible
                                                    && windowMode !== "ultraNarrow"
+    readonly property int playlistMinimumWidthWithSidebars: 400
+    readonly property int infoSidebarMinimumWidth: 160
+    readonly property int infoSidebarPreferredWidth: root.width < bpInfoWide ? 180 : themeManager.sidebarWidth
+    readonly property int availableWidthForInfoSidebar: root.width
+                                                       - (root.showCollectionsSidebar ? root.collectionsSidebarPreferredWidth : 0)
+                                                       - root.playlistMinimumWidthWithSidebars
     readonly property bool showInfoSidebar: appSettings.sidebarVisible
                                             && (windowMode === "wide" || windowMode === "medium")
+                                            && root.availableWidthForInfoSidebar >= root.infoSidebarMinimumWidth
+    readonly property int infoSidebarEffectiveWidth: Math.min(
+                                                          root.infoSidebarPreferredWidth,
+                                                          Math.max(root.infoSidebarMinimumWidth,
+                                                                   root.availableWidthForInfoSidebar)
+                                                      )
     readonly property bool useCollectionsDrawerFallback: appSettings.collectionsSidebarVisible
                                                          && !root.showCollectionsSidebar
                                                          && !root.isCompactSkin
     readonly property int collectionsSidebarPreferredWidth: windowMode === "narrow"
                                                             ? 192
                                                             : (root.width < bpCollectionsWide ? 208 : 232)
-    readonly property int infoSidebarPreferredWidth: root.width < bpInfoWide ? 180 : themeManager.sidebarWidth
     readonly property int controlBarPreferredHeight: root.narrowWindow ? 48 : 56
     readonly property real waveformHeightScale: windowMode === "narrow"
                                                 ? 0.82
@@ -148,6 +163,9 @@ Kirigami.ApplicationWindow {
     readonly property QtObject menuActions: appMenuActions
     property var libraryMenuPlaylists: []
     property var libraryMenuCollections: []
+    property bool githubStarToastVisible: false
+    property int githubStarToastPreviousPlaylistCount: 0
+    property bool githubStarToastCountInitialized: false
 
     onActiveChanged: {
         if (!active) {
@@ -160,6 +178,7 @@ Kirigami.ApplicationWindow {
         category: "App"
         property bool sidebarPlaylistsSectionVisible: true
         property bool sidebarCollectionsSectionVisible: true
+        property bool githubStarToastDismissed: false
     }
     property bool sidebarPlaylistsSectionVisible: true
     property bool sidebarCollectionsSectionVisible: true
@@ -254,6 +273,24 @@ Kirigami.ApplicationWindow {
                 compactSkinLoader.item.clearSearchFieldFocus()
                 mainPage.forceActiveFocus(Qt.MouseFocusReason)
             }
+        }
+    }
+
+    function clearSearchFieldFocusFromPlaylistTable() {
+        if (!mainPage) {
+            return
+        }
+        if (!root.isCompactSkin && headerBar && headerBar.searchFieldHasActiveFocus && headerBar.searchFieldHasActiveFocus()) {
+            headerBar.clearSearchFieldFocus()
+            mainPage.forceActiveFocus(Qt.MouseFocusReason)
+            return
+        }
+        if (root.isCompactSkin
+                && compactSkinLoader.item
+                && compactSkinLoader.item.searchFieldHasActiveFocus
+                && compactSkinLoader.item.searchFieldHasActiveFocus()) {
+            compactSkinLoader.item.clearSearchFieldFocus()
+            mainPage.forceActiveFocus(Qt.MouseFocusReason)
         }
     }
 
@@ -1062,6 +1099,32 @@ Kirigami.ApplicationWindow {
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
+    }
+
+    function maybeShowGithubStarToast() {
+        const count = trackModel ? trackModel.count : 0
+        if (!root.githubStarToastCountInitialized) {
+            root.githubStarToastPreviousPlaylistCount = count
+            root.githubStarToastCountInitialized = true
+            return
+        }
+
+        if (!sidebarSectionSettings.githubStarToastDismissed
+                && root.githubStarToastPreviousPlaylistCount <= 0
+                && count > 0) {
+            root.githubStarToastVisible = true
+        }
+        root.githubStarToastPreviousPlaylistCount = count
+    }
+
+    function dismissGithubStarToast() {
+        root.githubStarToastVisible = false
+        sidebarSectionSettings.githubStarToastDismissed = true
+    }
+
+    function openGithubStarPage() {
+        root.dismissGithubStarToast()
+        xdgPortalFilePicker.openExternalUrl("https://github.com/leocallidus/waveflux")
     }
 
     function safeWindowTitle() {
@@ -2311,6 +2374,8 @@ Kirigami.ApplicationWindow {
     Component.onCompleted: {
         root.sidebarPlaylistsSectionVisible = sidebarSectionSettings.sidebarPlaylistsSectionVisible
         root.sidebarCollectionsSectionVisible = sidebarSectionSettings.sidebarCollectionsSectionVisible
+        root.githubStarToastPreviousPlaylistCount = trackModel ? trackModel.count : 0
+        root.githubStarToastCountInitialized = true
         loadPersistedContextProgress()
         pruneContextProgressCaches()
         refreshLibraryDynamicMenuData()
@@ -3617,10 +3682,10 @@ Kirigami.ApplicationWindow {
                 fullscreenMode: root.fullscreenMode
                 canExport: trackModel.count > 0
                 metadataTitle: {
-                    const artist = trackModel.currentArtist
+                    const artist = root.stageArtist
                     return artist ? (artist + " - " + root.stageTitle) : root.stageTitle
                 }
-                metadataAlbum: trackModel.currentAlbum || ""
+                metadataAlbum: root.stageAlbum
                 metadataTech: {
                     const format = trackModel.currentFormat
                     const bitDepth = trackModel.currentBitDepth > 0 ? String(trackModel.currentBitDepth) : ""
@@ -3708,6 +3773,7 @@ Kirigami.ApplicationWindow {
                     id: playlistTable
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumWidth: 0
                     collectionModeActive: root.collectionModeActive
                     columnPreset: root.playlistColumnPreset
                     searchQuery: headerBar.submittedSearchText
@@ -3749,12 +3815,13 @@ Kirigami.ApplicationWindow {
                             playbackController.requestPlayIndex(0, "playlist.drop_autoplay")
                         }
                     }
+                    onTablePressed: root.clearSearchFieldFocusFromPlaylistTable()
                 }
 
                 Loader {
                     Layout.fillHeight: true
-                    Layout.preferredWidth: root.infoSidebarPreferredWidth
-                    Layout.minimumWidth: 160
+                    Layout.preferredWidth: root.infoSidebarEffectiveWidth
+                    Layout.minimumWidth: root.showInfoSidebar ? root.infoSidebarMinimumWidth : 0
                     Layout.maximumWidth: 300
                     active: root.showInfoSidebar
                     visible: active
@@ -4081,7 +4148,7 @@ Kirigami.ApplicationWindow {
                         Label {
                             Layout.fillWidth: true
                             text: {
-                                const artist = trackModel.currentArtist
+                                const artist = stageArtist
                                 return artist ? (artist + " - " + stageTitle) : stageTitle
                             }
                             color: themeManager.textColor
@@ -4093,8 +4160,8 @@ Kirigami.ApplicationWindow {
 
                         Label {
                             Layout.maximumWidth: Math.min(200, parent.width * 0.3)
-                            visible: (trackModel.currentAlbum || "").length > 0
-                            text: trackModel.currentAlbum || ""
+                            visible: (root.stageAlbum || "").length > 0
+                            text: root.stageAlbum || ""
                             color: themeManager.textSecondaryColor
                             elide: Text.ElideRight
                             font.family: themeManager.fontFamily
@@ -4628,12 +4695,87 @@ Kirigami.ApplicationWindow {
         title: root.tr("main.export")
         text: ""
     }
+
+    Rectangle {
+        id: githubStarToast
+        readonly property int sideMargin: root.isCompactSkin ? 10 : 18
+        readonly property int bottomMargin: root.isCompactSkin ? 10 : 18
+
+        visible: opacity > 0
+        opacity: root.githubStarToastVisible ? 1 : 0
+        z: 500
+        width: Math.min(Math.max(280, root.width - sideMargin * 2), 420)
+        height: toastContent.implicitHeight + 24
+        anchors.right: parent.right
+        anchors.rightMargin: sideMargin
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: bottomMargin
+        radius: 8
+        color: Qt.rgba(themeManager.surfaceColor.r,
+                       themeManager.surfaceColor.g,
+                       themeManager.surfaceColor.b,
+                       themeManager.darkMode ? 0.97 : 0.99)
+        border.width: 1
+        border.color: Qt.rgba(themeManager.primaryColor.r,
+                              themeManager.primaryColor.g,
+                              themeManager.primaryColor.b,
+                              themeManager.darkMode ? 0.45 : 0.30)
+
+        Behavior on opacity {
+            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+        }
+
+        ColumnLayout {
+            id: toastContent
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: root.tr("githubStarToast.title")
+                color: themeManager.textColor
+                font.family: themeManager.fontFamily
+                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: root.tr("githubStarToast.message")
+                color: themeManager.textSecondaryColor
+                font.family: themeManager.fontFamily
+                font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("githubStarToast.close")
+                    onClicked: root.dismissGithubStarToast()
+                }
+
+                Button {
+                    text: root.tr("githubStarToast.star")
+                    accent: true
+                    onClicked: root.openGithubStarPage()
+                }
+            }
+        }
+    }
     
     // Connect signals
     Connections {
         target: trackModel
 
         function onCountChanged() {
+            root.maybeShowGithubStarToast()
             root.scheduleSelectedPlaylistAutosave()
         }
 

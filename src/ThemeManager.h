@@ -33,8 +33,14 @@ class ThemeManager : public QObject
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY textColorChanged)
     Q_PROPERTY(QColor textSecondaryColor READ textSecondaryColor WRITE setTextSecondaryColor NOTIFY textSecondaryColorChanged)
     Q_PROPERTY(QColor textMutedColor READ textMutedColor WRITE setTextMutedColor NOTIFY textMutedColorChanged)
-    Q_PROPERTY(QString fontFamily READ fontFamily CONSTANT)
+    Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY fontFamilyChanged)
     Q_PROPERTY(QString monoFontFamily READ monoFontFamily CONSTANT)
+    Q_PROPERTY(QString customFontFamily READ customFontFamily WRITE setCustomFontFamily NOTIFY customFontFamilyChanged)
+    Q_PROPERTY(int customFontSize READ customFontSize WRITE setCustomFontSize NOTIFY customFontSizeChanged)
+    Q_PROPERTY(double fontSizeMultiplier READ fontSizeMultiplier NOTIFY fontSizeMultiplierChanged)
+    Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
+    Q_PROPERTY(QString playlistFontFamily READ playlistFontFamily WRITE setPlaylistFontFamily NOTIFY playlistFontFamilyChanged)
+    Q_PROPERTY(QString customPlaylistFontFamily READ customPlaylistFontFamily NOTIFY playlistFontFamilyChanged)
     Q_PROPERTY(int spacingSmall READ spacingSmall CONSTANT)
     Q_PROPERTY(int spacingMedium READ spacingMedium CONSTANT)
     Q_PROPERTY(int spacingLarge READ spacingLarge CONSTANT)
@@ -82,8 +88,22 @@ public:
     QColor textMutedColor() const { return m_textMutedColor; }
     void setTextMutedColor(const QColor &color);
 
-    QString fontFamily() const { return QGuiApplication::font().family(); }
-    QString monoFontFamily() const { return QFontDatabase::systemFont(QFontDatabase::FixedFont).family(); }
+    QString fontFamily() const;
+    QString monoFontFamily() const {
+        if (!m_customFontFamily.isEmpty() && m_customFontFamily != QStringLiteral("Default")) {
+            return m_customFontFamily;
+        }
+        return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    }
+    QString customFontFamily() const { return m_customFontFamily; }
+    void setCustomFontFamily(const QString &family);
+    int customFontSize() const { return m_customFontSize; }
+    void setCustomFontSize(int size);
+    double fontSizeMultiplier() const;
+    QStringList availableFonts() const;
+    QString playlistFontFamily() const;
+    void setPlaylistFontFamily(const QString &family);
+    QString customPlaylistFontFamily() const { return m_playlistFontFamily; }
     int spacingSmall() const { return 6; }
     int spacingMedium() const { return 8; }
     int spacingLarge() const { return 12; }
@@ -100,6 +120,10 @@ public:
     Q_INVOKABLE void saveCurrentTheme(const QString &name);
     Q_INVOKABLE QStringList availableThemes() const;
     Q_INVOKABLE void resetToDefault();
+
+    // Call before application quit triggered by factory reset to prevent
+    // the destructor from re-writing settings that were just wiped.
+    void suppressPersistence() { m_persistenceSuppressed = true; }
     
 signals:
     void waveformColorChanged();
@@ -115,6 +139,11 @@ signals:
     void textMutedColorChanged();
     void darkModeChanged();
     void themeChanged();
+    void fontFamilyChanged();
+    void customFontFamilyChanged();
+    void customFontSizeChanged();
+    void fontSizeMultiplierChanged();
+    void playlistFontFamilyChanged();
     
 private:
     void loadSettings();
@@ -122,6 +151,7 @@ private:
     void applyDarkTheme();
     void applyLightTheme();
     void applySystemPalette();
+    void updateApplicationFont();
     
     QSettings m_settings;
     
@@ -137,6 +167,11 @@ private:
     QColor m_textSecondaryColor;
     QColor m_textMutedColor;
     bool m_darkMode = true;
+    
+    QString m_customFontFamily;
+    int m_customFontSize = 0;
+    QString m_playlistFontFamily;
+    bool m_persistenceSuppressed = false;
 };
 
 #endif // THEMEMANAGER_H

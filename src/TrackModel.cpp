@@ -358,6 +358,7 @@ QString dataUrlFromBytes(const TagLib::ByteVector &bytes, const QString &mimeTyp
 
 QString extractAlbumArtFromComplexProperties(TagLib::File *file)
 {
+#if TAGLIB_MAJOR_VERSION >= 2
     if (!file) {
         return {};
     }
@@ -386,6 +387,10 @@ QString extractAlbumArtFromComplexProperties(TagLib::File *file)
     }
 
     return dataUrlFromBytes(bytes, mimeType);
+#else
+    Q_UNUSED(file);
+    return {};
+#endif
 }
 
 QString extractMp3AlbumArt(const QString &filePath)

@@ -307,6 +307,29 @@ bool PlaylistProfilesManager::deleteAllPlaylists()
     return true;
 }
 
+bool PlaylistProfilesManager::resetForFullApplicationReset()
+{
+    const bool hadProfiles = ensureLoaded() && !m_profiles.isEmpty();
+    const QString path = storagePath();
+    const bool storageExists = QFile::exists(path);
+
+    m_profiles.clear();
+    m_nextId = 1;
+    m_loaded = true;
+
+    if (storageExists && !QFile::remove(path)) {
+        setLastError(localizedPlaylistProfileText(QStringLiteral("error.failedPersistPlaylistsStorage")));
+        emit playlistsChanged();
+        return false;
+    }
+
+    setLastError(QString());
+    if (hadProfiles || storageExists) {
+        emit playlistsChanged();
+    }
+    return true;
+}
+
 bool PlaylistProfilesManager::ensureLoaded() const
 {
     if (m_loaded) {

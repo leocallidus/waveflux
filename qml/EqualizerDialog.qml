@@ -465,7 +465,7 @@ Dialog {
         contentItem: Text {
             text: tabButton.text
             font.family: themeManager.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             font.bold: tabButton.checked
             color: tabButton.checked ? themeManager.textColor : themeManager.textSecondaryColor
             horizontalAlignment: Text.AlignHCenter
@@ -518,7 +518,7 @@ Dialog {
         contentItem: Text {
             text: presetDelegate.modelData.name
             font.family: themeManager.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
             font.bold: presetDelegate.highlighted
             color: presetDelegate.highlighted ? themeManager.primaryColor : themeManager.textColor
             verticalAlignment: Text.AlignVCenter
@@ -549,7 +549,7 @@ Dialog {
     title: root.tr("equalizer.title")
     modal: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    standardButtons: Dialog.Close
+    standardButtons: Dialog.NoButton
     x: parent ? Math.max(dialogMargin, Math.round((availableDialogWidth - width) * 0.5)) : 0
     y: parent ? Math.max(dialogMargin, Math.round((availableDialogHeight - height) * 0.5)) : 0
 
@@ -646,7 +646,7 @@ Dialog {
                                 .arg("Ctrl+Shift+X")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         wrapMode: Text.WordWrap
                     }
 
@@ -786,7 +786,7 @@ Dialog {
                             }
                             color: themeManager.textColor
                             font.family: themeManager.fontFamily
-                            font.pixelSize: 14
+                            font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
                             font.bold: true
                         }
 
@@ -1043,7 +1043,7 @@ Dialog {
                                        ? themeManager.primaryColor
                                        : themeManager.textMutedColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 10
+                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                 horizontalAlignment: Text.AlignHCenter
                             }
 
@@ -1070,7 +1070,7 @@ Dialog {
                                 text: root.formatFrequency(parent.frequency)
                                 color: themeManager.textColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 10
+                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                 horizontalAlignment: Text.AlignHCenter
                             }
                         }
@@ -1191,7 +1191,7 @@ Dialog {
                                          : root.tr("equalizer.statusInfo"))
                                 color: root.statusToneAccent(root.statusDialogTone)
                                 font.family: themeManager.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                 font.bold: true
                             }
                         }
@@ -1258,6 +1258,47 @@ Dialog {
                         }
                     }
                 }
+            }
+        }
+    }
+    footer: Rectangle {
+        implicitHeight: eqFooterRow.implicitHeight + 16
+        color: Qt.rgba(themeManager.surfaceColor.r,
+                       themeManager.surfaceColor.g,
+                       themeManager.surfaceColor.b,
+                       themeManager.darkMode ? 0.92 : 0.98)
+        radius: themeManager.borderRadiusLarge
+
+        // Top separator
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 1
+            color: themeManager.borderColor
+            opacity: 0.35
+        }
+
+        // Mask top corners so only bottom corners are rounded
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: themeManager.borderRadiusLarge
+            color: parent.color
+        }
+
+        RowLayout {
+            id: eqFooterRow
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+
+            Button {
+                text: root.tr("settings.close")
+                accent: true
+                onClicked: root.close()
             }
         }
     }

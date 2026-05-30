@@ -165,6 +165,7 @@ public:
     Q_INVOKABLE QString renderTrackInfoFormat(const QString &format,
                                               const QVariantMap &trackInfo,
                                               const QString &contextName) const;
+    Q_INVOKABLE void playSystemWarningSound() const;
     bool fullApplicationResetPending() const { return m_fullApplicationResetPending; }
     static QString translateForCurrentLanguage(const QString &key);
 
@@ -341,7 +342,7 @@ private:
     bool m_autoAddTracksFromPlaylistFolder = true;
     bool m_playlistScrollBarVisible = true;
     bool m_playSearchResultsInOrder = false;
-    bool m_trackInfoEnabled = true;
+    bool m_trackInfoEnabled = false;
     bool m_trackInfoWaveformOverlayHoverOnly = true;
     QString m_trackInfoWindowTitleFormat;
     QString m_trackInfoWaveformTooltipFormat;

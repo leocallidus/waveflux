@@ -4,6 +4,9 @@
 ThemeManager::ThemeManager(QObject *parent)
     : QObject(parent)
     , m_settings("WaveFlux", "WaveFlux")
+    , m_customFontFamily("Default")
+    , m_customFontSize(0)
+    , m_playlistFontFamily("Default")
 {
     // Initialize with system palette
     applySystemPalette();
@@ -19,7 +22,9 @@ ThemeManager::ThemeManager(QObject *parent)
 
 ThemeManager::~ThemeManager()
 {
-    saveSettings();
+    if (!m_persistenceSuppressed) {
+        saveSettings();
+    }
 }
 
 void ThemeManager::setWaveformColor(const QColor &color)
@@ -210,6 +215,13 @@ void ThemeManager::resetToDefault()
     m_settings.remove(QStringLiteral("Theme"));
     applySystemPalette();
 
+    m_customFontFamily = QStringLiteral("Default");
+    m_customFontSize = 0;
+    m_playlistFontFamily = QStringLiteral("Default");
+    emit customFontFamilyChanged();
+    emit customFontSizeChanged();
+    updateApplicationFont();
+
     emit waveformColorChanged();
     emit waveformBackgroundColorChanged();
     emit progressColorChanged();
@@ -223,6 +235,8 @@ void ThemeManager::resetToDefault()
     emit textMutedColorChanged();
     emit darkModeChanged();
     emit themeChanged();
+
+    saveSettings();
 }
 
 void ThemeManager::loadSettings()
@@ -246,7 +260,24 @@ void ThemeManager::loadSettings()
     } else {
         m_accentColor = m_primaryColor;
     }
+    if (m_settings.contains("customFontFamily")) {
+        m_customFontFamily = m_settings.value("customFontFamily").toString();
+    } else {
+        m_customFontFamily = QStringLiteral("Default");
+    }
+    if (m_settings.contains("customFontSize")) {
+        m_customFontSize = m_settings.value("customFontSize").toInt();
+    } else {
+        m_customFontSize = 0;
+    }
+    if (m_settings.contains("playlistFontFamily")) {
+        m_playlistFontFamily = m_settings.value("playlistFontFamily").toString();
+    } else {
+        m_playlistFontFamily = QStringLiteral("Default");
+    }
     m_settings.endGroup();
+    
+    updateApplicationFont();
 }
 
 void ThemeManager::saveSettings()
@@ -258,6 +289,9 @@ void ThemeManager::saveSettings()
     m_settings.setValue("progressColor", m_progressColor.name());
     m_settings.setValue("primaryColor", m_primaryColor.name());
     m_settings.setValue("accentColor", m_accentColor.name());
+    m_settings.setValue("customFontFamily", m_customFontFamily);
+    m_settings.setValue("customFontSize", m_customFontSize);
+    m_settings.setValue("playlistFontFamily", m_playlistFontFamily);
     m_settings.endGroup();
     m_settings.sync();
 }
@@ -317,4 +351,85 @@ void ThemeManager::applySystemPalette()
     
     // Detect dark mode from system
     m_darkMode = (palette.color(QPalette::Window).lightness() < 128);
+}
+
+QString ThemeManager::fontFamily() const
+{
+    if (!m_customFontFamily.isEmpty() && m_customFontFamily != QStringLiteral("Default")) {
+        return m_customFontFamily;
+    }
+    return QGuiApplication::font().family();
+}
+
+void ThemeManager::setCustomFontFamily(const QString &family)
+{
+    if (m_customFontFamily != family) {
+        m_customFontFamily = family;
+        emit customFontFamilyChanged();
+        updateApplicationFont();
+    }
+}
+
+void ThemeManager::setCustomFontSize(int size)
+{
+    if (m_customFontSize != size) {
+        m_customFontSize = size;
+        emit customFontSizeChanged();
+        updateApplicationFont();
+    }
+}
+
+double ThemeManager::fontSizeMultiplier() const
+{
+    int defSize = QFontDatabase::systemFont(QFontDatabase::GeneralFont).pointSize();
+    if (defSize <= 0) defSize = 10; // Fallback
+    int curSize = m_customFontSize > 0 ? m_customFontSize : defSize;
+    return static_cast<double>(curSize) / defSize;
+}
+
+QStringList ThemeManager::availableFonts() const
+{
+    QStringList fonts;
+    fonts << QStringLiteral("Default");
+    fonts.append(QFontDatabase::families());
+    return fonts;
+}
+
+void ThemeManager::updateApplicationFont()
+{
+    QFont font = QGuiApplication::font();
+    if (!m_customFontFamily.isEmpty() && m_customFontFamily != QStringLiteral("Default")) {
+        font.setFamily(m_customFontFamily);
+    } else {
+        font.setFamily(QFontDatabase::systemFont(QFontDatabase::GeneralFont).family());
+    }
+    
+    int defSize = QFontDatabase::systemFont(QFontDatabase::GeneralFont).pointSize();
+    if (defSize <= 0) defSize = 10;
+    int curSize = m_customFontSize > 0 ? m_customFontSize : defSize;
+    font.setPointSize(curSize);
+    
+    QGuiApplication::setFont(font);
+    
+    emit fontFamilyChanged();
+    emit fontSizeMultiplierChanged();
+    emit playlistFontFamilyChanged();
+    emit themeChanged();
+}
+
+QString ThemeManager::playlistFontFamily() const
+{
+    if (!m_playlistFontFamily.isEmpty() && m_playlistFontFamily != QStringLiteral("Default")) {
+        return m_playlistFontFamily;
+    }
+    return fontFamily();
+}
+
+void ThemeManager::setPlaylistFontFamily(const QString &family)
+{
+    if (m_playlistFontFamily != family) {
+        m_playlistFontFamily = family;
+        emit playlistFontFamilyChanged();
+        emit themeChanged();
+    }
 }

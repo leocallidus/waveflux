@@ -137,7 +137,8 @@ Rectangle {
         z: 2
         text: audioEngine ? audioEngine.remoteTrackerDownloadStatus : ""
         color: themeManager.textSecondaryColor
-        font.pixelSize: 11
+        font.family: themeManager.fontFamily
+        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
         elide: Text.ElideRight
         width: Math.min(260, parent.width * 0.35)
         horizontalAlignment: Text.AlignRight
@@ -403,7 +404,7 @@ Rectangle {
                     text: playbackController.queueCount > 99 ? "99+" : String(playbackController.queueCount)
                     color: themeManager.backgroundColor
                     font.family: themeManager.monoFontFamily
-                    font.pixelSize: 8
+                    font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -699,7 +700,7 @@ Rectangle {
                                     text: "::"
                                     color: themeManager.textMutedColor
                                     font.family: themeManager.monoFontFamily
-                                    font.pixelSize: 10
+                                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                 }
 
                                 MouseArea {
@@ -729,7 +730,7 @@ Rectangle {
                                 text: String(queueItem.index + 1)
                                 color: themeManager.primaryColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 10
+                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                 horizontalAlignment: Text.AlignRight
                             }
 
@@ -742,7 +743,7 @@ Rectangle {
                                     text: queueItem.displayName
                                     color: themeManager.textColor
                                     font.family: themeManager.fontFamily
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                                     elide: Text.ElideRight
                                 }
 
@@ -752,7 +753,7 @@ Rectangle {
                                     text: queueItem.artist
                                     color: themeManager.textMutedColor
                                     font.family: themeManager.fontFamily
-                                    font.pixelSize: 10
+                                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                     elide: Text.ElideRight
                                 }
                             }
@@ -761,7 +762,7 @@ Rectangle {
                                 text: root.formatDuration(queueItem.duration)
                                 color: themeManager.textSecondaryColor
                                 font.family: themeManager.monoFontFamily
-                                font.pixelSize: 10
+                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
                                 Layout.preferredWidth: 36
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -792,7 +793,7 @@ Rectangle {
                         text: root.tr("queue.empty")
                         color: themeManager.textMutedColor
                         font.family: themeManager.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
                         horizontalAlignment: Text.AlignHCenter
                     }
                 }

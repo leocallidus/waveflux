@@ -3,17 +3,19 @@
 /build-*/
 /dist/
 
-# CMake/Ninja generated files
+# CMake generated files
 CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
 build.ninja
 .ninja_deps
 .ninja_log
-
-# Build system directories
 CMakeFiles/
 Testing/
+CTestTestfile.cmake
+_deps/
+
+# Qt/moc generated files
 waveflux_autogen/
 .cmake/
 .qt/
@@ -21,14 +23,53 @@ waveflux_autogen/
 WaveFlux/
 meta_types/
 qmltypes/
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
 
-# IDE/editor metadata
+# QML cache
+*.qmlc
+*.jsc
+
+# Object and binary files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+
+# Debug symbols
+*.pdb
+*.ilk
+*.exp
+
+# IDE and editor metadata
 .idea/
 .vscode/
+*.user
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user
+.clangd/
+.cache/
 
 # OS/filesystem noise
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Local scratch files
 /compile-theme.err
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log

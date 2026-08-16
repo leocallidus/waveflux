@@ -2,18 +2,19 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../IconResolver.js" as IconResolver
+import "."
 
 Rectangle {
     id: root
 
-    readonly property bool compactButtons: width < 700
-    readonly property bool mobileOnly: width < 500
-    readonly property int secondaryActionsOverflowThreshold: appSettings.showSpeedPitchControls ? 1100 : 980
+    readonly property bool compactButtons: width < UiMetrics.breakpoint(700)
+    readonly property bool mobileOnly: width < UiMetrics.breakpoint(500)
+    readonly property int secondaryActionsOverflowThreshold: appSettings.showSpeedPitchControls ? UiMetrics.breakpoint(1100) : UiMetrics.breakpoint(980)
     readonly property bool secondaryActionsInOverflow: width < secondaryActionsOverflowThreshold
     readonly property bool showInlineSecondaryActions: !mobileOnly && !secondaryActionsInOverflow
     readonly property bool showOverflowMenuButton: !mobileOnly && secondaryActionsInOverflow
-    readonly property bool compactTimeReadout: width < 900
-    readonly property bool minimalTimeReadout: width < 760
+    readonly property bool compactTimeReadout: width < UiMetrics.breakpoint(900)
+    readonly property bool minimalTimeReadout: width < UiMetrics.breakpoint(760)
     readonly property bool showSpeedPitchInline: !mobileOnly
                                                  && appSettings.showSpeedPitchControls
                                                  && !secondaryActionsInOverflow
@@ -137,8 +138,7 @@ Rectangle {
         z: 2
         text: audioEngine ? audioEngine.remoteTrackerDownloadStatus : ""
         color: themeManager.textSecondaryColor
-        font.family: themeManager.fontFamily
-        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+        font.pointSize: UiMetrics.captionPointSize
         elide: Text.ElideRight
         width: Math.min(260, parent.width * 0.35)
         horizontalAlignment: Text.AlignRight
@@ -146,24 +146,25 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
-        spacing: 18
+        anchors.leftMargin: UiMetrics.spaceXL
+        anchors.rightMargin: UiMetrics.spaceXL
+        spacing: UiMetrics.spaceXL
 
         Item { Layout.fillWidth: true; visible: root.mobileOnly }
 
         RowLayout {
             visible: !root.mobileOnly
-            spacing: 6
+            spacing: UiMetrics.spaceS
 
             ToolButton {
                 visible: root.showInlineSecondaryActions
-                icon.source: IconResolver.themed("media-playlist-shuffle", themeManager.darkMode)
-                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                icon.source: IconResolver.themed(playbackController.shuffleEnabled
+                                                 ? "media-playlist-shuffle"
+                                                 : "media-playlist-consecutive",
+                                                 themeManager.darkMode)
                 display: AbstractButton.IconOnly
                 onClicked: playbackController.toggleShuffle()
                 opacity: playbackController.shuffleEnabled ? 1.0 : 0.72
-                enabled: trackModel.count > 1
                 ToolTip.text: root.shuffleTooltipText()
                 ToolTip.visible: hovered
             }
@@ -208,8 +209,8 @@ Rectangle {
         ToolButton {
             id: playPauseButton
             display: AbstractButton.TextOnly
-            implicitWidth: 40
-            implicitHeight: 40
+            implicitWidth: UiMetrics.controlHeightProminent
+            implicitHeight: UiMetrics.controlHeightProminent
             onClicked: audioEngine.togglePlayPause()
 
             contentItem: Label {
@@ -217,8 +218,8 @@ Rectangle {
                 color: themeManager.backgroundColor
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: root.isPlaying ? 14 : 18
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: root.isPlaying ? UiMetrics.bodyStrongPointSize : UiMetrics.titlePointSize
                 font.bold: true
             }
 
@@ -233,8 +234,8 @@ Rectangle {
             icon.source: IconResolver.themed("media-playback-stop", themeManager.darkMode)
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             display: AbstractButton.IconOnly
-            implicitWidth: root.compactButtons ? 28 : 32
-            implicitHeight: root.compactButtons ? 28 : 32
+            implicitWidth: root.compactButtons ? UiMetrics.minInteractiveTargetSize : UiMetrics.controlHeightNormal
+            implicitHeight: root.compactButtons ? UiMetrics.minInteractiveTargetSize : UiMetrics.controlHeightNormal
             enabled: audioEngine && audioEngine.state !== 0
             opacity: enabled ? 1.0 : 0.48
             onClicked: audioEngine.stop()
@@ -305,13 +306,13 @@ Rectangle {
 
         RowLayout {
             visible: !root.mobileOnly
-            spacing: 8
+            spacing: UiMetrics.spaceM
 
             Label {
                 text: root.formatPreciseTime(audioEngine.position)
                 color: themeManager.primaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: root.minimalTimeReadout ? 18 : (root.compactTimeReadout ? 20 : 24)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: root.minimalTimeReadout ? UiMetrics.bodyStrongPointSize : (root.compactTimeReadout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize)
                 font.bold: true
             }
 
@@ -319,16 +320,16 @@ Rectangle {
                 visible: !root.minimalTimeReadout
                 text: "/"
                 color: themeManager.textMutedColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: root.compactTimeReadout ? 15 : 18
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: root.compactTimeReadout ? UiMetrics.bodyPointSize : UiMetrics.titlePointSize
             }
 
             Label {
                 visible: !root.minimalTimeReadout
                 text: root.formatPreciseTime(audioEngine.duration)
                 color: themeManager.textSecondaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: root.compactTimeReadout ? 20 : 24
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: root.compactTimeReadout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize
             }
         }
 
@@ -336,7 +337,7 @@ Rectangle {
 
         RowLayout {
             visible: !root.mobileOnly
-            spacing: 8
+            spacing: UiMetrics.spaceM
 
             VolumeStrip {
                 stripWidth: root.compactButtons ? 72 : (root.secondaryActionsInOverflow ? 84 : 96)
@@ -403,8 +404,8 @@ Rectangle {
                     visible: playbackController.queueCount > 0
                     text: playbackController.queueCount > 99 ? "99+" : String(playbackController.queueCount)
                     color: themeManager.backgroundColor
-                    font.family: themeManager.monoFontFamily
-                    font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
+                    font.family: UiMetrics.monoFontFamily
+                    font.pointSize: UiMetrics.microPointSize
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -686,9 +687,9 @@ Rectangle {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 6
-                            spacing: 6
+                            anchors.leftMargin: UiMetrics.spaceM
+                            anchors.rightMargin: UiMetrics.spaceS
+                            spacing: UiMetrics.spaceS
                             z: 1
 
                             Item {
@@ -699,8 +700,8 @@ Rectangle {
                                     anchors.centerIn: parent
                                     text: "::"
                                     color: themeManager.textMutedColor
-                                    font.family: themeManager.monoFontFamily
-                                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                    font.family: UiMetrics.monoFontFamily
+                                    font.pointSize: UiMetrics.captionPointSize
                                 }
 
                                 MouseArea {
@@ -729,8 +730,8 @@ Rectangle {
                                 Layout.preferredWidth: 24
                                 text: String(queueItem.index + 1)
                                 color: themeManager.primaryColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.captionPointSize
                                 horizontalAlignment: Text.AlignRight
                             }
 
@@ -742,8 +743,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                     text: queueItem.displayName
                                     color: themeManager.textColor
-                                    font.family: themeManager.fontFamily
-                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                    font.pointSize: UiMetrics.captionPointSize
                                     elide: Text.ElideRight
                                 }
 
@@ -752,8 +752,7 @@ Rectangle {
                                     visible: queueItem.artist.length > 0
                                     text: queueItem.artist
                                     color: themeManager.textMutedColor
-                                    font.family: themeManager.fontFamily
-                                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                    font.pointSize: UiMetrics.captionPointSize
                                     elide: Text.ElideRight
                                 }
                             }
@@ -761,8 +760,8 @@ Rectangle {
                             Label {
                                 text: root.formatDuration(queueItem.duration)
                                 color: themeManager.textSecondaryColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.captionPointSize
                                 Layout.preferredWidth: 36
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -792,8 +791,7 @@ Rectangle {
                         visible: playbackController.queueCount === 0
                         text: root.tr("queue.empty")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                         horizontalAlignment: Text.AlignHCenter
                     }
                 }

@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import "."
 
 Controls.Button {
     id: control
 
     property string tooltipText: text
     property bool accent: false
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
 
     hoverEnabled: true
     readonly property bool showsIcon: display !== Controls.AbstractButton.TextOnly
@@ -14,30 +17,30 @@ Controls.Button {
     readonly property bool showsText: display !== Controls.AbstractButton.IconOnly
                                       && text.length > 0
 
-    implicitWidth: Math.max(64,
+    implicitWidth: Math.max(UiMetrics.minInteractiveTargetSize * 2,
                             leftPadding + rightPadding
                             + (showsIcon ? buttonIcon.sourceSize.width : 0)
                             + (showsIcon && showsText ? buttonContent.spacing : 0)
                             + (showsText ? buttonText.implicitWidth : 0))
-    implicitHeight: Math.max(36, contentItem.implicitHeight + topPadding + bottomPadding)
-    leftPadding: 14
-    rightPadding: 14
-    topPadding: 8
-    bottomPadding: 8
+    implicitHeight: Math.max(UiMetrics.controlHeightNormal, contentItem.implicitHeight + topPadding + bottomPadding)
+    leftPadding: UiMetrics.spaceL
+    rightPadding: UiMetrics.spaceL
+    topPadding: UiMetrics.spaceS
+    bottomPadding: UiMetrics.spaceS
     Controls.ToolTip.visible: hovered && buttonText.truncated && tooltipText.length > 0
     Controls.ToolTip.text: tooltipText
     Controls.ToolTip.delay: 450
 
     contentItem: RowLayout {
         id: buttonContent
-        spacing: buttonIcon.visible && buttonText.visible ? 7 : 0
+        spacing: buttonIcon.visible && buttonText.visible ? UiMetrics.spaceS : 0
 
         Image {
             id: buttonIcon
             visible: control.showsIcon
             source: control.icon.source
-            sourceSize.width: Math.max(1, control.icon.width > 0 ? control.icon.width : 16)
-            sourceSize.height: Math.max(1, control.icon.height > 0 ? control.icon.height : 16)
+            sourceSize.width: Math.max(1, control.icon.width > 0 ? control.icon.width : UiMetrics.iconSizeNormal)
+            sourceSize.height: Math.max(1, control.icon.height > 0 ? control.icon.height : UiMetrics.iconSizeNormal)
             Layout.preferredWidth: sourceSize.width
             Layout.preferredHeight: sourceSize.height
             Layout.alignment: Qt.AlignVCenter
@@ -52,7 +55,10 @@ Controls.Button {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
             text: control.text
-            font: control.font
+            font.pointSize: control.font.pointSize
+            font.family: control.font.family ? control.font.family : themeManager.fontFamily
+            font.weight: control.font.weight
+            font.bold: control.font.bold
             color: !control.enabled
                    ? themeManager.textMutedColor
                    : (control.accent || control.highlighted || control.checked || control.down)
@@ -65,7 +71,7 @@ Controls.Button {
     }
 
     background: Rectangle {
-        radius: Math.min(8, height / 2)
+        radius: Math.min(UiMetrics.radiusNormal, height / 2)
         color: {
             if (!control.enabled) {
                 return Qt.rgba(themeManager.surfaceColor.r,

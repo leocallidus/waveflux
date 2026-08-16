@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 AppDialog {
     id: root
@@ -114,15 +115,15 @@ AppDialog {
         value = clamp01(1.0 - (mouseY / Math.max(1, saturationValueArea.height)))
     }
 
-    implicitWidth: 640
-    implicitHeight: 560
+    implicitWidth: Math.round(640 * UiMetrics.fontScale)
+    implicitHeight: Math.round(560 * UiMetrics.fontScale)
 
     width: (root.isSeparateWindow && root.parent)
            ? root.parent.width
-           : (root.parent ? boundedDialogSize(640, 460, root.parent.width - 24) : 640)
+           : (root.parent ? boundedDialogSize(Math.round(640 * UiMetrics.fontScale), Math.round(460 * UiMetrics.fontScale), root.parent.width - 24) : Math.round(640 * UiMetrics.fontScale))
     height: (root.isSeparateWindow && root.parent)
             ? root.parent.height
-            : (root.parent ? boundedDialogSize(560, 460, root.parent.height - 24) : 560)
+            : (root.parent ? boundedDialogSize(Math.round(560 * UiMetrics.fontScale), Math.round(460 * UiMetrics.fontScale), root.parent.height - 24) : Math.round(560 * UiMetrics.fontScale))
     anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: syncFromColor(selectedColor)
@@ -143,7 +144,7 @@ AppDialog {
     }
 
     header: Rectangle {
-        implicitHeight: 64
+        implicitHeight: Math.max(UiMetrics.dialogHeaderHeight, Math.round(64 * UiMetrics.fontScale))
         color: Qt.rgba(themeManager.surfaceColor.r,
                        themeManager.surfaceColor.g,
                        themeManager.surfaceColor.b,
@@ -153,14 +154,14 @@ AppDialog {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 14
+            anchors.leftMargin: UiMetrics.spaceXL
+            anchors.rightMargin: UiMetrics.spaceXL
+            spacing: UiMetrics.spaceL
 
             Rectangle {
-                Layout.preferredWidth: 34
-                Layout.preferredHeight: 34
-                radius: 10
+                Layout.preferredWidth: Math.round(34 * UiMetrics.fontScale)
+                Layout.preferredHeight: Layout.preferredWidth
+                radius: UiMetrics.radiusLarge
                 color: root.workingColor
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.18)
@@ -168,14 +169,13 @@ AppDialog {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: UiMetrics.spaceXXS
 
                 Label {
                     Layout.fillWidth: true
                     text: root.title
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.titlePointSize
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -184,8 +184,8 @@ AppDialog {
                     Layout.fillWidth: true
                     text: root.colorToHex(root.workingColor)
                     color: themeManager.textMutedColor
-                    font.family: themeManager.monoFontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.family: UiMetrics.monoFontFamily
+                    font.pointSize: UiMetrics.captionPointSize
                     elide: Text.ElideRight
                 }
             }
@@ -430,21 +430,21 @@ AppDialog {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        spacing: UiMetrics.spaceM
 
                         Label {
                             text: "Hex"
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         TextField {
                             id: hexField
                             Layout.fillWidth: true
                             color: themeManager.textColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                             selectByMouse: true
                             placeholderText: "#00A7C6"
                             background: Rectangle {
@@ -470,7 +470,7 @@ AppDialog {
     }
 
     footer: Rectangle {
-        implicitHeight: 72
+        implicitHeight: Math.max(UiMetrics.dialogFooterHeight, Math.round(72 * UiMetrics.fontScale))
         color: Qt.rgba(themeManager.surfaceColor.r,
                        themeManager.surfaceColor.g,
                        themeManager.surfaceColor.b,
@@ -480,13 +480,13 @@ AppDialog {
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 12
-            spacing: 12
+            anchors.margins: UiMetrics.spaceL
+            spacing: UiMetrics.spaceL
 
             Rectangle {
-                Layout.preferredWidth: 42
-                Layout.preferredHeight: 42
-                radius: 12
+                Layout.preferredWidth: Math.round(42 * UiMetrics.fontScale)
+                Layout.preferredHeight: Layout.preferredWidth
+                radius: UiMetrics.radiusLarge
                 color: root.workingColor
                 border.width: 2
                 border.color: Qt.rgba(1, 1, 1, 0.16)

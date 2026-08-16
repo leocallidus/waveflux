@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 Item {
     id: root
@@ -10,7 +11,7 @@ Item {
     property string layoutMode: "wide"
     property bool comboFallback: false
     property bool searchActive: false
-    property int minimumInteractiveHeight: 34
+    property int minimumInteractiveHeight: UiMetrics.controlHeightNormal
 
     signal sectionTriggered(string sectionId)
 
@@ -33,7 +34,7 @@ Item {
 
         Row {
             id: tabsRow
-            spacing: root.compactTabs ? 6 : 8
+            spacing: root.compactTabs ? UiMetrics.spaceS : UiMetrics.spaceM
 
             Repeater {
                 model: root.sections
@@ -47,7 +48,7 @@ Item {
                     checked: root.activeSectionId === sectionId
                     visible: !!sectionId
                     enabled: !root.searchActive || !!modelData.hasResults
-                    minimumWidth: root.compactTabs ? 72 : (root.mediumTabs ? 88 : 112)
+                    minimumWidth: root.compactTabs ? Math.round(72 * UiMetrics.fontScale) : (root.mediumTabs ? Math.round(88 * UiMetrics.fontScale) : Math.round(112 * UiMetrics.fontScale))
                     compactVisual: root.compactTabs
                     activeFocusOnTab: true
                     Accessible.name: modelData.title
@@ -60,7 +61,7 @@ Item {
     RowLayout {
         id: compactRow
         anchors.fill: parent
-        spacing: 8
+        spacing: UiMetrics.spaceM
         visible: root.comboFallback
 
         AccentComboBox {

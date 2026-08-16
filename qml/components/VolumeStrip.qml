@@ -2,16 +2,17 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../IconResolver.js" as IconResolver
+import "."
 
 RowLayout {
     id: root
 
     property real maximumVolume: 1.25
-    property int stripWidth: 86
-    property int stripHeight: 18
+    property int stripWidth: Math.round(86 * UiMetrics.fontScale)
+    property int stripHeight: Math.max(18, Math.round(20 * UiMetrics.fontScale))
     property bool compactMode: false
 
-    spacing: compactMode ? 4 : 6
+    spacing: compactMode ? UiMetrics.spaceXS : UiMetrics.spaceS
 
     function clampedVolume(value) {
         return Math.max(0, Math.min(maximumVolume, Number(value) || 0))
@@ -65,12 +66,14 @@ RowLayout {
     ToolButton {
         id: muteButton
         display: AbstractButton.IconOnly
-        implicitWidth: root.compactMode ? 24 : 28
-        implicitHeight: root.compactMode ? 24 : 28
+        readonly property int buttonDimension: Math.max(24, Math.round((root.compactMode ? 24 : 28) * UiMetrics.fontScale))
+        readonly property int iconDimension: Math.max(16, Math.round((root.compactMode ? 18 : 20) * UiMetrics.fontScale))
+        implicitWidth: buttonDimension
+        implicitHeight: buttonDimension
         icon.source: IconResolver.themed(root.iconName(), themeManager.darkMode)
         icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-        icon.width: root.compactMode ? 18 : 20
-        icon.height: root.compactMode ? 18 : 20
+        icon.width: iconDimension
+        icon.height: iconDimension
         enabled: audioEngine
         onClicked: audioEngine.toggleMute()
         ToolTip.text: audioEngine && audioEngine.volume <= 0.000001
@@ -147,10 +150,10 @@ RowLayout {
             text: root.volumeLabel(audioEngine ? audioEngine.volume : 0)
             color: themeManager.darkMode ? "#ffffff" : "#111111"
             opacity: audioEngine && audioEngine.volume <= 0.000001 ? 0.72 : 0.95
-            font.family: themeManager.monoFontFamily
-            font.pixelSize: appSettings && appSettings.displayVolumeInDecibels
-                            ? (root.compactMode ? 8 : 9)
-                            : (root.compactMode ? 9 : 10)
+            font.family: UiMetrics.monoFontFamily
+            font.pointSize: appSettings && appSettings.displayVolumeInDecibels
+                            ? UiMetrics.microPointSize
+                            : (root.compactMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize)
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter

@@ -524,15 +524,15 @@ Item {
                         horizontalAlignment: Text.AlignRight
                         color: trackDelegate.highlighted ? themeManager.backgroundColor : themeManager.textColor
                         opacity: 0.7
-                        font.family: themeManager.playlistFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     Label {
                         visible: trackDelegate.queuePosition >= 0
                         text: "Q" + String(trackDelegate.queuePosition + 1)
-                        font.family: themeManager.playlistFontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.microPointSize
                         color: trackDelegate.highlighted ? themeManager.backgroundColor : themeManager.primaryColor
                         opacity: trackDelegate.highlighted ? 1.0 : 0.8
                     }
@@ -546,14 +546,14 @@ Item {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             color: trackDelegate.highlighted ? themeManager.backgroundColor : themeManager.textColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
 
                         Label {
                             text: artist && album ? album : ""
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             opacity: 0.6
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -566,8 +566,8 @@ Item {
                         text: formatDuration(duration)
                         opacity: 0.7
                         color: trackDelegate.highlighted ? themeManager.backgroundColor : themeManager.textColor
-                        font.family: themeManager.playlistFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     ToolButton {

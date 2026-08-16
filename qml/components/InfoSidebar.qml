@@ -4,6 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "../IconResolver.js" as IconResolver
+import "."
 
 Rectangle {
     id: root
@@ -88,31 +89,30 @@ Rectangle {
             id: sidebarContent
             objectName: "sidebarContent"
             width: infoScrollView.availableWidth
-            implicitHeight: detailsColumn.implicitHeight + 28
+            implicitHeight: detailsColumn.implicitHeight + UiMetrics.spaceXXL
 
             ColumnLayout {
                 id: detailsColumn
-                x: 14
-                y: 14
-                width: Math.max(0, parent.width - 28)
-                spacing: 14
+                x: UiMetrics.spaceL
+                y: UiMetrics.spaceL
+                width: Math.max(0, parent.width - UiMetrics.spaceXXL)
+                spacing: UiMetrics.spaceL
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: UiMetrics.spaceM
 
                     Label {
                         text: root.tr("sidebar.spectrumAnalyzer")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
 
                     Item {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 88
+                        Layout.preferredHeight: Math.round(88 * UiMetrics.fontScale)
 
                         Row {
                             anchors.fill: parent
@@ -143,13 +143,12 @@ Rectangle {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: UiMetrics.spaceM
 
                     Label {
                         text: root.tr("sidebar.technicalSpecs")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -157,14 +156,14 @@ Rectangle {
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 2
-                        columnSpacing: 8
-                        rowSpacing: 4
+                        columnSpacing: UiMetrics.spaceM
+                        rowSpacing: UiMetrics.spaceXS
 
                         Label {
                             text: root.tr("sidebar.engine")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -175,15 +174,15 @@ Rectangle {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             text: root.tr("sidebar.codec")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -194,16 +193,16 @@ Rectangle {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: !root.isTrackerModule
                             text: root.tr("sidebar.sampleRate")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -215,16 +214,16 @@ Rectangle {
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: !root.isTrackerModule
                             text: root.tr("sidebar.bitrate")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -236,16 +235,16 @@ Rectangle {
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: !root.isTrackerModule
                             text: root.tr("sidebar.bitDepth")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -257,16 +256,16 @@ Rectangle {
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: !root.isTrackerModule
                             text: root.tr("sidebar.bpm")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -279,22 +278,21 @@ Rectangle {
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
                     }
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: UiMetrics.spaceM
                     visible: root.hasTrackerInfo
 
                     Label {
                         text: root.tr("sidebar.trackerModule")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -302,15 +300,15 @@ Rectangle {
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 2
-                        columnSpacing: 8
-                        rowSpacing: 4
+                        columnSpacing: UiMetrics.spaceM
+                        rowSpacing: UiMetrics.spaceXS
 
                         Label {
                             visible: root.trackerType.length > 0
                             text: root.tr("sidebar.trackerType")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -322,16 +320,16 @@ Rectangle {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: root.trackerChannelCount > 0
                             text: root.tr("sidebar.trackerChannels")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -343,16 +341,16 @@ Rectangle {
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: root.trackerPatternCount > 0
                             text: root.tr("sidebar.trackerPatterns")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -364,16 +362,16 @@ Rectangle {
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Label {
                             visible: root.trackerInstrumentCount > 0
                             text: root.tr("sidebar.trackerInstruments")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.minimumWidth: root.specLabelWidth
                             Layout.preferredWidth: root.specLabelWidth
                         }
@@ -385,8 +383,8 @@ Rectangle {
                             horizontalAlignment: Text.AlignRight
                             Layout.fillWidth: true
                             wrapMode: Text.NoWrap
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                         }
                     }
 
@@ -395,8 +393,7 @@ Rectangle {
                         visible: root.trackerMessage.length > 0
                         text: root.trackerMessage
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         wrapMode: Text.WordWrap
                         maximumLineCount: 4
                         elide: Text.ElideRight
@@ -405,13 +402,12 @@ Rectangle {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: UiMetrics.spaceM
 
                     Label {
                         text: root.tr("sidebar.albumArt")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         font.bold: true
                         font.letterSpacing: 1.8
                     }
@@ -447,7 +443,7 @@ Rectangle {
                         Image {
                             anchors.centerIn: parent
                             visible: root.albumArt.length === 0
-                            width: Math.min(48, parent.width * 0.32)
+                            width: Math.min(UiMetrics.iconSizeLarge * 1.5, parent.width * 0.32)
                             height: width
                             source: IconResolver.themed("audio-x-generic", themeManager.darkMode)
                             sourceSize.width: Math.max(1, Math.ceil(width))

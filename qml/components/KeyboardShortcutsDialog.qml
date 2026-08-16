@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 AppDialog {
     id: root
@@ -15,16 +16,16 @@ AppDialog {
     standardButtons: Dialog.NoButton
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    readonly property int preferredDialogWidth: 860
-    readonly property int preferredDialogHeight: 620
-    readonly property int minimumDialogWidth: 560
-    readonly property int minimumDialogHeight: 380
-    readonly property bool compactLayout: width < 700
-    readonly property int contentPadding: compactLayout ? 12 : 16
-    readonly property int rowVerticalPadding: compactLayout ? 6 : 8
-    readonly property int sequenceColumnWidth: compactLayout ? 112 : 140
-    readonly property int defaultColumnWidth: compactLayout ? 112 : 140
-    readonly property int contextColumnWidth: compactLayout ? 110 : 132
+    readonly property int preferredDialogWidth: Math.round(860 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(620 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(560 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(380 * UiMetrics.fontScale)
+    readonly property bool compactLayout: width < UiMetrics.breakpoint(700)
+    readonly property int contentPadding: compactLayout ? UiMetrics.spaceL : UiMetrics.spaceXL
+    readonly property int rowVerticalPadding: compactLayout ? UiMetrics.spaceS : UiMetrics.spaceM
+    readonly property int sequenceColumnWidth: compactLayout ? Math.round(112 * UiMetrics.fontScale) : Math.round(140 * UiMetrics.fontScale)
+    readonly property int defaultColumnWidth: compactLayout ? Math.round(112 * UiMetrics.fontScale) : Math.round(140 * UiMetrics.fontScale)
+    readonly property int contextColumnWidth: compactLayout ? Math.round(110 * UiMetrics.fontScale) : Math.round(132 * UiMetrics.fontScale)
     readonly property var groupOrder: ["file", "playback", "navigation", "playlist", "library", "equalizer", "profiler", "help", "dialog"]
     readonly property color panelColor: themeManager.surfaceColor
     readonly property color frameColor: themeManager.borderColor
@@ -215,7 +216,7 @@ AppDialog {
     anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     background: Rectangle {
-        radius: 12
+        radius: themeManager.borderRadiusLarge
         color: root.panelColor
         border.width: 1
         border.color: root.frameColor
@@ -227,28 +228,27 @@ AppDialog {
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: root.contentPadding
-            spacing: root.compactLayout ? 10 : 12
+            spacing: root.compactLayout ? UiMetrics.spaceM : UiMetrics.spaceL
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 10
+                radius: themeManager.borderRadiusLarge
                 color: root.cardColor
                 border.width: 1
                 border.color: root.cardBorderColor
-                implicitHeight: introColumn.implicitHeight + (root.compactLayout ? 16 : 20)
+                implicitHeight: introColumn.implicitHeight + (root.compactLayout ? UiMetrics.spaceXL : UiMetrics.spaceXXL)
 
                 ColumnLayout {
                     id: introColumn
                     anchors.fill: parent
-                    anchors.margins: root.compactLayout ? 8 : 10
-                    spacing: 4
+                    anchors.margins: root.compactLayout ? UiMetrics.spaceM : UiMetrics.spaceL
+                    spacing: UiMetrics.spaceXS
 
                     Label {
                         text: root.tr("help.shortcutsDialogTitle")
                         color: themeManager.primaryColor
-                        font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: root.compactLayout ? 15 : 17
+                        font.pointSize: root.compactLayout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize
                     }
 
                     Label {
@@ -256,15 +256,14 @@ AppDialog {
                         text: root.tr("help.shortcutsDialogSubtitle")
                         color: themeManager.textColor
                         wrapMode: Text.WordWrap
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
                 }
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 8
+                radius: themeManager.borderRadius
                 color: Qt.rgba(themeManager.primaryColor.r,
                                themeManager.primaryColor.g,
                                themeManager.primaryColor.b,
@@ -274,22 +273,21 @@ AppDialog {
                                       themeManager.primaryColor.g,
                                       themeManager.primaryColor.b,
                                       0.36)
-                implicitHeight: headerRow.implicitHeight + 10
+                implicitHeight: headerRow.implicitHeight + UiMetrics.spaceM
 
                 RowLayout {
                     id: headerRow
                     anchors.fill: parent
-                    anchors.leftMargin: root.compactLayout ? 8 : 10
-                    anchors.rightMargin: root.compactLayout ? 8 : 10
-                    spacing: 10
+                    anchors.leftMargin: root.compactLayout ? UiMetrics.spaceM : UiMetrics.spaceL
+                    anchors.rightMargin: root.compactLayout ? UiMetrics.spaceM : UiMetrics.spaceL
+                    spacing: UiMetrics.spaceM
 
                     Label {
                         Layout.fillWidth: true
                         text: root.tr("help.shortcutsColumnAction")
                         color: themeManager.primaryColor
-                        font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                     }
 
                     Label {
@@ -297,9 +295,8 @@ AppDialog {
                         text: root.tr("help.shortcutsColumnKeys")
                         horizontalAlignment: Text.AlignHCenter
                         color: themeManager.primaryColor
-                        font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                     }
 
                     Label {
@@ -307,9 +304,8 @@ AppDialog {
                         text: root.tr("settings.shortcutDefault")
                         horizontalAlignment: Text.AlignHCenter
                         color: themeManager.primaryColor
-                        font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                     }
 
                     Label {
@@ -317,9 +313,8 @@ AppDialog {
                         text: root.tr("help.shortcutsColumnContext")
                         horizontalAlignment: Text.AlignLeft
                         color: themeManager.primaryColor
-                        font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                     }
                 }
             }
@@ -330,7 +325,7 @@ AppDialog {
                 Layout.fillHeight: true
                 clip: true
                 model: root.tableRows
-                spacing: 4
+                spacing: UiMetrics.spaceXS
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
 
@@ -342,8 +337,8 @@ AppDialog {
                     readonly property bool headerRow: row.kind === "header"
                     width: ListView.view ? ListView.view.width : 0
                     implicitHeight: headerRow
-                                    ? (headerLabel.implicitHeight + 10)
-                                    : Math.max(40, actionLabel.implicitHeight + root.rowVerticalPadding * 2)
+                                    ? (headerLabel.implicitHeight + UiMetrics.spaceM)
+                                    : Math.max(UiMetrics.controlHeightProminent, actionLabel.implicitHeight + root.rowVerticalPadding * 2)
 
                     Label {
                         id: headerLabel
@@ -353,16 +348,15 @@ AppDialog {
                         visible: parent.headerRow
                         text: delegateRoot.row.title || ""
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.fontFamily
                         font.bold: true
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         leftPadding: 2
                     }
 
                     Rectangle {
                         anchors.fill: parent
                         visible: !parent.headerRow
-                        radius: 6
+                        radius: themeManager.borderRadius
                         color: Qt.rgba(themeManager.surfaceColor.r,
                                        themeManager.surfaceColor.g,
                                        themeManager.surfaceColor.b,
@@ -375,17 +369,16 @@ AppDialog {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: root.compactLayout ? 8 : 10
-                            anchors.rightMargin: root.compactLayout ? 8 : 10
-                            spacing: 10
+                            anchors.leftMargin: root.compactLayout ? UiMetrics.spaceM : UiMetrics.spaceL
+                            anchors.rightMargin: root.compactLayout ? UiMetrics.spaceM : UiMetrics.spaceL
+                            spacing: UiMetrics.spaceM
 
                             Label {
                                 id: actionLabel
                                 Layout.fillWidth: true
                                 text: delegateRoot.row.action || ""
                                 color: themeManager.textColor
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.bodyPointSize
                                 wrapMode: Text.WordWrap
                             }
 
@@ -397,8 +390,8 @@ AppDialog {
                                 color: text === "-"
                                        ? themeManager.textMutedColor
                                        : themeManager.primaryColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.captionPointSize
                                 font.bold: true
                                 elide: Text.ElideRight
                             }
@@ -409,8 +402,8 @@ AppDialog {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 color: themeManager.textMutedColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.captionPointSize
                                 elide: Text.ElideRight
                             }
 
@@ -419,8 +412,7 @@ AppDialog {
                                 text: delegateRoot.row.context || root.tr("help.shortcutsContextGlobal")
                                 verticalAlignment: Text.AlignVCenter
                                 color: themeManager.textSecondaryColor
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.captionPointSize
                                 wrapMode: Text.WordWrap
                             }
                         }

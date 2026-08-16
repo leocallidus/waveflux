@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 Button {
     id: control
@@ -7,13 +8,13 @@ Button {
     property bool accent: checked
     property bool searchActive: false
     property int resultCount: 0
-    property int minimumWidth: 112
+    property int minimumWidth: Math.round(112 * UiMetrics.fontScale)
     property bool compactVisual: false
 
-    implicitHeight: 34
+    implicitHeight: Math.max(UiMetrics.controlHeightNormal, (control.compactVisual ? UiMetrics.controlHeightCompact : UiMetrics.controlHeightNormal))
     implicitWidth: Math.max(minimumWidth, contentItem.implicitWidth + leftPadding + rightPadding)
-    leftPadding: compactVisual ? 10 : 14
-    rightPadding: compactVisual ? 10 : 14
+    leftPadding: compactVisual ? UiMetrics.spaceM : UiMetrics.spaceL
+    rightPadding: compactVisual ? UiMetrics.spaceM : UiMetrics.spaceL
     topPadding: 0
     bottomPadding: 0
 
@@ -49,7 +50,7 @@ Button {
     }
 
     contentItem: Item {
-        implicitWidth: textLabel.implicitWidth + (resultBadge.visible ? resultBadge.implicitWidth + 8 : 0)
+        implicitWidth: textLabel.implicitWidth + (resultBadge.visible ? resultBadge.implicitWidth + UiMetrics.spaceM : 0)
         implicitHeight: Math.max(textLabel.implicitHeight, resultBadge.visible ? resultBadge.implicitHeight : 0)
 
         Label {
@@ -57,14 +58,13 @@ Button {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: resultBadge.visible ? resultBadge.left : parent.right
-            anchors.rightMargin: resultBadge.visible ? 8 : 0
+            anchors.rightMargin: resultBadge.visible ? UiMetrics.spaceM : 0
             text: control.text
             color: control.checked ? themeManager.primaryColor : themeManager.textColor
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
-            font.family: themeManager.fontFamily
-            font.pixelSize: control.compactVisual ? 10 : 11
+            font.pointSize: control.compactVisual ? UiMetrics.captionPointSize : UiMetrics.bodyPointSize
             font.bold: control.checked
         }
 
@@ -73,9 +73,9 @@ Button {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: control.searchActive && control.resultCount > 0
-            radius: 8
-            height: 16
-            implicitWidth: Math.max(16, badgeLabel.implicitWidth + 8)
+            radius: UiMetrics.radiusLarge
+            height: Math.max(16, Math.round(18 * UiMetrics.fontScale))
+            implicitWidth: Math.max(height, badgeLabel.implicitWidth + UiMetrics.badgePaddingHorizontal)
             color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.22)
             border.width: 1
             border.color: themeManager.primaryColor
@@ -85,8 +85,8 @@ Button {
                 anchors.centerIn: parent
                 text: String(control.resultCount)
                 color: themeManager.primaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.microPointSize
                 font.bold: true
             }
         }

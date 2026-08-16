@@ -41,6 +41,13 @@ class ThemeManager : public QObject
     Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
     Q_PROPERTY(QString playlistFontFamily READ playlistFontFamily WRITE setPlaylistFontFamily NOTIFY playlistFontFamilyChanged)
     Q_PROPERTY(QString customPlaylistFontFamily READ customPlaylistFontFamily NOTIFY playlistFontFamilyChanged)
+    Q_PROPERTY(double fontMetricsScale READ fontMetricsScale NOTIFY fontMetricsScaleChanged)
+    Q_PROPERTY(double baseFontPointSize READ baseFontPointSize NOTIFY baseFontPointSizeChanged)
+    Q_PROPERTY(double effectiveFontPointSize READ effectiveFontPointSize NOTIFY effectiveFontPointSizeChanged)
+    Q_PROPERTY(double effectiveFontLineSpacing READ effectiveFontLineSpacing NOTIFY effectiveFontLineSpacingChanged)
+    Q_PROPERTY(double baseFontLineSpacing READ baseFontLineSpacing NOTIFY baseFontLineSpacingChanged)
+    Q_PROPERTY(double playlistFontMetricsScale READ playlistFontMetricsScale NOTIFY playlistFontMetricsScaleChanged)
+    Q_PROPERTY(double playlistFontLineSpacing READ playlistFontLineSpacing NOTIFY playlistFontLineSpacingChanged)
     Q_PROPERTY(int spacingSmall READ spacingSmall CONSTANT)
     Q_PROPERTY(int spacingMedium READ spacingMedium CONSTANT)
     Q_PROPERTY(int spacingLarge READ spacingLarge CONSTANT)
@@ -100,6 +107,13 @@ public:
     int customFontSize() const { return m_customFontSize; }
     void setCustomFontSize(int size);
     double fontSizeMultiplier() const;
+    double fontMetricsScale() const { return m_fontMetricsScale; }
+    double baseFontPointSize() const { return m_baseFontPointSize; }
+    double effectiveFontPointSize() const { return m_effectiveFontPointSize; }
+    double effectiveFontLineSpacing() const { return m_effectiveFontLineSpacing; }
+    double baseFontLineSpacing() const { return m_baseFontLineSpacing; }
+    double playlistFontMetricsScale() const { return m_playlistFontMetricsScale; }
+    double playlistFontLineSpacing() const { return m_playlistFontLineSpacing; }
     QStringList availableFonts() const;
     QString playlistFontFamily() const;
     void setPlaylistFontFamily(const QString &family);
@@ -143,7 +157,14 @@ signals:
     void customFontFamilyChanged();
     void customFontSizeChanged();
     void fontSizeMultiplierChanged();
+    void fontMetricsScaleChanged();
+    void baseFontPointSizeChanged();
+    void effectiveFontPointSizeChanged();
+    void effectiveFontLineSpacingChanged();
+    void baseFontLineSpacingChanged();
     void playlistFontFamilyChanged();
+    void playlistFontMetricsScaleChanged();
+    void playlistFontLineSpacingChanged();
     
 private:
     void loadSettings();
@@ -168,9 +189,17 @@ private:
     QColor m_textMutedColor;
     bool m_darkMode = true;
     
+    QFont m_baselineSystemFont;
     QString m_customFontFamily;
     int m_customFontSize = 0;
     QString m_playlistFontFamily;
+    double m_baseFontPointSize = 10.0;
+    double m_effectiveFontPointSize = 10.0;
+    double m_baseFontLineSpacing = 14.0;
+    double m_effectiveFontLineSpacing = 14.0;
+    double m_fontMetricsScale = 1.0;
+    double m_playlistFontLineSpacing = 14.0;
+    double m_playlistFontMetricsScale = 1.0;
     bool m_persistenceSuppressed = false;
 };
 

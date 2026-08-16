@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../IconResolver.js" as IconResolver
+import "."
 
 Rectangle {
     id: root
@@ -24,8 +25,8 @@ Rectangle {
     property bool collectionModeActive: false
     property bool collectionsEnabled: false
 
-    property bool compactMenu: width < 800
-    property bool mobileLayout: width < 600
+    property bool compactMenu: width < UiMetrics.breakpoint(800)
+    property bool mobileLayout: width < UiMetrics.breakpoint(600)
     property bool showCenterMetadata: false
     readonly property int searchFieldTitleBit: 1
     readonly property int searchFieldArtistBit: 2
@@ -153,9 +154,6 @@ Rectangle {
         case "help":
             root.openAnchoredMenu(helpMenu, sourceButton, isHover)
             break
-        default:
-            root.openAnchoredMenu(fileMenu, sourceButton, isHover)
-            break
         }
     }
 
@@ -194,24 +192,24 @@ Rectangle {
                                                        themeManager.darkMode ? 0.16 : 0.10)
     readonly property color menuHighlightText: themeManager.textColor
 
-    component HeaderMenuButton: ToolButton {
+    component HeaderMenuButton: Control {
         id: control
-        display: AbstractButton.TextOnly
+        property string text: ""
         property string menuAction: ""
-        hoverEnabled: true
-        padding: 10
-        leftPadding: 12
-        rightPadding: 12
-        implicitHeight: 28
+
+        implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding
+        implicitHeight: Math.max(UiMetrics.controlHeightCompact, contentItem.implicitHeight + topPadding + bottomPadding)
+        leftPadding: UiMetrics.spaceM
+        rightPadding: UiMetrics.spaceM
+        topPadding: UiMetrics.spaceXS
+        bottomPadding: UiMetrics.spaceXS
 
         MouseArea {
             id: mouseArea
             anchors.fill: parent
             hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onPressed: function(mouse) {
-                root.openMenu(control.menuAction, control)
-            }
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openMenu(control.menuAction, control)
             onEntered: {
                 const menus = [fileMenu, editMenu, viewMenu, playbackMenu, libraryMenu, helpMenu]
                 let anyVisible = false
@@ -231,8 +229,7 @@ Rectangle {
             text: control.text
             color: themeManager.textColor
             opacity: mouseArea.containsMouse || mouseArea.pressed ? 1.0 : 0.86
-            font.family: themeManager.fontFamily
-            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+            font.pointSize: UiMetrics.captionPointSize
             font.bold: mouseArea.containsMouse || mouseArea.pressed
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -254,10 +251,10 @@ Rectangle {
         id: control
         display: AbstractButton.IconOnly
         hoverEnabled: true
-        implicitWidth: 28
-        implicitHeight: 28
-        icon.width: 16
-        icon.height: 16
+        implicitWidth: UiMetrics.minInteractiveTargetSize
+        implicitHeight: UiMetrics.minInteractiveTargetSize
+        icon.width: UiMetrics.iconSizeNormal
+        icon.height: UiMetrics.iconSizeNormal
 
         contentItem: Item {
             implicitWidth: control.icon.width
@@ -293,12 +290,12 @@ Rectangle {
         id: menuItem
         readonly property bool hasIndicator: menuItem.checkable
         readonly property int indicatorSlotWidth: hasIndicator ? 20 : 0
-        implicitWidth: Math.max(200, contentItem.implicitWidth + leftPadding + rightPadding + indicatorSlotWidth + (submenuArrow.visible ? 20 : 0))
-        implicitHeight: 30
-        leftPadding: 12 + indicatorSlotWidth
-        rightPadding: submenuArrow.visible ? 28 : 12
-        topPadding: 6
-        bottomPadding: 6
+        implicitWidth: Math.max(Math.round(200 * UiMetrics.fontScale), contentItem.implicitWidth + leftPadding + rightPadding + indicatorSlotWidth + (submenuArrow.visible ? 20 : 0))
+        implicitHeight: Math.max(UiMetrics.controlHeightCompact, contentItem.implicitHeight + topPadding + bottomPadding)
+        leftPadding: UiMetrics.spaceL + indicatorSlotWidth
+        rightPadding: submenuArrow.visible ? Math.round(28 * UiMetrics.fontScale) : UiMetrics.spaceL
+        topPadding: UiMetrics.spaceXS
+        bottomPadding: UiMetrics.spaceXS
 
         background: Rectangle {
             radius: themeManager.borderRadius
@@ -310,8 +307,7 @@ Rectangle {
         contentItem: Text {
             text: menuItem.text
             color: menuItem.enabled ? root.menuHighlightText : themeManager.textMutedColor
-            font.family: themeManager.fontFamily
-            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+            font.pointSize: UiMetrics.captionPointSize
             font.bold: menuItem.highlighted
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
@@ -418,13 +414,13 @@ Rectangle {
             spacing: themeManager.spacingMedium
 
             RowLayout {
-                spacing: 6
+                spacing: UiMetrics.spaceS
 
                 Image {
-                    Layout.preferredWidth: 14
-                    Layout.preferredHeight: 14
-                    sourceSize.width: 14
-                    sourceSize.height: 14
+                    Layout.preferredWidth: UiMetrics.iconSizeCompact
+                    Layout.preferredHeight: UiMetrics.iconSizeCompact
+                    sourceSize.width: width
+                    sourceSize.height: height
                     source: "qrc:/WaveFlux/resources/icons/waveflux.svg"
                     fillMode: Image.PreserveAspectFit
                     mipmap: true
@@ -432,9 +428,8 @@ Rectangle {
 
                 Label {
                     text: "WAVEFLUX"
-                    font.family: themeManager.fontFamily
                     font.bold: true
-                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyStrongPointSize
                     color: themeManager.primaryColor
                     opacity: root.mobileLayout ? 0.0 : 1.0
                     visible: !root.mobileLayout
@@ -453,7 +448,7 @@ Rectangle {
 
             RowLayout {
                 visible: !root.compactMenu
-                spacing: themeManager.spacingSmall
+                spacing: UiMetrics.spaceS
 
                 Repeater {
                     model: [
@@ -478,12 +473,12 @@ Rectangle {
 
         RowLayout {
             Layout.alignment: Qt.AlignVCenter
-            spacing: themeManager.spacingSmall
+            spacing: UiMetrics.spaceS
 
             Rectangle {
                 visible: !root.mobileLayout
-                implicitWidth: 192
-                implicitHeight: 30
+                implicitWidth: Math.round(192 * UiMetrics.fontScale)
+                implicitHeight: UiMetrics.controlHeightCompact
                 radius: themeManager.borderRadiusLarge
                 color: root.chromeFill
                 border.width: 1
@@ -492,16 +487,15 @@ Rectangle {
                 TextField {
                     id: searchField
                     anchors.fill: parent
-                    anchors.leftMargin: 26
-                    anchors.rightMargin: 30
+                    anchors.leftMargin: Math.round(26 * UiMetrics.fontScale)
+                    anchors.rightMargin: Math.round(30 * UiMetrics.fontScale)
                     anchors.topMargin: 2
                     anchors.bottomMargin: 2
                     placeholderText: appSettings.automaticPlaylistSearch
                                      ? root.tr("header.searchPlaceholder")
                                      : root.tr("header.searchManualPlaceholder")
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.captionPointSize
                     background: Item {}
                     onTextEdited: function() {
                         root.handleSearchTextEdited(text)
@@ -566,7 +560,7 @@ Rectangle {
         anchors.centerIn: parent
         visible: root.showCenterMetadata
         width: Math.min(400, Math.max(180, (parent.width - 400) * 0.5))
-        height: 24
+        height: Math.max(24, Math.round(24 * UiMetrics.fontScale))
         radius: themeManager.borderRadius
         color: themeManager.surfaceColor
         border.width: 1
@@ -575,15 +569,15 @@ Rectangle {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 8
+            anchors.leftMargin: UiMetrics.spaceM
+            anchors.rightMargin: UiMetrics.spaceM
+            spacing: UiMetrics.spaceM
 
             Label {
                 text: root.metadataTitle
                 color: themeManager.primaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.captionPointSize
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -594,16 +588,16 @@ Rectangle {
                 visible: root.metadataAlbum.length > 0
                 text: "|"
                 color: themeManager.textMutedColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.captionPointSize
             }
 
             Label {
                 visible: root.metadataAlbum.length > 0
                 text: root.metadataAlbum
                 color: themeManager.textSecondaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.captionPointSize
                 elide: Text.ElideRight
                 Layout.fillWidth: true
                 Layout.minimumWidth: 40
@@ -613,18 +607,18 @@ Rectangle {
                 visible: root.metadataTech.length > 0
                 text: "|"
                 color: themeManager.textMutedColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.captionPointSize
             }
 
             Label {
                 visible: root.metadataTech.length > 0
                 text: root.metadataTech
                 color: themeManager.primaryColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.captionPointSize
                 elide: Text.ElideRight
-                Layout.maximumWidth: 120
+                Layout.maximumWidth: Math.round(120 * UiMetrics.fontScale)
             }
         }
     }

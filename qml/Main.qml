@@ -49,12 +49,12 @@ Kirigami.ApplicationWindow {
     property string stageAlbum: trackModel.currentAlbum ? trackModel.currentAlbum : fallbackAlbum
     // Windowed adaptive breakpoints for normal skin.
     // Keep these thresholds centralized to avoid per-component "magic numbers".
-    readonly property int bpUltra: 620
-    readonly property int bpNarrow: 760
-    readonly property int bpMedium: 980
-    readonly property int bpWide: 1280
-    readonly property int bpCollectionsWide: 1120
-    readonly property int bpInfoWide: 1100
+    readonly property int bpUltra: UiMetrics.breakpoint(620)
+    readonly property int bpNarrow: UiMetrics.breakpoint(760)
+    readonly property int bpMedium: UiMetrics.breakpoint(980)
+    readonly property int bpWide: UiMetrics.breakpoint(1280)
+    readonly property int bpCollectionsWide: UiMetrics.breakpoint(1120)
+    readonly property int bpInfoWide: UiMetrics.breakpoint(1100)
 
     readonly property string windowMode: root.width < bpUltra
         ? "ultraNarrow"
@@ -76,7 +76,7 @@ Kirigami.ApplicationWindow {
     readonly property int playlistMinimumWidthWithSidebars: 420
     readonly property int infoSidebarMinimumWidth: 176
     readonly property int infoSidebarMaximumWidth: 300
-    readonly property int infoSidebarRevealWidth: 900
+    readonly property int infoSidebarRevealWidth: UiMetrics.breakpoint(900)
     readonly property int infoSidebarPreferredWidth: root.width < bpInfoWide ? 196 : themeManager.sidebarWidth
     readonly property int collectionsSidebarEffectiveWidth: root.showCollectionsSidebar
                                                            ? Math.max(188, Math.min(280, root.collectionsSidebarPreferredWidth))
@@ -107,7 +107,7 @@ Kirigami.ApplicationWindow {
     readonly property int collectionsSidebarPreferredWidth: windowMode === "narrow"
                                                             ? 192
                                                             : (root.width < bpCollectionsWide ? 208 : 232)
-    readonly property int controlBarPreferredHeight: root.narrowWindow ? 48 : 56
+    readonly property int controlBarPreferredHeight: root.narrowWindow ? UiMetrics.controlBarHeightNarrow : UiMetrics.controlBarHeight
     readonly property real waveformHeightScale: windowMode === "narrow"
                                                 ? 0.82
                                                 : (windowMode === "ultraNarrow" ? 0.72 : 1.0)
@@ -4006,8 +4006,8 @@ Kirigami.ApplicationWindow {
                         anchors.centerIn: parent
                         text: root.waveformKeyboardBadgeText
                         color: "#ffffff"
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: root.ultraNarrowWindow ? 10 : 11
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: root.ultraNarrowWindow ? UiMetrics.captionPointSize : UiMetrics.bodyPointSize
                         font.bold: true
                     }
                 }
@@ -4166,8 +4166,8 @@ Kirigami.ApplicationWindow {
                 anchors.centerIn: parent
                 text: root.waveformKeyboardBadgeText
                 color: "#ffffff"
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: root.narrowWindow ? 11 : 12
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: root.narrowWindow ? UiMetrics.bodyPointSize : UiMetrics.bodyStrongPointSize
                 font.bold: true
             }
         }
@@ -4190,8 +4190,8 @@ Kirigami.ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: 6
                 color: themeManager.textColor
-                font.family: themeManager.monoFontFamily
-                font.pixelSize: 10
+                font.family: UiMetrics.monoFontFamily
+                font.pointSize: UiMetrics.captionPointSize
                 text: root.profilerOverlayText()
             }
         }
@@ -4224,8 +4224,7 @@ Kirigami.ApplicationWindow {
                 Label {
                     text: "WAVEFLUX"
                     color: themeManager.primaryColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: 12
+                    font.pointSize: UiMetrics.bodyStrongPointSize
                     font.bold: true
                     font.letterSpacing: 1.2
                 }
@@ -4252,8 +4251,7 @@ Kirigami.ApplicationWindow {
                             }
                             color: themeManager.textColor
                             elide: Text.ElideRight
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 12
+                            font.pointSize: UiMetrics.bodyStrongPointSize
                             font.bold: true
                         }
 
@@ -4263,8 +4261,7 @@ Kirigami.ApplicationWindow {
                             text: root.stageAlbum || ""
                             color: themeManager.textSecondaryColor
                             elide: Text.ElideRight
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: 11
+                            font.pointSize: UiMetrics.bodyPointSize
                             horizontalAlignment: Text.AlignRight
                         }
 
@@ -4272,8 +4269,8 @@ Kirigami.ApplicationWindow {
                             text: fullscreenLayer.fullscreenTechLabel()
                             visible: text.length > 0
                             color: themeManager.primaryColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: 11
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
                     }
                 }
@@ -4345,7 +4342,7 @@ Kirigami.ApplicationWindow {
                 Label {
                     text: root.tr("main.fullscreenHint")
                     color: themeManager.textMutedColor
-                    font.pixelSize: 11
+                    font.pointSize: UiMetrics.bodyPointSize
                     horizontalAlignment: Text.AlignHCenter
                     Layout.fillWidth: true
                 }
@@ -4370,7 +4367,7 @@ Kirigami.ApplicationWindow {
                 anchors.centerIn: parent
                 text: root.tr("main.showOverlay") + " (F11)"
                 color: themeManager.textSecondaryColor
-                font.pixelSize: 11
+                font.pointSize: UiMetrics.bodyPointSize
             }
 
             MouseArea {
@@ -4515,7 +4512,7 @@ Kirigami.ApplicationWindow {
                     color: ytDlpImportService.isRunning || ytDlpImportService.isProbing
                            ? Kirigami.Theme.highlightColor
                            : themeManager.textSecondaryColor
-                    font.pixelSize: Math.max(11, Kirigami.Units.gridUnit - 4)
+                    font.pointSize: UiMetrics.bodyPointSize
                 }
             }
 
@@ -4845,8 +4842,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 text: root.tr("githubStarToast.title")
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.subtitlePointSize
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -4855,8 +4851,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 text: root.tr("githubStarToast.message")
                 color: themeManager.textSecondaryColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.bodyPointSize
                 wrapMode: Text.WordWrap
             }
 

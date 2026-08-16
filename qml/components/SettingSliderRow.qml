@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 RowLayout {
     id: root
@@ -26,7 +27,7 @@ RowLayout {
     signal moved(real value)
 
     Layout.fillWidth: true
-    Layout.minimumHeight: 38
+    Layout.minimumHeight: UiMetrics.controlHeightNormal
     spacing: rowSpacing
     visible: matchesSearch
 
@@ -60,6 +61,7 @@ RowLayout {
         text: root.highlightedText(root.title)
         textFormat: Text.StyledText
         color: themeManager.textColor
+        font.pointSize: UiMetrics.bodyPointSize
         font.family: themeManager.fontFamily
         wrapMode: Text.WordWrap
         maximumLineCount: 3
@@ -70,9 +72,9 @@ RowLayout {
     AccentSlider {
         id: slider
         Layout.fillWidth: true
-        Layout.minimumWidth: root.sliderMinWidth
-        Layout.maximumWidth: root.sliderMaxWidth
-        Layout.minimumHeight: 34
+        Layout.minimumWidth: Math.round(80 * UiMetrics.fontScale)
+        Layout.maximumWidth: Math.round(200 * UiMetrics.fontScale)
+        Layout.minimumHeight: UiMetrics.controlHeightCompact
         enabled: root.rowEnabled
         activeFocusOnTab: true
         Accessible.name: root.title
@@ -88,11 +90,12 @@ RowLayout {
     }
 
     Label {
-        Layout.preferredWidth: root.valueLabelWidth
+        Layout.preferredWidth: Math.max(42, Math.round(48 * UiMetrics.fontScale))
         horizontalAlignment: Text.AlignHCenter
         text: root.valueText.length > 0 ? root.valueText : Number(root.value).toFixed(0)
         color: themeManager.textColor
-        font.family: themeManager.monoFontFamily
+        font.pointSize: UiMetrics.captionPointSize
+        font.family: UiMetrics.monoFontFamily
         opacity: root.rowEnabled ? 1.0 : 0.55
     }
 }

@@ -620,19 +620,18 @@ Rectangle {
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: UiMetrics.spaceM
             visible: root.playlistsSectionVisible
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: UiMetrics.spaceS
 
             Label {
                 Layout.fillWidth: true
                 text: root.tr("playlists.sectionTitle")
                 color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: 10
+                font.pointSize: UiMetrics.captionPointSize
                 font.bold: true
                 font.letterSpacing: 1.4
             }
@@ -664,7 +663,7 @@ Rectangle {
             text: root.tr("playlists.empty")
             color: themeManager.textMutedColor
             wrapMode: Text.WordWrap
-            font.pixelSize: 11
+            font.pointSize: UiMetrics.captionPointSize
         }
 
         ListView {
@@ -740,8 +739,8 @@ Rectangle {
                             text: name
                             color: themeManager.textColor
                             elide: Text.ElideRight
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
 
                         Label {
@@ -749,8 +748,8 @@ Rectangle {
                             text: root.tr("playlists.trackCount").arg(trackCount)
                             color: themeManager.textMutedColor
                             elide: Text.ElideRight
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.microPointSize
                         }
                     }
 
@@ -793,7 +792,7 @@ Rectangle {
             text: playlistProfilesManager.lastError
             color: "#d66"
             wrapMode: Text.WordWrap
-            font.pixelSize: 10
+            font.pointSize: UiMetrics.captionPointSize
         }
 
         }
@@ -808,19 +807,18 @@ Rectangle {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 8
+            spacing: UiMetrics.spaceM
             visible: root.collectionsSectionVisible
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: UiMetrics.spaceS
 
             Label {
                 Layout.fillWidth: true
                 text: root.tr("collections.sectionTitle")
                 color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: 10
+                font.pointSize: UiMetrics.captionPointSize
                 font.bold: true
                 font.letterSpacing: 1.4
             }
@@ -852,7 +850,7 @@ Rectangle {
             text: root.tr("collections.disabled")
             color: themeManager.textMutedColor
             wrapMode: Text.WordWrap
-            font.pixelSize: 11
+            font.pointSize: UiMetrics.captionPointSize
         }
 
         Label {
@@ -861,7 +859,7 @@ Rectangle {
             text: root.tr("collections.empty")
             color: themeManager.textMutedColor
             wrapMode: Text.WordWrap
-            font.pixelSize: 11
+            font.pointSize: UiMetrics.captionPointSize
         }
 
         ListView {
@@ -930,8 +928,7 @@ Rectangle {
                         text: name
                         color: themeManager.textColor
                         elide: Text.ElideRight
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: 11
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     Image {
@@ -963,7 +960,7 @@ Rectangle {
             text: smartCollectionsEngine.lastError
             color: "#d66"
             wrapMode: Text.WordWrap
-            font.pixelSize: 10
+            font.pointSize: UiMetrics.captionPointSize
         }
 
         }
@@ -1198,7 +1195,7 @@ Rectangle {
             Label {
                 text: root.tr("playlists.tracks")
                 color: themeManager.textMutedColor
-                font.pixelSize: 10
+                font.pointSize: UiMetrics.captionPointSize
             }
 
             Label {
@@ -1207,7 +1204,7 @@ Rectangle {
                 text: root.tr("playlists.emptyTracks")
                 color: themeManager.textMutedColor
                 wrapMode: Text.WordWrap
-                font.pixelSize: 11
+                font.pointSize: UiMetrics.captionPointSize
             }
 
             ListView {
@@ -1264,8 +1261,8 @@ Rectangle {
                                 anchors.centerIn: parent
                                 text: "::"
                                 color: themeManager.textMutedColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: 9
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.microPointSize
                             }
 
                             MouseArea {
@@ -1299,7 +1296,7 @@ Rectangle {
                             text: displayName
                             color: themeManager.textColor
                             elide: Text.ElideRight
-                            font.pixelSize: 11
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
 
                         ToolButton {

@@ -1,18 +1,22 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 Menu {
     id: control
 
-    topPadding: 6
-    bottomPadding: 6
-    leftPadding: 6
-    rightPadding: 6
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
+
+    topPadding: UiMetrics.spaceS
+    bottomPadding: UiMetrics.spaceS
+    leftPadding: UiMetrics.spaceS
+    rightPadding: UiMetrics.spaceS
     overlap: 1
-    implicitWidth: Math.max(240,
+    implicitWidth: Math.max(Math.round(240 * UiMetrics.fontScale),
                              contentItem
                              ? contentItem.implicitWidth + leftPadding + rightPadding
-                             : 240)
+                             : Math.round(240 * UiMetrics.fontScale))
 
     background: Rectangle {
         radius: themeManager.borderRadiusLarge

@@ -13,6 +13,7 @@
 
 #include "AppSettingsManager.h"
 #include "ThemeManager.h"
+#include "UiMetrics.h"
 
 namespace {
 QString qmlDirPath()
@@ -51,6 +52,8 @@ private slots:
     void accentButtonUsesContentBasedImplicitSize();
     void fragmentAndDeleteDialogsUseCurrentControls();
     void qmlSourcesDoNotUseEmojiGlyphs();
+    void qmlSourcesDoNotUseHardcodedPixelSizes();
+    void dialogLayoutBoundsScaleWithThemeMetrics();
 };
 
 void AppDialogTest::initTestCase()
@@ -65,9 +68,12 @@ void AppDialogTest::popupTypeTracksSeparateWindowDialogsSetting()
     AppSettingsManager appSettings;
     ThemeManager themeManager;
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -118,9 +124,12 @@ void AppDialogTest::dialogOpensInSeparateWindowMode()
 
     appSettings.setSeparateWindowDialogs(true);
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -180,9 +189,12 @@ void AppDialogTest::dialogOpensInOverlayMode()
 
     appSettings.setSeparateWindowDialogs(false);
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -227,9 +239,12 @@ void AppDialogTest::runtimeToggleUpdatesPopupType()
 
     appSettings.setSeparateWindowDialogs(false);
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -316,9 +331,12 @@ void AppDialogTest::applicationDialogsOpenInBothModes()
     AppSettingsManager appSettings;
     ThemeManager themeManager;
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
 
@@ -378,9 +396,12 @@ void AppDialogTest::compactSettingsTabBarDropdownShowsCleanTitles()
     AppSettingsManager appSettings;
     ThemeManager themeManager;
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -428,9 +449,12 @@ void AppDialogTest::accentComboBoxPassesWheelToParentScrollView()
     AppSettingsManager appSettings;
     ThemeManager themeManager;
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -503,9 +527,12 @@ void AppDialogTest::separateWindowDialogResizeTracksWindow()
     ThemeManager themeManager;
     appSettings.setSeparateWindowDialogs(true);
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -564,9 +591,12 @@ void AppDialogTest::infoSidebarRemainsStableAcrossResponsiveWidths()
     audioEngine.setProperty("spectrumAvailable", false);
     audioEngine.setProperty("spectrumLevels", QVariantList{});
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
     engine.rootContext()->setContextProperty(QStringLiteral("audioEngine"), &audioEngine);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
@@ -619,9 +649,12 @@ void AppDialogTest::accentButtonUsesContentBasedImplicitSize()
     AppSettingsManager appSettings;
     ThemeManager themeManager;
 
+    UiMetrics uiMetrics(&themeManager);
+
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
     engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
 
     const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
     const QByteArray wrapper = QStringLiteral(
@@ -733,6 +766,90 @@ void AppDialogTest::qmlSourcesDoNotUseEmojiGlyphs()
     }
 
     QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QLatin1Char('\n'))));
+}
+
+void AppDialogTest::qmlSourcesDoNotUseHardcodedPixelSizes()
+{
+    QStringList failures;
+    QDirIterator it(qmlDirPath(), {QStringLiteral("*.qml")}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString path = it.next();
+        QFile file(path);
+        QVERIFY2(file.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(path));
+        const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+        for (qsizetype lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
+            QString code = lines.at(lineIndex);
+            const qsizetype comment = code.indexOf(QStringLiteral("//"));
+            if (comment >= 0) {
+                code.truncate(comment);
+            }
+            if (code.contains(QStringLiteral("font.pixelSize")) || code.contains(QStringLiteral("fontSizeMultiplier"))) {
+                failures.push_back(QStringLiteral("%1:%2: %3")
+                                       .arg(QDir(qmlDirPath()).relativeFilePath(path))
+                                       .arg(lineIndex + 1)
+                                       .arg(code.trimmed()));
+            }
+        }
+    }
+
+    QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QLatin1Char('\n'))));
+}
+
+void AppDialogTest::dialogLayoutBoundsScaleWithThemeMetrics()
+{
+    AppSettingsManager appSettings;
+    ThemeManager themeManager;
+
+    UiMetrics uiMetrics(&themeManager);
+
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
+    engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
+
+    const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
+    const QByteArray wrapper = QStringLiteral(
+                                   "import QtQuick\n"
+                                   "import QtQuick.Controls\n"
+                                   "import \"%1/components\" as WaveFluxComponents\n"
+                                   "ApplicationWindow {\n"
+                                   "    width: 1000\n"
+                                   "    height: 800\n"
+                                   "    visible: true\n"
+                                   "    WaveFluxComponents.AppDialog {\n"
+                                   "        id: dialog\n"
+                                   "        objectName: \"metricsDialog\"\n"
+                                   "        title: \"Metrics Test\"\n"
+                                   "        implicitWidth: Math.round(600 * WaveFluxComponents.UiMetrics.fontScale)\n"
+                                   "        implicitHeight: Math.round(500 * WaveFluxComponents.UiMetrics.fontScale)\n"
+                                   "    }\n"
+                                   "}\n")
+                                   .arg(qmlImportUrl)
+                                   .toUtf8();
+
+    QQmlComponent component(&engine);
+    component.setData(wrapper, QUrl::fromLocalFile(qmlDirPath() + QStringLiteral("/")));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+    QScopedPointer<QObject> windowObject(component.create(engine.rootContext()));
+    QVERIFY2(windowObject, qPrintable(component.errorString()));
+    QObject *dialogObject = windowObject->findChild<QObject *>(QStringLiteral("metricsDialog"));
+    QVERIFY(dialogObject);
+
+    const qreal initialImplicitWidth = dialogObject->property("implicitWidth").toReal();
+    const qreal initialImplicitHeight = dialogObject->property("implicitHeight").toReal();
+    QVERIFY(initialImplicitWidth >= 600.0);
+    QVERIFY(initialImplicitHeight >= 500.0);
+
+    // Test scaled font size increase
+    const int currentSize = themeManager.customFontSize() > 0 ? themeManager.customFontSize() : qRound(themeManager.baseFontPointSize());
+    themeManager.setCustomFontSize(currentSize + 4);
+    QVERIFY(themeManager.fontMetricsScale() > 1.0);
+
+    const qreal scaledImplicitWidth = dialogObject->property("implicitWidth").toReal();
+    const qreal scaledImplicitHeight = dialogObject->property("implicitHeight").toReal();
+    QVERIFY(scaledImplicitWidth >= initialImplicitWidth);
+    QVERIFY(scaledImplicitHeight >= initialImplicitHeight);
 }
 
 QTEST_MAIN(AppDialogTest)

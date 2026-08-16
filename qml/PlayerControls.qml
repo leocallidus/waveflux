@@ -7,8 +7,8 @@ import "IconResolver.js" as IconResolver
 
 Item {
     id: root
-    property bool compactMode: width < 920
-    property bool veryCompactMode: width < 700
+    property bool compactMode: width < UiMetrics.breakpoint(920)
+    property bool veryCompactMode: width < UiMetrics.breakpoint(700)
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -41,12 +41,12 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Kirigami.Units.smallSpacing
-            spacing: root.compactMode ? Kirigami.Units.smallSpacing : Kirigami.Units.mediumSpacing
+            anchors.margins: UiMetrics.spaceS
+            spacing: root.compactMode ? UiMetrics.spaceS : UiMetrics.spaceM
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: root.compactMode ? Kirigami.Units.smallSpacing : Kirigami.Units.largeSpacing
+                spacing: root.compactMode ? UiMetrics.spaceS : UiMetrics.spaceL
 
                 Item { Layout.fillWidth: true }
 
@@ -97,12 +97,12 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
+                spacing: UiMetrics.spaceS
 
                 // Speed control
                 RowLayout {
                     visible: audioEngine.rateAvailable
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: UiMetrics.spaceS
                     Layout.fillWidth: true
 
                     PlaybackAdjustStrip {
@@ -125,7 +125,7 @@ Item {
                 // Pitch (tone) control
                 RowLayout {
                     visible: !root.veryCompactMode && audioEngine.pitchAvailable
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: UiMetrics.spaceS
                     Layout.fillWidth: true
 
                     PlaybackAdjustStrip {
@@ -152,23 +152,23 @@ Item {
                     Label {
                         text: root.formatTime(audioEngine.position)
                         color: themeManager.primaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                         font.bold: true
                     }
 
                     Label {
                         text: "/"
                         color: themeManager.textMutedColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     Label {
                         text: root.formatTime(audioEngine.duration)
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
                 }
 

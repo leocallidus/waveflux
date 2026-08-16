@@ -9,6 +9,11 @@ versioning where practical.
 
 ### Added
 
+- Implemented centralized UI metrics and design token system (`UiMetrics`) available across C++ and QML, exposing semantic typography roles (`micro`, `caption`, `body`, `bodyStrong`, `subtitle`, `title`, `display`), proportional spacing tokens (`spaceXXS` through `spaceXXL`), standard control/icon heights, and font-aware responsive breakpoints.
+- Added font-metrics-aware scaling engine in `ThemeManager` deriving `fontMetricsScale` and `playlistFontMetricsScale` from real line-spacing ratios against baseline system fonts rather than naive point size multipliers.
+- Added support for independent playlist font family selection (`playlistFontFamily`) and dedicated playlist line-height/scale metrics calculation.
+- Added real-time application font updates across all UI views and dialogs without requiring application restarts.
+- Added automated unit test suite `tst_ThemeManagerUiMetrics` and static `font.pixelSize` regression audit in `tst_AppDialog` ensuring zero unmigrated pixel sizes across the codebase.
 - Added Track Fragment Repeat mode (A-B Loop) allowing looped playback of a user-defined section between boundary A and boundary B with forward/reverse loop enforcement and seamless EOS handling.
 - Added visual interactive draggable boundary bars (Bar A and Bar B) on the Waveform with shaded loop region highlights, real-time zoom/pan synchronization, and hover removal shortcuts (`Delete` / `Backspace`).
 - Added right-click context menu on the Waveform for setting and clearing fragment boundaries, toggling repeat mode, and accessing boundary configuration.
@@ -18,8 +23,18 @@ versioning where practical.
 - Added CMake build speed optimizations including Unity builds (`WAVEFLUX_ENABLE_UNITY_BUILD`), LLD linker support (`-fuse-ld=lld`), compiler `-pipe` flag, and precompiled headers (PCH) for Qt core/GUI headers.
 - Added Ogg Vorbis (`.ogg`) as an audio converter output format with capability detection, bitrate selection, and automatic output-extension handling.
 
+### Changed
+
+- Migrated 100% of QML files to semantic point sizes (`font.pointSize: UiMetrics.*PointSize`) and metric tokens, completely eliminating hardcoded `font.pixelSize` and deprecated `fontSizeMultiplier` throughout the entire application.
+- Refactored responsive layout thresholds across normal and compact skins (`Main.qml`, `ControlBar.qml`, `WaveformView.qml`, and all dialogs) to use font-aware dynamic breakpoints (`UiMetrics.breakpoint(...)`), preventing clipping or overlapping at large font sizes (8–24 pt).
+- Standardized all modal and standalone dialogs on bounded dynamic scaling (`boundedDialogSize` / `fitDialogSize`) with `ScrollView` content wrapping to ensure accessibility on small viewports and high font scales.
+
 ### Fixed
 
+- Fixed font family and font size reactivity in drop-down lists (`AccentComboBox`, `SettingComboRow`), buttons, switches, checkboxes, radio buttons, and menus when changing font settings in preferences.
+- Fixed QML module singleton type registration for `UiMetrics` in CMake, eliminating startup `undefined` property evaluations and associated layout calculation freezes.
+- Resolved ToolButton dimension binding loops in `VolumeStrip` and `PlaybackAdjustStrip`.
+- Added missing Breeze-compatible themed SVG icons (`media-playlist-consecutive-dark.svg` and `media-playlist-consecutive-light.svg`).
 - Restored a smooth, capped waveform-generation animation for uncached tracks, including responsive placeholder shimmer, progressive waveform reveal, and correct repaint regions without stale progress from a previous track.
 - Fixed custom button implicit sizing and responsive dialog footers so translated action labels remain visible instead of being clipped in Help, Fragment Boundaries, and tag-editing dialogs.
 - Improved the Fragment Boundaries mini-player with a clearly visible interactive hover border, a working play/pause action, and concise `A`/`B` boundary controls.

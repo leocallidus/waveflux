@@ -235,8 +235,8 @@ Item {
                     visible: parent.width >= 88 && appSettings.cueWaveformOverlayLabelsEnabled
                     elide: Text.ElideRight
                     color: isActive ? themeManager.primaryColor : themeManager.textSecondaryColor
-                    font.pixelSize: root.denseMode ? 9 : 10
-                    font.family: themeManager.monoFontFamily
+                    font.pointSize: root.denseMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
+                    font.family: UiMetrics.monoFontFamily
                     text: segmentDuration.length > 0
                           ? (segmentName + "  " + segmentDuration)
                           : segmentName
@@ -294,8 +294,8 @@ Item {
                 id: loopRegionLabel
                 anchors.centerIn: parent
                 text: "A-B (" + root.formatTime(Math.max(0, root.fragmentEndMs - root.fragmentStartMs)) + ")"
-                font.pixelSize: root.denseMode ? 8 : 9
-                font.family: themeManager.monoFontFamily
+                font.pointSize: root.denseMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
+                font.family: UiMetrics.monoFontFamily
                 font.bold: true
                 color: (playbackController && playbackController.fragmentRepeatActive)
                        ? themeManager.accentColor
@@ -343,8 +343,7 @@ Item {
                 anchors.centerIn: parent
                 text: "A"
                 font.bold: true
-                font.pixelSize: 9
-                font.family: themeManager.fontFamily
+                font.pointSize: UiMetrics.microPointSize
                 color: (barAHover.hovered || barATopDrag.drag.active || barABottomDrag.drag.active) ? "#000000" : "#ffffff"
             }
 
@@ -361,9 +360,10 @@ Item {
                 onPositionChanged: (mouse) => {
                     if (drag.active && audioEngine.duration > 0) {
                         const trackPos = root.viewToTrackX(fragmentBarA.x + 10)
-                        const newMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                        const duration = Math.max(1, audioEngine.duration)
+                        const newMs = Math.round(Math.max(0, Math.min(duration, (trackPos / root.trackAreaWidth) * duration)))
                         if (playbackController) {
-                            playbackController.setFragmentStartMs(newMs)
+                            playbackController.setFragmentStart(newMs)
                         }
                     }
                 }
@@ -399,9 +399,10 @@ Item {
                 onPositionChanged: (mouse) => {
                     if (drag.active && audioEngine.duration > 0) {
                         const trackPos = root.viewToTrackX(fragmentBarA.x + 10)
-                        const newMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                        const duration = Math.max(1, audioEngine.duration)
+                        const newMs = Math.round(Math.max(0, Math.min(duration, (trackPos / root.trackAreaWidth) * duration)))
                         if (playbackController) {
-                            playbackController.setFragmentStartMs(newMs)
+                            playbackController.setFragmentStart(newMs)
                         }
                     }
                 }
@@ -410,11 +411,10 @@ Item {
 
         HoverHandler {
             id: barAHover
-            cursorShape: Qt.SizeHorCursor
             onHoveredChanged: {
                 if (hovered) {
-                    root.hoveredFragmentHandle = "A"
-                } else if (root.hoveredFragmentHandle === "A") {
+                    root.hoveredFragmentHandle = "barA"
+                } else if (root.hoveredFragmentHandle === "barA") {
                     root.hoveredFragmentHandle = "none"
                 }
             }
@@ -460,8 +460,7 @@ Item {
                 anchors.centerIn: parent
                 text: "B"
                 font.bold: true
-                font.pixelSize: 9
-                font.family: themeManager.fontFamily
+                font.pointSize: UiMetrics.microPointSize
                 color: (barBHover.hovered || barBTopDrag.drag.active || barBBottomDrag.drag.active) ? "#000000" : "#ffffff"
             }
 
@@ -770,8 +769,8 @@ Item {
             id: zoomBadgeLabel
             anchors.centerIn: parent
             color: themeManager.textColor
-            font.pixelSize: root.denseMode ? 9 : 10
-            font.family: themeManager.monoFontFamily
+            font.pointSize: root.denseMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
+            font.family: UiMetrics.monoFontFamily
             text: root.tinyMode
                   ? (waveformItem.quickScrubActive
                      ? root.quickText

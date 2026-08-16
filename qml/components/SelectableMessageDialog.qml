@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import "../IconResolver.js" as IconResolver
+import "."
 
 AppDialog {
     id: root
@@ -13,8 +14,8 @@ AppDialog {
 
     modal: true
     focus: true
-    implicitWidth: 500
-    implicitHeight: 330
+    implicitWidth: Math.round(500 * UiMetrics.fontScale)
+    implicitHeight: Math.round(330 * UiMetrics.fontScale)
     width: (root.isSeparateWindow && root.parent)
            ? root.parent.width
            : Math.min(root.parent ? root.parent.width - 24 : implicitWidth, implicitWidth)
@@ -48,18 +49,18 @@ AppDialog {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 18
-            Layout.rightMargin: 12
-            Layout.topMargin: 14
-            Layout.bottomMargin: 12
-            spacing: 12
+            Layout.leftMargin: UiMetrics.spaceXL
+            Layout.rightMargin: UiMetrics.spaceL
+            Layout.topMargin: UiMetrics.spaceL
+            Layout.bottomMargin: UiMetrics.spaceL
+            spacing: UiMetrics.spaceL
 
             Image {
-                Layout.preferredWidth: 32
-                Layout.preferredHeight: 32
+                Layout.preferredWidth: UiMetrics.iconSizeLarge
+                Layout.preferredHeight: UiMetrics.iconSizeLarge
                 source: IconResolver.themed(root.iconName, themeManager.darkMode)
-                sourceSize.width: 32
-                sourceSize.height: 32
+                sourceSize.width: width
+                sourceSize.height: height
                 fillMode: Image.PreserveAspectFit
             }
 
@@ -67,8 +68,7 @@ AppDialog {
                 Layout.fillWidth: true
                 text: root.title
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(15 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.titlePointSize
                 font.bold: true
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
@@ -87,8 +87,8 @@ AppDialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 18
-            Layout.rightMargin: 18
+            Layout.leftMargin: UiMetrics.spaceXL
+            Layout.rightMargin: UiMetrics.spaceXL
             radius: themeManager.borderRadius
             color: Qt.rgba(themeManager.backgroundColor.r,
                            themeManager.backgroundColor.g,
@@ -108,15 +108,14 @@ AppDialog {
                 Controls.TextArea {
                     id: messageTextArea
                     width: parent.width
-                    padding: 12
+                    padding: UiMetrics.spaceL
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
                     color: themeManager.textColor
                     selectionColor: themeManager.primaryColor
                     selectedTextColor: themeManager.darkMode ? "#0a1520" : "#ffffff"
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     background: null
 
                     TapHandler {
@@ -129,7 +128,7 @@ AppDialog {
 
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: footerRow.implicitHeight + 24
+            implicitHeight: footerRow.implicitHeight + UiMetrics.spaceXL
             color: "transparent"
 
             RowLayout {
@@ -137,9 +136,9 @@ AppDialog {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
-                spacing: 10
+                anchors.leftMargin: UiMetrics.spaceXL
+                anchors.rightMargin: UiMetrics.spaceXL
+                spacing: UiMetrics.spaceM
 
                 Button {
                     text: root.tr("settings.copyError")

@@ -1,16 +1,20 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 RadioButton {
     id: control
 
-    spacing: 8
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
+    spacing: UiMetrics.spaceM
     hoverEnabled: true
+    implicitHeight: Math.max(UiMetrics.controlHeightCompact, Math.max(indicator.implicitHeight, contentItem.implicitHeight))
 
     indicator: Rectangle {
-        implicitWidth: 20
-        implicitHeight: 20
-        radius: 10
+        implicitWidth: Math.max(18, Math.round(20 * UiMetrics.fontScale))
+        implicitHeight: Math.max(18, Math.round(20 * UiMetrics.fontScale))
+        radius: height * 0.5
         color: {
             if (!control.enabled) {
                 return Qt.rgba(themeManager.surfaceColor.r,
@@ -53,9 +57,9 @@ RadioButton {
         // Inner dot
         Rectangle {
             anchors.centerIn: parent
-            width: 8
-            height: 8
-            radius: 4
+            width: Math.max(8, Math.round(8 * UiMetrics.fontScale))
+            height: width
+            radius: width * 0.5
             color: themeManager.darkMode ? "#08131d" : "#ffffff"
             visible: control.checked
             scale: control.checked ? 1.0 : 0.0
@@ -69,7 +73,10 @@ RadioButton {
     contentItem: Text {
         text: control.text
         color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
-        font.family: themeManager.fontFamily
+        font.pointSize: control.font.pointSize
+        font.family: control.font.family ? control.font.family : themeManager.fontFamily
+        font.weight: control.font.weight
+        font.bold: control.font.bold
         verticalAlignment: Text.AlignVCenter
         leftPadding: control.indicator.width + control.spacing
     }

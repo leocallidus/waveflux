@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 Item {
     id: root
@@ -8,8 +9,8 @@ Item {
     property bool compactVisualMode: false
     property bool minimalVisualMode: false
     property bool hoverActive: false
-    property real horizontalPadding: compactVisualMode ? 4 : 6
-    property real verticalPadding: compactVisualMode ? 3 : 5
+    property real horizontalPadding: compactVisualMode ? UiMetrics.spaceXS : UiMetrics.spaceS
+    property real verticalPadding: compactVisualMode ? UiMetrics.spaceXXS : UiMetrics.spaceXS
 
     readonly property bool tinyMode: minimalVisualMode || height < 30
     readonly property bool singleLineMode: tinyMode || (compactVisualMode && height < 44)
@@ -45,8 +46,8 @@ Item {
             readonly property string rendered: root.renderedText(formatKey)
             readonly property bool compactHiddenByHeight: root.singleLineMode && row !== "middle"
             readonly property real maxCellWidth: Math.max(0, root.width / 3 - root.horizontalPadding * 2)
-            readonly property real labelPaddingX: root.compactVisualMode ? 6 : 8
-            readonly property real labelPaddingY: root.compactVisualMode ? 2 : 3
+            readonly property real labelPaddingX: root.compactVisualMode ? UiMetrics.spaceS : UiMetrics.spaceM
+            readonly property real labelPaddingY: root.compactVisualMode ? UiMetrics.spaceXXS : UiMetrics.spaceXS
 
             visible: root.overlayEnabled
                      && rendered.length > 0
@@ -54,7 +55,7 @@ Item {
                      && root.width >= 64
                      && root.height >= 24
             z: 1
-            radius: 2
+            radius: UiMetrics.radiusSmall
             color: Qt.rgba(0, 0, 0, themeManager.darkMode ? 0.42 : 0.34)
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.12)
@@ -90,9 +91,9 @@ Item {
                 horizontalAlignment: parent.column === "right" ? Text.AlignRight
                                      : (parent.column === "center" ? Text.AlignHCenter : Text.AlignLeft)
                 verticalAlignment: Text.AlignVCenter
-                font.pixelSize: root.compactVisualMode ? 9 : 10
+                font.pointSize: root.compactVisualMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
                 font.bold: parent.row === "middle"
-                font.family: parent.formatKey === "middleCenter" ? themeManager.fontFamily : themeManager.monoFontFamily
+                font.family: parent.formatKey === "middleCenter" ? UiMetrics.fontFamily : UiMetrics.monoFontFamily
             }
         }
     }

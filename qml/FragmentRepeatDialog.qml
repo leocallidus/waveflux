@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -15,10 +16,10 @@ AppDialog {
     readonly property real availableDialogWidth: parent && parent.width > 0 ? parent.width : 640
     readonly property real availableDialogHeight: parent && parent.height > 0 ? parent.height : 580
 
-    implicitWidth: 580
-    implicitHeight: 560
-    width: root.fitDialogSize(580, 360, availableDialogWidth)
-    height: root.fitDialogSize(560, 440, availableDialogHeight)
+    implicitWidth: Math.round(580 * UiMetrics.fontScale)
+    implicitHeight: Math.round(560 * UiMetrics.fontScale)
+    width: root.fitDialogSize(Math.round(580 * UiMetrics.fontScale), Math.round(360 * UiMetrics.fontScale), availableDialogWidth)
+    height: root.fitDialogSize(Math.round(560 * UiMetrics.fontScale), Math.round(440 * UiMetrics.fontScale), availableDialogHeight)
     anchors.centerIn: (!root.isSeparateWindow && parent) ? parent : undefined
     standardButtons: Dialog.NoButton
     padding: 0
@@ -139,8 +140,7 @@ AppDialog {
                     Layout.fillWidth: true
                     text: root.tr("fragmentRepeat.title")
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.subtitlePointSize
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -149,8 +149,7 @@ AppDialog {
                     Layout.fillWidth: true
                     text: root.tr("fragmentRepeat.description")
                     color: themeManager.textSecondaryColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     elide: Text.ElideRight
                 }
             }
@@ -163,25 +162,28 @@ AppDialog {
                        ? Qt.rgba(themeManager.textColor.r,
                                  themeManager.textColor.g,
                                  themeManager.textColor.b,
-                                 themeManager.darkMode ? 0.18 : 0.10)
+                                 0.1)
                        : "transparent"
-                Behavior on color { ColorAnimation { duration: 100 } }
 
-                Image {
+                Kirigami.Icon {
                     anchors.centerIn: parent
-                    width: 16
-                    height: 16
+                    implicitWidth: 16
+                    implicitHeight: 16
                     source: IconResolver.themed("dialog-close", themeManager.darkMode)
-                    sourceSize.width: width
-                    sourceSize.height: height
-                    opacity: closeHover.hovered ? 1.0 : 0.72
-                    fillMode: Image.PreserveAspectFit
+                    color: themeManager.textSecondaryColor
                 }
-                HoverHandler { id: closeHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.reject() }
+
+                HoverHandler {
+                    id: closeHover
+                }
+
+                TapHandler {
+                    onTapped: root.close()
+                }
             }
         }
 
+        // Divider
         Rectangle {
             Layout.fillWidth: true
             height: 1
@@ -213,16 +215,10 @@ AppDialog {
                     border.width: playerCardHover.hovered || trackSeekSlider.pressed ? 2 : 1
                     border.color: playerCardHover.hovered || trackSeekSlider.pressed
                                   ? themeManager.primaryColor
-                                  : Qt.rgba(themeManager.borderColor.r,
-                                            themeManager.borderColor.g,
-                                            themeManager.borderColor.b,
-                                            0.92)
-
-                    Behavior on border.color { ColorAnimation { duration: 100 } }
+                                  : (themeManager.darkMode ? Qt.rgba(1, 1, 1, 0.08) : themeManager.borderColor)
 
                     HoverHandler {
                         id: playerCardHover
-                        cursorShape: Qt.PointingHandCursor
                     }
 
                     ColumnLayout {
@@ -231,14 +227,29 @@ AppDialog {
                         anchors.margins: 10
                         spacing: 8
 
-                        // Track Title & Repeat Switch
+                        // Row 0: Track Title & Enable/Disable Toggle
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
 
+                            Rectangle {
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                radius: 14
+                                color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.15)
+
+                                Kirigami.Icon {
+                                    anchors.centerIn: parent
+                                    implicitWidth: 16
+                                    implicitHeight: 16
+                                    source: IconResolver.themed("audio-volume-high", themeManager.darkMode)
+                                    color: themeManager.primaryColor
+                                }
+                            }
+
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 2
+                                spacing: 1
 
                                 Label {
                                     Layout.fillWidth: true
@@ -251,8 +262,7 @@ AppDialog {
                                         return root.tr("player.noTrackLoaded")
                                     }
                                     color: themeManager.textColor
-                                    font.family: themeManager.fontFamily
-                                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                                    font.pointSize: UiMetrics.bodyStrongPointSize
                                     font.bold: true
                                     elide: Text.ElideMiddle
                                 }
@@ -263,8 +273,8 @@ AppDialog {
                                           (typeof audioEngine !== "undefined" && audioEngine ? root.formatTime(audioEngine.position) : "--:--.---") +
                                           " / " + (typeof audioEngine !== "undefined" && audioEngine ? root.formatTime(audioEngine.duration) : "--:--.---")
                                     color: themeManager.textSecondaryColor
-                                    font.family: themeManager.monoFontFamily
-                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                    font.family: UiMetrics.monoFontFamily
+                                    font.pointSize: UiMetrics.bodyPointSize
                                 }
                             }
 
@@ -447,7 +457,7 @@ AppDialog {
                                     anchors.centerIn: parent
                                     text: "A"
                                     font.bold: true
-                                    font.pixelSize: 11
+                                    font.pointSize: UiMetrics.microPointSize
                                     color: "#ffffff"
                                 }
                             }
@@ -455,16 +465,15 @@ AppDialog {
                             Label {
                                 Layout.fillWidth: true
                                 text: root.tr("fragmentRepeat.startBoundary")
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.bodyStrongPointSize
                                 font.bold: true
                                 color: themeManager.textColor
                             }
 
                             Label {
                                 text: root.formatTime(root.localStartMs)
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.subtitlePointSize
                                 font.bold: true
                                 color: root.hasStart ? themeManager.accentColor : themeManager.textSecondaryColor
                             }
@@ -619,7 +628,7 @@ AppDialog {
                                     anchors.centerIn: parent
                                     text: "B"
                                     font.bold: true
-                                    font.pixelSize: 11
+                                    font.pointSize: UiMetrics.microPointSize
                                     color: "#ffffff"
                                 }
                             }
@@ -627,16 +636,15 @@ AppDialog {
                             Label {
                                 Layout.fillWidth: true
                                 text: root.tr("fragmentRepeat.endBoundary")
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.bodyStrongPointSize
                                 font.bold: true
                                 color: themeManager.textColor
                             }
 
                             Label {
                                 text: root.formatTime(root.localEndMs)
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.subtitlePointSize
                                 font.bold: true
                                 color: root.hasEnd ? themeManager.accentColor : themeManager.textSecondaryColor
                             }
@@ -780,8 +788,7 @@ AppDialog {
 
                         Label {
                             text: root.tr("fragmentRepeat.duration") + ":"
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.bodyPointSize
                             color: themeManager.textSecondaryColor
                         }
 
@@ -792,8 +799,8 @@ AppDialog {
                                   : (root.hasStart && root.hasEnd && root.localEndMs <= root.localStartMs
                                      ? root.tr("fragmentRepeat.invalidRange")
                                      : "--:--.---")
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyStrongPointSize
                             font.bold: true
                             color: (root.hasStart && root.hasEnd && root.localEndMs <= root.localStartMs)
                                    ? "#ff6666"
@@ -814,8 +821,7 @@ AppDialog {
                                 text: root.localEnabled
                                       ? root.tr("fragmentRepeat.statusActive")
                                       : root.tr("fragmentRepeat.statusInactive")
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.microPointSize
                                 font.bold: true
                                 color: root.localEnabled ? themeManager.accentColor : themeManager.textSecondaryColor
                             }

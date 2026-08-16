@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import "../IconResolver.js" as IconResolver
+import "."
 
 Control {
     id: control
@@ -10,6 +11,8 @@ Control {
     property string valueRole: ""
     property string enabledRole: ""
     property int currentIndex: modelCount > 0 ? 0 : -1
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
     readonly property int modelCount: {
         if (model === undefined || model === null) {
             return 0
@@ -28,14 +31,14 @@ Control {
 
     signal activated(int index)
 
-    implicitWidth: 180
-    implicitHeight: 34
+    implicitWidth: Math.max(160, Math.round(180 * UiMetrics.fontScale))
+    implicitHeight: Math.max(UiMetrics.controlHeightNormal, contentItem.implicitHeight + topPadding + bottomPadding)
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
-    leftPadding: 12
-    rightPadding: 30
-    topPadding: 7
-    bottomPadding: 7
+    leftPadding: UiMetrics.spaceL
+    rightPadding: UiMetrics.spaceXL + UiMetrics.iconSizeCompact
+    topPadding: UiMetrics.spaceS
+    bottomPadding: UiMetrics.spaceS
 
     function modelEntry(index) {
         if (index < 0 || index >= modelCount || model === undefined || model === null) {
@@ -157,17 +160,19 @@ Control {
 
     contentItem: Text {
         text: control.currentText
-        font.family: themeManager.fontFamily
-        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+        font.pointSize: control.font.pointSize
+        font.family: control.font.family ? control.font.family : themeManager.fontFamily
+        font.weight: control.font.weight
+        font.bold: control.font.bold
         color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }
 
     Image {
-        width: 14
-        height: 14
-        x: control.width - width - 12
+        width: UiMetrics.iconSizeCompact
+        height: UiMetrics.iconSizeCompact
+        x: control.width - width - UiMetrics.spaceL
         y: Math.round((control.height - height) * 0.5)
         source: IconResolver.themed("go-down", themeManager.darkMode)
         sourceSize.width: width
@@ -191,9 +196,9 @@ Control {
 
     Popup {
         id: popup
-        y: control.height + 4
+        y: control.height + UiMetrics.spaceXS
         width: control.width
-        padding: 6
+        padding: UiMetrics.spaceS
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         onOpened: {
             listView.positionViewAtIndex(control.currentIndex, ListView.Center)
@@ -215,7 +220,7 @@ Control {
         contentItem: ListView {
             id: listView
             clip: true
-            implicitHeight: Math.min(260, contentHeight)
+            implicitHeight: Math.min(Math.round(260 * UiMetrics.fontScale), contentHeight)
             model: popup.visible ? control.model : null
             currentIndex: control.currentIndex
             spacing: 2
@@ -225,19 +230,27 @@ Control {
             }
 
             delegate: ItemDelegate {
+                id: delegateItem
                 required property int index
                 required property var modelData
 
                 width: listView.width
+                implicitHeight: Math.max(UiMetrics.controlHeightCompact, contentItem.implicitHeight + UiMetrics.spaceXS * 2)
+                leftPadding: UiMetrics.spaceM
+                rightPadding: UiMetrics.spaceM
                 enabled: control.itemEnabled(modelData)
                 highlighted: control.currentIndex === index
+                font.pointSize: control.font.pointSize
+                font.family: control.font.family ? control.font.family : themeManager.fontFamily
                 onClicked: control.activateIndex(index)
 
                 contentItem: Text {
                     text: control.itemText(modelData, typeof model !== "undefined" && model.text !== undefined ? model.text : "")
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
-                    color: parent.enabled ? themeManager.textColor : themeManager.textMutedColor
+                    font.pointSize: control.font.pointSize
+                    font.family: control.font.family ? control.font.family : themeManager.fontFamily
+                    font.weight: control.font.weight
+                    font.bold: control.font.bold
+                    color: delegateItem.enabled ? themeManager.textColor : themeManager.textMutedColor
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                 }

@@ -11,9 +11,9 @@ AppDialog {
     title: root.tr("openUrl.title")
     modal: true
     focus: true
-    implicitWidth: 540
-    implicitHeight: 420
-    width: (root.isSeparateWindow && parent) ? parent.width : Math.min(parent ? parent.width - 32 : 540, 540)
+    implicitWidth: Math.round(540 * UiMetrics.fontScale)
+    implicitHeight: Math.round(420 * UiMetrics.fontScale)
+    width: (root.isSeparateWindow && parent) ? parent.width : Math.min(parent ? parent.width - 32 : Math.round(540 * UiMetrics.fontScale), Math.round(540 * UiMetrics.fontScale))
     anchors.centerIn: (!root.isSeparateWindow && parent) ? parent : undefined
     standardButtons: Dialog.NoButton
     padding: 0
@@ -71,8 +71,7 @@ AppDialog {
                 Layout.fillWidth: true
                 text: root.tr("openUrl.title")
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.subtitlePointSize
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -107,7 +106,7 @@ AppDialog {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                     color: themeManager.textSecondaryColor
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                 }
 
                 RowLayout {
@@ -121,7 +120,6 @@ AppDialog {
                         color: themeManager.textColor
                         selectedTextColor: themeManager.darkMode ? "#000000" : "#ffffff"
                         selectionColor: themeManager.primaryColor
-                        font.family: themeManager.fontFamily
 
                         background: Rectangle {
                             implicitHeight: 34
@@ -175,7 +173,7 @@ AppDialog {
                     id: errorLabel
                     text: root.tr("openUrl.errorInvalidFormat")
                     color: "#ff4444"
-                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.microPointSize
                     visible: root.showError
                     Layout.fillWidth: true
 
@@ -213,8 +211,7 @@ AppDialog {
                     Label {
                         text: root.tr("openUrl.actionLabel")
                         font.bold: true
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyStrongPointSize
                         color: themeManager.textSecondaryColor
                         Layout.bottomMargin: 2
                     }

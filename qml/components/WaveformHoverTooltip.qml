@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 Item {
     id: root
@@ -33,10 +34,10 @@ Item {
     Rectangle {
         id: hoverTooltip
         visible: hoverLine.visible && !root.denseMode && root.tooltipText.length > 0
-        y: root.compactVisualMode ? 4 : 6
-        width: Math.min(root.width - 8, hoverLabel.implicitWidth + 10)
-        height: hoverLabel.implicitHeight + 6
-        x: Math.max(4, Math.min(root.width - width - 4, hoverLine.x - width * 0.5))
+        y: root.compactVisualMode ? UiMetrics.spaceXS : UiMetrics.spaceS
+        width: Math.min(root.width - UiMetrics.spaceM, hoverLabel.implicitWidth + UiMetrics.spaceM)
+        height: hoverLabel.implicitHeight + UiMetrics.spaceS
+        x: Math.max(UiMetrics.spaceXS, Math.min(root.width - width - UiMetrics.spaceXS, hoverLine.x - width * 0.5))
         color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.92)
         border.width: 1
         border.color: themeManager.borderColor
@@ -46,10 +47,10 @@ Item {
         Label {
             id: hoverLabel
             anchors.centerIn: parent
-            width: parent.width - 8
+            width: parent.width - UiMetrics.spaceM
             color: themeManager.textColor
-            font.pixelSize: root.compactVisualMode ? 9 : 10
-            font.family: themeManager.monoFontFamily
+            font.pointSize: root.compactVisualMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
+            font.family: UiMetrics.monoFontFamily
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
             text: root.tooltipText

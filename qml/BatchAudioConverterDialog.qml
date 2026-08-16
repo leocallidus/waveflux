@@ -7,10 +7,10 @@ import "components"
 AppDialog {
     id: root
 
-    readonly property int preferredDialogWidth: 820
-    readonly property int preferredDialogHeight: 760
-    readonly property int minimumDialogWidth: 560
-    readonly property int minimumDialogHeight: 540
+    readonly property int preferredDialogWidth: Math.round(820 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(760 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(560 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(540 * UiMetrics.fontScale)
     readonly property var formatProfiles: audioConverterService.formatProfiles
     readonly property var currentProfile: root.profileForFormat(batchAudioConverterService.format)
     readonly property int runnableCount: Math.max(
@@ -718,7 +718,7 @@ AppDialog {
 
                         Label {
                             text: root.tr("batchAudioConverter.title")
-                            font.pixelSize: Math.round(22 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.displayPointSize
                             font.bold: true
                             color: themeManager.textColor
                         }
@@ -1479,7 +1479,7 @@ AppDialog {
                                         Layout.fillWidth: true
                                         text: String(modelData.outputFile || "")
                                         color: themeManager.textSecondaryColor
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.bodyPointSize
                                         elide: Text.ElideMiddle
                                     }
 
@@ -1488,7 +1488,7 @@ AppDialog {
                                         visible: !compactMode && String(modelData.outputFile || "").length > 0
                                         text: root.previewNamingText(modelData)
                                         color: themeManager.textMutedColor
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.bodyPointSize
                                         wrapMode: Text.WordWrap
                                     }
 
@@ -1501,7 +1501,7 @@ AppDialog {
                                               + root.tr("batchAudioConverter.previewFinalizationPattern")
                                                     .arg(root.previewFinalizationLabel(modelData))
                                         color: themeManager.textMutedColor
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.bodyPointSize
                                         wrapMode: Text.WordWrap
                                     }
 
@@ -1516,7 +1516,7 @@ AppDialog {
                                         color: String(modelData.errorText || "").length > 0
                                                ? Kirigami.Theme.negativeTextColor
                                                : themeManager.textMutedColor
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.bodyPointSize
                                         wrapMode: Text.WordWrap
                                     }
 

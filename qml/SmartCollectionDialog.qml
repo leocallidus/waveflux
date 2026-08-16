@@ -8,7 +8,7 @@ AppDialog {
     id: dialogRoot
 
     property string errorText: ""
-    readonly property bool compactLayout: width < 700
+    readonly property bool compactLayout: width < UiMetrics.breakpoint(700)
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -380,10 +380,10 @@ AppDialog {
     title: tr("collections.createDialogTitle")
     modal: true
     focus: true
-    implicitWidth: 760
-    implicitHeight: 640
-    width: (dialogRoot.isSeparateWindow && parent) ? parent.width : Math.min(760, parent ? parent.width * 0.9 : 760)
-    height: (dialogRoot.isSeparateWindow && parent) ? parent.height : Math.min(640, parent ? parent.height * 0.9 : 640)
+    implicitWidth: Math.round(760 * UiMetrics.fontScale)
+    implicitHeight: Math.round(640 * UiMetrics.fontScale)
+    width: (dialogRoot.isSeparateWindow && parent) ? parent.width : Math.min(Math.round(760 * UiMetrics.fontScale), parent ? parent.width * 0.9 : Math.round(760 * UiMetrics.fontScale))
+    height: (dialogRoot.isSeparateWindow && parent) ? parent.height : Math.min(Math.round(640 * UiMetrics.fontScale), parent ? parent.height * 0.9 : Math.round(640 * UiMetrics.fontScale))
     anchors.centerIn: (!dialogRoot.isSeparateWindow && parent) ? parent : undefined
     standardButtons: Dialog.NoButton
 
@@ -429,7 +429,7 @@ AppDialog {
                     Label {
                         text: dialogRoot.tr("collections.template")
                         color: themeManager.textMutedColor
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         font.bold: true
                     }
 
@@ -444,7 +444,7 @@ AppDialog {
                     Label {
                         text: dialogRoot.tr("collections.name")
                         color: themeManager.textMutedColor
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                         font.bold: true
                     }
 
@@ -461,12 +461,12 @@ AppDialog {
                         Label {
                             text: dialogRoot.tr("collections.logic")
                             color: themeManager.textMutedColor
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         AccentComboBox {
                             id: logicCombo
-                            Layout.preferredWidth: dialogRoot.compactLayout ? 170 : 220
+                            Layout.preferredWidth: dialogRoot.compactLayout ? Math.round(170 * UiMetrics.fontScale) : Math.round(220 * UiMetrics.fontScale)
                             model: [dialogRoot.tr("collections.logicAll"), dialogRoot.tr("collections.logicAny")]
                         }
 
@@ -513,7 +513,7 @@ AppDialog {
                             text: dialogRoot.tr("collections.rules")
                             color: themeManager.textMutedColor
                             font.bold: true
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         Item { Layout.fillWidth: true }
@@ -699,7 +699,7 @@ AppDialog {
                         text: dialogRoot.tr("collections.sort")
                         color: themeManager.textMutedColor
                         font.bold: true
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                     }
 
                     RowLayout {
@@ -715,7 +715,7 @@ AppDialog {
 
                         AccentComboBox {
                             id: sortDirCombo
-                            Layout.preferredWidth: dialogRoot.compactLayout ? 112 : 130
+                            Layout.preferredWidth: dialogRoot.compactLayout ? Math.round(112 * UiMetrics.fontScale) : Math.round(130 * UiMetrics.fontScale)
                             model: [dialogRoot.tr("collections.sortAsc"), dialogRoot.tr("collections.sortDesc")]
                             currentIndex: 1
                         }
@@ -728,7 +728,7 @@ AppDialog {
                         Label {
                             text: dialogRoot.tr("collections.limit")
                             color: themeManager.textMutedColor
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                         }
 
                         SpinBox {
@@ -737,13 +737,13 @@ AppDialog {
                             to: 50000
                             value: 0
                             editable: true
-                            Layout.preferredWidth: dialogRoot.compactLayout ? 108 : 130
+                            Layout.preferredWidth: dialogRoot.compactLayout ? Math.round(108 * UiMetrics.fontScale) : Math.round(130 * UiMetrics.fontScale)
                         }
 
                         Label {
                             text: dialogRoot.tr("collections.limitHint")
                             color: themeManager.textMutedColor
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.microPointSize
                         }
 
                         Item { Layout.fillWidth: true }
@@ -767,7 +767,7 @@ AppDialog {
                     text: dialogRoot.errorText
                     color: "#d66"
                     wrapMode: Text.WordWrap
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.captionPointSize
                 }
             }
 

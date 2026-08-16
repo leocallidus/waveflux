@@ -54,7 +54,7 @@ Item {
                                               && !root.cueOverlaySuppressedByDensity
                                               && cueSegments.length > 0
                                               && audioEngine.duration > 0
-    readonly property int compactControlsRowHeight: 34
+    readonly property int compactControlsRowHeight: UiMetrics.compactControlsRowHeight
     readonly property bool compactWaveformTinyMode: appSettings.compactWaveformHeight < 30
     readonly property bool compactWaveformHoverPreviewVisible: !root.compactWaveformTinyMode
     readonly property color destructiveColor: themeManager.darkMode ? "#ff6b6b" : "#b83232"
@@ -996,7 +996,7 @@ Item {
                 z: 3
                 text: audioEngine ? audioEngine.remoteTrackerDownloadStatus : ""
                 color: themeManager.textSecondaryColor
-                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.captionPointSize
                 elide: Text.ElideRight
                 width: Math.min(220, parent.width * 0.42)
                 horizontalAlignment: Text.AlignRight
@@ -1070,8 +1070,8 @@ Item {
                             anchors.centerIn: parent
                             text: root.waveformKeyboardBadgeText
                             color: "#ffffff"
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                         }
                     }
@@ -1133,8 +1133,8 @@ Item {
                                     visible: parent.width >= 72 && appSettings.cueWaveformOverlayLabelsEnabled
                                     elide: Text.ElideRight
                                     color: isActive ? themeManager.primaryColor : themeManager.textSecondaryColor
-                                    font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                                    font.family: themeManager.monoFontFamily
+                                    font.pointSize: UiMetrics.microPointSize
+                                    font.family: UiMetrics.monoFontFamily
                                     text: segmentDuration.length > 0
                                           ? (segmentName + " " + segmentDuration)
                                           : segmentName
@@ -1245,8 +1245,8 @@ Item {
                             color: themeManager.backgroundColor
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: root.isPlaying ? 12 : 16
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: root.isPlaying ? UiMetrics.bodyStrongPointSize : UiMetrics.titlePointSize
                             font.bold: true
                         }
 
@@ -1361,26 +1361,26 @@ Item {
                     Label {
                         text: root.formatTime(audioEngine.position)
                         color: themeManager.primaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                         font.bold: true
-                        Layout.preferredWidth: 36
+                        Layout.preferredWidth: Math.round(36 * UiMetrics.fontScale)
                         horizontalAlignment: Text.AlignRight
                     }
 
                     Label {
                         text: "/"
                         color: themeManager.textMutedColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.captionPointSize
                     }
 
                     Label {
                         text: root.formatTime(audioEngine.duration)
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
-                        Layout.preferredWidth: 36
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
+                        Layout.preferredWidth: Math.round(36 * UiMetrics.fontScale)
                     }
 
                     Item {
@@ -1422,8 +1422,8 @@ Item {
                             visible: playbackController.queueCount > 0
                             text: playbackController.queueCount > 99 ? "99+" : String(playbackController.queueCount)
                             color: themeManager.backgroundColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.microPointSize
                             font.bold: true
                             padding: 2
 
@@ -1739,8 +1739,8 @@ Item {
                                     anchors.centerIn: parent
                                     text: "::"
                                     color: themeManager.textMutedColor
-                                    font.family: themeManager.monoFontFamily
-                                    font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                                    font.family: UiMetrics.monoFontFamily
+                                    font.pointSize: UiMetrics.microPointSize
                                 }
 
                                 MouseArea {
@@ -1768,8 +1768,8 @@ Item {
                             Label {
                                 text: String(queueItem.index + 1)
                                 color: themeManager.primaryColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.microPointSize
                                 Layout.preferredWidth: 18
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -1778,16 +1778,15 @@ Item {
                                 Layout.fillWidth: true
                                 text: queueItem.displayName
                                 color: themeManager.textColor
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.captionPointSize
                                 elide: Text.ElideRight
                             }
 
                             Label {
                                 text: root.formatTime(queueItem.duration)
                                 color: themeManager.textMutedColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.microPointSize
                                 Layout.preferredWidth: 32
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -1832,8 +1831,7 @@ Item {
                         visible: playbackController.queueCount === 0
                         text: root.tr("queue.empty")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.captionPointSize
                     }
                 }
             }
@@ -1932,8 +1930,7 @@ Item {
                             selectByMouse: true
                             color: themeManager.textColor
                             placeholderTextColor: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.bodyPointSize
                             background: Rectangle {
                                 radius: themeManager.borderRadius
                                 color: Qt.rgba(themeManager.backgroundColor.r,
@@ -2105,9 +2102,9 @@ Item {
                         Label {
                             text: (trackDelegate.sourceIndex + 1) + "."
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
-                            Layout.preferredWidth: 24
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
+                            Layout.preferredWidth: Math.round(24 * UiMetrics.fontScale)
                             horizontalAlignment: Text.AlignRight
                         }
 
@@ -2115,8 +2112,8 @@ Item {
                             visible: trackDelegate.queuePosition >= 0
                             text: "Q" + String(trackDelegate.queuePosition + 1)
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.primaryColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.microPointSize
                             font.bold: true
                             opacity: 0.82
                         }
@@ -2131,8 +2128,8 @@ Item {
                                 return a ? (a + " - " + t) : t
                             }
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                             font.bold: trackDelegate.activeTrack
                             elide: Text.ElideRight
                         }
@@ -2140,8 +2137,8 @@ Item {
                         Label {
                             text: trackDelegate.duration > 0 ? root.formatTime(trackDelegate.duration) : ""
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             visible: trackDelegate.duration > 0
                         }
                     }
@@ -2271,8 +2268,7 @@ Item {
                               ? root.tr("collections.emptyTracks")
                               : root.tr("playlist.dropHint")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                     }
@@ -2284,8 +2280,7 @@ Item {
                                  && root.matchCount() === 0
                         text: root.tr("playlist.noMatches")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                     }
@@ -2412,7 +2407,7 @@ Item {
         // Status bar when playlist is hidden
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 20
+            Layout.preferredHeight: UiMetrics.compactStatusBarHeight
             visible: !root.playlistVisible
             color: themeManager.surfaceColor
             border.width: 1
@@ -2431,16 +2426,16 @@ Item {
                         return artist ? (artist + " - " + root.stageTitle) : root.stageTitle
                     }
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.family: UiMetrics.playlistFontFamily
+                    font.pointSize: UiMetrics.bodyPointSize
                     elide: Text.ElideRight
                 }
 
                 Label {
                     text: trackModel.count + " " + root.tr("playlist.tracks")
                     color: themeManager.textMutedColor
-                    font.family: themeManager.monoFontFamily
-                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                    font.family: UiMetrics.monoFontFamily
+                    font.pointSize: UiMetrics.captionPointSize
                 }
             }
         }

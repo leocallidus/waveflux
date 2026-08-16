@@ -1,16 +1,20 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 CheckBox {
     id: control
 
-    spacing: 8
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
+    spacing: UiMetrics.spaceM
     hoverEnabled: true
+    implicitHeight: Math.max(UiMetrics.controlHeightCompact, Math.max(indicator.implicitHeight, contentItem.implicitHeight))
 
     indicator: Rectangle {
-        implicitWidth: 20
-        implicitHeight: 20
-        radius: 5
+        implicitWidth: Math.max(18, Math.round(20 * UiMetrics.fontScale))
+        implicitHeight: Math.max(18, Math.round(20 * UiMetrics.fontScale))
+        radius: UiMetrics.radiusSmall
         color: {
             if (!control.enabled) {
                 return Qt.rgba(themeManager.surfaceColor.r,
@@ -54,8 +58,8 @@ CheckBox {
         Canvas {
             id: checkCanvas
             anchors.centerIn: parent
-            width: 12
-            height: 12
+            width: Math.max(10, Math.round(12 * UiMetrics.fontScale))
+            height: width
             visible: control.checked
             opacity: control.checked ? 1.0 : 0.0
             scale: control.checked ? 1.0 : 0.6
@@ -71,17 +75,18 @@ CheckBox {
                 ctx.lineCap = "round"
                 ctx.lineJoin = "round"
                 ctx.beginPath()
-                ctx.moveTo(2.0, 6.0)
-                ctx.lineTo(4.8, 9.2)
-                ctx.lineTo(10.0, 3.0)
+                ctx.moveTo(width * (2.0 / 12.0), height * (6.0 / 12.0))
+                ctx.lineTo(width * (4.8 / 12.0), height * (9.2 / 12.0))
+                ctx.lineTo(width * (10.0 / 12.0), height * (3.0 / 12.0))
                 ctx.stroke()
             }
 
-            // Repaint when dark mode changes
+            // Repaint when dark mode or size changes
             Connections {
                 target: themeManager
                 function onDarkModeChanged() { checkCanvas.requestPaint() }
             }
+            onWidthChanged: checkCanvas.requestPaint()
             Component.onCompleted: checkCanvas.requestPaint()
         }
     }
@@ -89,7 +94,10 @@ CheckBox {
     contentItem: Text {
         text: control.text
         color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
-        font.family: themeManager.fontFamily
+        font.pointSize: control.font.pointSize
+        font.family: control.font.family ? control.font.family : themeManager.fontFamily
+        font.weight: control.font.weight
+        font.bold: control.font.bold
         verticalAlignment: Text.AlignVCenter
         leftPadding: control.indicator.width + control.spacing
     }

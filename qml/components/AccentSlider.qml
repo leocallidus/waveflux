@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 Slider {
     id: control
 
-    implicitHeight: orientation === Qt.Horizontal ? 24 : 160
-    implicitWidth: orientation === Qt.Horizontal ? 160 : 24
+    implicitHeight: orientation === Qt.Horizontal ? Math.max(24, Math.round(24 * UiMetrics.fontScale)) : Math.round(160 * UiMetrics.fontScale)
+    implicitWidth: orientation === Qt.Horizontal ? Math.round(160 * UiMetrics.fontScale) : Math.max(24, Math.round(24 * UiMetrics.fontScale))
 
     readonly property color trackColor: Qt.rgba(themeManager.borderColor.r,
                                                 themeManager.borderColor.g,
@@ -25,8 +26,8 @@ Slider {
                                                    0.42)
 
     background: Item {
-        implicitWidth: control.orientation === Qt.Horizontal ? 160 : 6
-        implicitHeight: control.orientation === Qt.Horizontal ? 6 : 160
+        implicitWidth: control.orientation === Qt.Horizontal ? Math.round(160 * UiMetrics.fontScale) : 6
+        implicitHeight: control.orientation === Qt.Horizontal ? 6 : Math.round(160 * UiMetrics.fontScale)
         x: control.leftPadding + (control.availableWidth - width) * 0.5
         y: control.topPadding + (control.availableHeight - height) * 0.5
         width: control.orientation === Qt.Horizontal ? control.availableWidth : 6
@@ -50,14 +51,14 @@ Slider {
                    ? Math.max(parent.height, control.position * parent.width)
                    : parent.width
             height: control.orientation === Qt.Horizontal
-                    ? parent.height
-                    : Math.max(parent.width, control.visualPosition * parent.height)
+                     ? parent.height
+                     : Math.max(parent.width, control.visualPosition * parent.height)
         }
     }
 
     handle: Rectangle {
-        implicitWidth: control.pressed ? 18 : 16
-        implicitHeight: control.pressed ? 18 : 16
+        implicitWidth: control.pressed ? Math.max(18, Math.round(18 * UiMetrics.fontScale)) : Math.max(16, Math.round(16 * UiMetrics.fontScale))
+        implicitHeight: control.pressed ? Math.max(18, Math.round(18 * UiMetrics.fontScale)) : Math.max(16, Math.round(16 * UiMetrics.fontScale))
         radius: width * 0.5
         color: control.handleColor
         border.width: 2

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 RowLayout {
     id: root
@@ -23,7 +24,7 @@ RowLayout {
     signal activated(int index)
 
     Layout.fillWidth: true
-    Layout.minimumHeight: 38
+    Layout.minimumHeight: UiMetrics.controlHeightNormal
     spacing: rowSpacing
     visible: matchesSearch
 
@@ -57,6 +58,7 @@ RowLayout {
         text: root.highlightedText(root.title)
         textFormat: Text.StyledText
         color: themeManager.textColor
+        font.pointSize: UiMetrics.bodyPointSize
         font.family: themeManager.fontFamily
         wrapMode: Text.WordWrap
         maximumLineCount: 3
@@ -66,8 +68,10 @@ RowLayout {
 
     AccentComboBox {
         id: comboBox
-        Layout.preferredWidth: root.comboWidth
-        Layout.minimumHeight: 34
+        Layout.preferredWidth: Math.max(root.comboWidth, Math.round(root.comboWidth * UiMetrics.fontScale))
+        Layout.minimumHeight: UiMetrics.controlHeightNormal
+        font.pointSize: UiMetrics.bodyPointSize
+        font.family: themeManager.fontFamily
         enabled: root.rowEnabled
         activeFocusOnTab: true
         Accessible.name: root.title

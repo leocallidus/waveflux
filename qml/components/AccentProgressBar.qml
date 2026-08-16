@@ -1,10 +1,11 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 ProgressBar {
     id: control
 
-    implicitHeight: 8
+    implicitHeight: Math.max(6, Math.round(8 * UiMetrics.fontScale))
 
     background: Rectangle {
         implicitHeight: control.implicitHeight

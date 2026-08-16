@@ -60,11 +60,11 @@ AppDialog {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     standardButtons: Dialog.NoButton
 
-    implicitWidth: 520
-    implicitHeight: 460
+    implicitWidth: Math.round(520 * UiMetrics.fontScale)
+    implicitHeight: Math.round(460 * UiMetrics.fontScale)
 
-    width: (root.isSeparateWindow && parent) ? parent.width : fitDialogSize(520, 360, availableDialogWidth)
-    height: (root.isSeparateWindow && parent) ? parent.height : fitDialogSize(460, 280, availableDialogHeight)
+    width: (root.isSeparateWindow && parent) ? parent.width : fitDialogSize(Math.round(520 * UiMetrics.fontScale), Math.round(360 * UiMetrics.fontScale), availableDialogWidth)
+    height: (root.isSeparateWindow && parent) ? parent.height : fitDialogSize(Math.round(460 * UiMetrics.fontScale), Math.round(280 * UiMetrics.fontScale), availableDialogHeight)
     x: (!root.isSeparateWindow && parent) ? Math.max(dialogMargin, Math.round((availableDialogWidth - width) * 0.5)) : 0
     y: (!root.isSeparateWindow && parent) ? Math.max(dialogMargin, Math.round((availableDialogHeight - height) * 0.5)) : 0
 

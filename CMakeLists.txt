@@ -132,6 +132,7 @@ set(SOURCES
     src/WaveformItem.cpp
     src/TagEditor.cpp
     src/ThemeManager.cpp
+    src/UiMetrics.cpp
     src/PlaybackController.cpp
     src/SessionManager.cpp
     src/PlaylistExportService.cpp
@@ -193,6 +194,7 @@ set(HEADERS
     src/WaveformItem.h
     src/TagEditor.h
     src/ThemeManager.h
+    src/UiMetrics.h
     src/PlaybackController.h
     src/SessionManager.h
     src/PlaylistExportService.h
@@ -240,6 +242,10 @@ file(GLOB WAVEFLUX_ICON_RESOURCES
     "resources/icons/*.ico"
 )
 
+set_source_files_properties(qml/components/UiMetrics.qml PROPERTIES
+    QT_QML_SINGLETON_TYPE TRUE
+)
+
 qt_add_qml_module(waveflux
     URI WaveFlux
     VERSION 1.3
@@ -255,6 +261,7 @@ qt_add_qml_module(waveflux
         qml/components/SettingComboRow.qml
         qml/components/SettingHintText.qml
         qml/components/AppDialog.qml
+        qml/components/UiMetrics.qml
         qml/components/Button.qml
         qml/components/AccentSlider.qml
         qml/components/AccentSwitch.qml

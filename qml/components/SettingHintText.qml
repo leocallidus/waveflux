@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 Item {
     id: root
@@ -99,8 +100,8 @@ Item {
         text: root.highlightedText(root.text)
         textFormat: Text.StyledText
         color: root.resolvedHintColor
+        font.pointSize: UiMetrics.captionPointSize
         font.family: themeManager.fontFamily
-        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
         wrapMode: Text.WordWrap
         opacity: rowEnabled ? 1.0 : 0.6
     }

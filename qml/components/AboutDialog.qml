@@ -15,12 +15,12 @@ AppDialog {
 
     property string activeSection: "about"
 
-    readonly property int preferredDialogWidth: 680
-    readonly property int preferredDialogHeight: 380
-    readonly property int minimumDialogWidth: 520
-    readonly property int minimumDialogHeight: 320
-    readonly property bool compactLayout: width < 560 || height < 340
-    readonly property int contentPadding: compactLayout ? 12 : 14
+    readonly property int preferredDialogWidth: Math.round(680 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(380 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(520 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(320 * UiMetrics.fontScale)
+    readonly property bool compactLayout: width < UiMetrics.breakpoint(560) || height < UiMetrics.breakpoint(340)
+    readonly property int contentPadding: compactLayout ? UiMetrics.spaceL : UiMetrics.spaceXL
     readonly property color panelColor: themeManager.surfaceColor
     readonly property color frameColor: themeManager.borderColor
     readonly property color contentColor: Qt.rgba(themeManager.backgroundColor.r,
@@ -69,26 +69,25 @@ AppDialog {
     contentItem: ColumnLayout {
         anchors.fill: parent
         anchors.margins: root.contentPadding
-        spacing: 10
+        spacing: UiMetrics.spaceM
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: UiMetrics.spaceM
 
             Label {
                 Layout.fillWidth: true
                 text: root.tr("help.aboutDialogTitle")
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.titlePointSize
                 font.bold: true
                 elide: Text.ElideRight
             }
 
             Rectangle {
-                implicitWidth: 28
-                implicitHeight: 28
-                radius: 14
+                implicitWidth: UiMetrics.minInteractiveTargetSize
+                implicitHeight: UiMetrics.minInteractiveTargetSize
+                radius: height * 0.5
                 color: closeHover.hovered
                        ? Qt.rgba(themeManager.textColor.r,
                                  themeManager.textColor.g,
@@ -101,7 +100,7 @@ AppDialog {
                 Text {
                     anchors.centerIn: parent
                     text: "\u00d7"
-                    font.pixelSize: Math.round(16 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.titlePointSize
                     font.bold: true
                     color: closeHover.hovered
                            ? themeManager.textColor
@@ -115,11 +114,11 @@ AppDialog {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 12
+            spacing: UiMetrics.spaceL
 
             Image {
-                Layout.preferredWidth: root.compactLayout ? 42 : 52
-                Layout.preferredHeight: root.compactLayout ? 42 : 52
+                Layout.preferredWidth: root.compactLayout ? Math.round(42 * UiMetrics.fontScale) : Math.round(52 * UiMetrics.fontScale)
+                Layout.preferredHeight: Layout.preferredWidth
                 source: "qrc:/WaveFlux/resources/icons/waveflux.svg"
                 sourceSize.width: width
                 sourceSize.height: height
@@ -129,14 +128,13 @@ AppDialog {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: UiMetrics.spaceXXS
 
                 Label {
                     Layout.fillWidth: true
                     text: root.tr("help.aboutAppName")
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: root.compactLayout ? 19 : 22
+                    font.pointSize: root.compactLayout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -145,8 +143,7 @@ AppDialog {
                     Layout.fillWidth: true
                     text: root.tr("help.aboutVersionLabel") + " " + root.tr("help.aboutVersionValue")
                     color: themeManager.textSecondaryColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.captionPointSize
                     elide: Text.ElideRight
                 }
             }
@@ -175,11 +172,10 @@ AppDialog {
 
             component AboutTabButton: TabButton {
                 id: tabBtn
-                implicitHeight: 36
+                implicitHeight: UiMetrics.controlHeightNormal
                 contentItem: Text {
                     text: tabBtn.text
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     font.bold: tabBtn.checked
                     color: tabBtn.checked ? themeManager.primaryColor : themeManager.textSecondaryColor
                     horizontalAlignment: Text.AlignHCenter
@@ -243,18 +239,18 @@ AppDialog {
 
             ScrollView {
                 anchors.fill: parent
-                anchors.margins: 8
+                anchors.margins: UiMetrics.spaceM
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 contentWidth: availableWidth
 
                 ColumnLayout {
                     width: parent.width
-                    spacing: 10
+                    spacing: UiMetrics.spaceM
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        spacing: UiMetrics.spaceM
                         visible: root.activeSection === "about"
 
                         Label {
@@ -262,8 +258,7 @@ AppDialog {
                             text: root.tr("help.aboutDescription")
                             color: themeManager.textColor
                             wrapMode: Text.WordWrap
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
 
                         Label {
@@ -271,8 +266,7 @@ AppDialog {
                             text: root.tr("help.aboutLicense")
                             color: themeManager.primaryColor
                             wrapMode: Text.WordWrap
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                         }
                     }
 
@@ -296,7 +290,7 @@ AppDialog {
                                 required property var modelData
 
                                 Layout.fillWidth: true
-                                implicitHeight: componentRow.implicitHeight + 12
+                                implicitHeight: componentRow.implicitHeight + UiMetrics.spaceL
                                 color: "transparent"
                                 border.width: 0
 
@@ -311,9 +305,8 @@ AppDialog {
                                         Layout.fillWidth: true
                                         text: modelData.name
                                         color: themeManager.textColor
-                                        font.family: themeManager.fontFamily
                                         font.bold: true
-                                        font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.bodyStrongPointSize
                                         elide: Text.ElideRight
                                     }
 
@@ -321,8 +314,7 @@ AppDialog {
                                         Layout.fillWidth: true
                                         text: modelData.detail
                                         color: themeManager.textSecondaryColor
-                                        font.family: themeManager.fontFamily
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.captionPointSize
                                         wrapMode: Text.WordWrap
                                     }
                                 }
@@ -341,15 +333,14 @@ AppDialog {
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        spacing: UiMetrics.spaceM
                         visible: root.activeSection === "author"
 
                         Label {
                             Layout.fillWidth: true
                             text: root.tr("help.aboutAuthorLabel") + " " + root.tr("help.aboutAuthorName")
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.bodyPointSize
                             font.bold: true
                             wrapMode: Text.WordWrap
                         }
@@ -359,8 +350,7 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.tr("help.aboutAuthorUrl")
                             color: themeManager.primaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                             elide: Text.ElideRight
 
                             HoverHandler {
@@ -377,8 +367,7 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.tr("help.aboutYearLabel") + " " + root.tr("help.aboutYearValue")
                             color: themeManager.textSecondaryColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                             wrapMode: Text.WordWrap
                         }
                     }

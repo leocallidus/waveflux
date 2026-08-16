@@ -1,13 +1,14 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 MenuSeparator {
     id: control
 
-    topPadding: 4
-    bottomPadding: 4
-    leftPadding: 12
-    rightPadding: 12
+    topPadding: UiMetrics.spaceXS
+    bottomPadding: UiMetrics.spaceXS
+    leftPadding: UiMetrics.spaceL
+    rightPadding: UiMetrics.spaceL
 
     background: Rectangle {
         color: "transparent"

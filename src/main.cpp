@@ -35,6 +35,7 @@
 #include "WaveformItem.h"
 #include "TagEditor.h"
 #include "ThemeManager.h"
+#include "UiMetrics.h"
 #include "PlaybackController.h"
 #include "SessionManager.h"
 #include "PlaylistExportService.h"
@@ -295,6 +296,7 @@ int main(int argc, char *argv[])
         compactPlaylistFilterModel.setSourceModel(&trackModel);
         TagEditor tagEditor;
         ThemeManager themeManager;
+        UiMetrics uiMetrics(&themeManager);
         PlaybackController playbackController(&trackModel, &audioEngine);
         SessionManager sessionManager;
         PlaylistExportService playlistExportService;
@@ -650,6 +652,7 @@ int main(int argc, char *argv[])
                                                  &compactPlaylistFilterModel);
         engine.rootContext()->setContextProperty("tagEditor", &tagEditor);
         engine.rootContext()->setContextProperty("themeManager", &themeManager);
+        engine.rootContext()->setContextProperty("UiMetrics", &uiMetrics);
         engine.rootContext()->setContextProperty("playbackController", &playbackController);
         engine.rootContext()->setContextProperty("playlistExportService", &playlistExportService);
         engine.rootContext()->setContextProperty("playlistProfilesManager", &playlistProfilesManager);

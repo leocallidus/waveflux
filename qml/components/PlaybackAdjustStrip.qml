@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 RowLayout {
     id: root
@@ -14,14 +15,14 @@ RowLayout {
     property real maximumValue: 1
     property real neutralValue: 0
     property real stepSize: 0
-    property int stripWidth: 78
-    property int stripHeight: 18
+    property int stripWidth: Math.round(78 * UiMetrics.fontScale)
+    property int stripHeight: Math.max(18, Math.round(20 * UiMetrics.fontScale))
     property bool compactMode: false
 
     signal valueEdited(real value)
     signal resetRequested()
 
-    spacing: compactMode ? 4 : 6
+    spacing: compactMode ? UiMetrics.spaceXS : UiMetrics.spaceS
 
     function clamp(value) {
         return Math.max(minimumValue, Math.min(maximumValue, Number(value) || 0))
@@ -54,8 +55,7 @@ RowLayout {
         visible: title.length > 0 && !root.compactMode
         text: title
         color: themeManager.textMutedColor
-        font.family: themeManager.fontFamily
-        font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+        font.pointSize: UiMetrics.microPointSize
     }
 
     Rectangle {
@@ -118,8 +118,8 @@ RowLayout {
             text: root.valueText
             color: themeManager.darkMode ? "#ffffff" : "#111111"
             opacity: 0.95
-            font.family: themeManager.monoFontFamily
-            font.pixelSize: root.compactMode ? 9 : 10
+            font.family: UiMetrics.monoFontFamily
+            font.pointSize: root.compactMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
             font.bold: Math.abs(root.value - root.neutralValue) > 0.0001
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -145,10 +145,11 @@ RowLayout {
 
     ToolButton {
         text: root.resetText
-        font.family: themeManager.monoFontFamily
-        font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
-        implicitWidth: root.compactMode ? 22 : 24
-        implicitHeight: root.compactMode ? 22 : 24
+        font.family: UiMetrics.monoFontFamily
+        font.pointSize: UiMetrics.microPointSize
+        readonly property int buttonDimension: Math.max(22, Math.round((root.compactMode ? 22 : 24) * UiMetrics.fontScale))
+        implicitWidth: buttonDimension
+        implicitHeight: buttonDimension
         opacity: Math.abs(root.value - root.neutralValue) > 0.0001 ? 1.0 : 0.5
         enabled: Math.abs(root.value - root.neutralValue) > 0.0001
         onClicked: root.resetRequested()

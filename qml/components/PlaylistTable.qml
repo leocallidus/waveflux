@@ -204,22 +204,22 @@ Item {
     }
 
     readonly property bool showArtistColumn: effectiveColumnPreset === "auto"
-                                             ? width >= 600
+                                             ? width >= UiMetrics.breakpoint(600)
                                              : (effectiveColumnPreset === "full" || effectiveColumnPreset === "reduced")
     readonly property bool showAlbumColumn: effectiveColumnPreset === "auto"
-                                            ? width >= 1000
+                                            ? width >= UiMetrics.breakpoint(1000)
                                             : effectiveColumnPreset === "full"
     readonly property bool showBitrateColumn: effectiveColumnPreset === "auto"
-                                              ? width >= 800
+                                              ? width >= UiMetrics.breakpoint(800)
                                               : effectiveColumnPreset === "full"
 
-    readonly property int rowHeight: 31
-    readonly property int tableHeaderHeight: 32
-    readonly property int horizontalPadding: 14
-    readonly property int columnSpacing: 10
-    readonly property int indexColumnWidth: 42
-    readonly property int durationColumnWidth: 90
-    readonly property int bitrateColumnWidth: showBitrateColumn ? 132 : 0
+    readonly property int rowHeight: UiMetrics.playlistRowHeight
+    readonly property int tableHeaderHeight: UiMetrics.playlistHeaderHeight
+    readonly property int horizontalPadding: UiMetrics.spaceL
+    readonly property int columnSpacing: UiMetrics.spaceM
+    readonly property int indexColumnWidth: Math.round(42 * UiMetrics.playlistFontScale)
+    readonly property int durationColumnWidth: Math.round(90 * UiMetrics.playlistFontScale)
+    readonly property int bitrateColumnWidth: showBitrateColumn ? Math.round(132 * UiMetrics.playlistFontScale) : 0
     readonly property int visibleColumnCount: 3 + (showArtistColumn ? 1 : 0) + (showAlbumColumn ? 1 : 0) + (showBitrateColumn ? 1 : 0)
 
     readonly property real textColumnsWidth: Math.max(
@@ -1376,19 +1376,19 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                             text: "#"
                             color: themeManager.textMutedColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
 
                         Image {
                             visible: root.indexSortState !== 0
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
+                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
                             source: IconResolver.themed(root.indexSortState === 1 ? "go-up" : "go-down", themeManager.darkMode)
-                            sourceSize.width: 12
-                            sourceSize.height: 12
+                            sourceSize.width: width
+                            sourceSize.height: height
                             fillMode: Image.PreserveAspectFit
                         }
                     }
@@ -1413,19 +1413,19 @@ Item {
                             text: root.tr("table.title")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
 
                         Image {
                             visible: root.titleSortState !== 0
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
+                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
                             source: IconResolver.themed(root.titleSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: 12
-                            sourceSize.height: 12
+                            sourceSize.width: width
+                            sourceSize.height: height
                             fillMode: Image.PreserveAspectFit
                         }
                     }
@@ -1451,19 +1451,19 @@ Item {
                             text: root.tr("table.artist")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
 
                         Image {
                             visible: root.artistSortState !== 0
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
+                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
                             source: IconResolver.themed(root.artistSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: 12
-                            sourceSize.height: 12
+                            sourceSize.width: width
+                            sourceSize.height: height
                             fillMode: Image.PreserveAspectFit
                         }
                     }
@@ -1489,19 +1489,19 @@ Item {
                             text: root.tr("table.album")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
 
                         Image {
                             visible: root.albumSortState !== 0
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
+                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
                             source: IconResolver.themed(root.albumSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: 12
-                            sourceSize.height: 12
+                            sourceSize.width: width
+                            sourceSize.height: height
                             fillMode: Image.PreserveAspectFit
                         }
                     }
@@ -1526,19 +1526,19 @@ Item {
                             horizontalAlignment: Text.AlignRight
                             text: root.tr("table.duration")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
 
                         Image {
                             visible: root.durationSortState !== 0
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
+                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
                             source: IconResolver.themed(root.durationSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: 12
-                            sourceSize.height: 12
+                            sourceSize.width: width
+                            sourceSize.height: height
                             fillMode: Image.PreserveAspectFit
                         }
                     }
@@ -1564,19 +1564,19 @@ Item {
                             text: root.tr("table.bitrate")
                             elide: Text.ElideRight
                             color: themeManager.textMutedColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.playlistFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                             font.letterSpacing: 1.3
                         }
 
                         Image {
                             visible: root.bitrateSortState !== 0
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
+                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
                             source: IconResolver.themed(root.bitrateSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: 12
-                            sourceSize.height: 12
+                            sourceSize.width: width
+                            sourceSize.height: height
                             fillMode: Image.PreserveAspectFit
                         }
                     }
@@ -1783,8 +1783,8 @@ Item {
                             visible: !trackDelegate.highlighted
                             text: root.formatTrackNumber(trackDelegate.sourceIndex)
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
 
                         Label {
@@ -1794,8 +1794,8 @@ Item {
                             visible: trackDelegate.queuePosition >= 0
                             text: "Q" + String(trackDelegate.queuePosition + 1)
                             color: themeManager.primaryColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(9 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.microPointSize
                             font.bold: true
                             opacity: trackDelegate.highlighted ? 1.0 : 0.82
                         }
@@ -1805,12 +1805,12 @@ Item {
                         id: titleLabel
                         Layout.preferredWidth: root.titleColumnWidth
                         text: root.formatTrackTitle(trackDelegate.sourceIndex,
-                                                    trackDelegate.title,
-                                                    trackDelegate.displayName)
+                                                     trackDelegate.title,
+                                                     trackDelegate.displayName)
                         elide: Text.ElideRight
                         color: trackDelegate.highlighted ? themeManager.primaryColor : themeManager.textColor
-                        font.family: themeManager.playlistFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                         font.bold: trackDelegate.highlighted
                     }
 
@@ -1821,8 +1821,8 @@ Item {
                         text: trackDelegate.artist
                         elide: Text.ElideRight
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.playlistFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     Label {
@@ -1832,8 +1832,8 @@ Item {
                         text: trackDelegate.album
                         elide: Text.ElideRight
                         color: themeManager.textMutedColor
-                        font.family: themeManager.playlistFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     Label {
@@ -1841,8 +1841,8 @@ Item {
                         horizontalAlignment: Text.AlignRight
                         text: root.formatDuration(trackDelegate.duration)
                         color: themeManager.textSecondaryColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
 
                     Label {
@@ -1852,8 +1852,8 @@ Item {
                         elide: Text.ElideRight
                         color: trackDelegate.highlighted ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.8)
                                                        : themeManager.textMutedColor
-                        font.family: themeManager.monoFontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.family: UiMetrics.monoFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
                     }
                 }
 

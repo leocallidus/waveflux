@@ -1,9 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 MenuItem {
     id: control
+
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
 
     readonly property color highlightFill: Qt.rgba(themeManager.primaryColor.r,
                                                    themeManager.primaryColor.g,
@@ -14,12 +18,12 @@ MenuItem {
                                                  themeManager.primaryColor.b,
                                                  themeManager.darkMode ? 0.24 : 0.14)
 
-    implicitWidth: Math.max(240, leftPadding + rightPadding + 180)
-    implicitHeight: 34
-    leftPadding: 12
-    rightPadding: 12
-    topPadding: 6
-    bottomPadding: 6
+    implicitWidth: Math.max(Math.round(240 * UiMetrics.fontScale), leftPadding + rightPadding + Math.round(180 * UiMetrics.fontScale))
+    implicitHeight: Math.max(UiMetrics.controlHeightNormal, contentItem.implicitHeight + topPadding + bottomPadding)
+    leftPadding: UiMetrics.spaceL
+    rightPadding: UiMetrics.spaceL
+    topPadding: UiMetrics.spaceS
+    bottomPadding: UiMetrics.spaceS
 
     background: Rectangle {
         radius: themeManager.borderRadius
@@ -29,15 +33,15 @@ MenuItem {
     }
 
     contentItem: RowLayout {
-        spacing: 10
+        spacing: UiMetrics.spaceM
 
         Image {
             id: iconImage
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
+            Layout.preferredWidth: UiMetrics.iconSizeNormal
+            Layout.preferredHeight: UiMetrics.iconSizeNormal
             source: control.icon.source
-            sourceSize.width: 16
-            sourceSize.height: 16
+            sourceSize.width: UiMetrics.iconSizeNormal
+            sourceSize.height: UiMetrics.iconSizeNormal
             fillMode: Image.PreserveAspectFit
             mipmap: true
             smooth: true
@@ -46,8 +50,8 @@ MenuItem {
         }
 
         Item {
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
+            Layout.preferredWidth: UiMetrics.iconSizeNormal
+            Layout.preferredHeight: UiMetrics.iconSizeNormal
             visible: !iconImage.visible
         }
 
@@ -55,9 +59,9 @@ MenuItem {
             Layout.fillWidth: true
             text: control.text
             color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
-            font.family: themeManager.fontFamily
-            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
-            font.bold: control.highlighted
+            font.family: control.font.family
+            font.pointSize: control.font.pointSize
+            font.bold: control.highlighted || control.font.bold
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
         }

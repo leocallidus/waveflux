@@ -12,12 +12,12 @@ AppDialog {
     standardButtons: Dialog.NoButton
     closePolicy: Popup.CloseOnEscape
 
-    readonly property int preferredDialogWidth: 620
-    readonly property int preferredDialogHeight: 500
-    readonly property int minimumDialogWidth: 420
-    readonly property int minimumDialogHeight: 220
-    readonly property bool compactLayout: width < 540 || height < 360
-    readonly property int contentPadding: compactLayout ? 10 : 14
+    readonly property int preferredDialogWidth: Math.round(620 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(500 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(420 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(220 * UiMetrics.fontScale)
+    readonly property bool compactLayout: width < UiMetrics.breakpoint(540) || height < 360
+    readonly property int contentPadding: compactLayout ? UiMetrics.spaceS : UiMetrics.spaceM
     readonly property color panelColor: themeManager.surfaceColor
     readonly property color frameColor: themeManager.borderColor
     readonly property color contentColor: Qt.rgba(themeManager.backgroundColor.r,
@@ -86,8 +86,7 @@ AppDialog {
                     Layout.fillWidth: true
                     text: root.tr("updates.dialogTitle") + " " + updateChecker.latestVersion
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: root.compactLayout ? 14 : 16
+                    font.pointSize: root.compactLayout ? UiMetrics.subtitlePointSize : UiMetrics.titlePointSize
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -97,8 +96,7 @@ AppDialog {
                     text: root.tr("updates.currentVersion") + " " + updateChecker.currentVersion
                           + "  " + root.tr("updates.availableVersion") + " " + updateChecker.latestVersion
                     color: themeManager.textSecondaryColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     wrapMode: Text.WordWrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
@@ -106,7 +104,8 @@ AppDialog {
             }
 
             Button {
-                text: "\u00d7"
+                icon.source: IconResolver.themed("dialog-close", themeManager.darkMode)
+                icon.color: themeManager.textSecondaryColor
                 flat: true
                 implicitWidth: 28
                 implicitHeight: 24
@@ -124,8 +123,7 @@ AppDialog {
                 Layout.fillWidth: true
                 text: (updateChecker.releaseName || updateChecker.latestTag || updateChecker.latestVersion)
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.subtitlePointSize
                 font.bold: true
                 wrapMode: Text.WordWrap
                 maximumLineCount: root.compactLayout ? 1 : 2
@@ -137,8 +135,7 @@ AppDialog {
                 visible: root.publishedText().length > 0
                 text: root.tr("updates.publishedAt") + " " + root.publishedText()
                 color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.bodyPointSize
                 elide: Text.ElideRight
             }
         }
@@ -148,8 +145,7 @@ AppDialog {
             visible: !root.compactLayout
             text: root.tr("updates.changes")
             color: themeManager.textColor
-            font.family: themeManager.fontFamily
-            font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+            font.pointSize: UiMetrics.bodyStrongPointSize
             font.bold: true
         }
 
@@ -181,8 +177,7 @@ AppDialog {
                     color: themeManager.textColor
                     selectedTextColor: themeManager.backgroundColor
                     selectionColor: themeManager.primaryColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     background: Item {}
                 }
             }
@@ -190,7 +185,7 @@ AppDialog {
 
         GridLayout {
             Layout.fillWidth: true
-            columns: root.width < 460 ? 2 : 4
+            columns: root.width < UiMetrics.breakpoint(460) ? 2 : 4
             columnSpacing: 8
             rowSpacing: 6
 

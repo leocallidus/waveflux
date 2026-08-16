@@ -7,15 +7,15 @@ import "components"
 AppDialog {
     id: root
 
-    readonly property int preferredDialogWidth: 680
-    readonly property int preferredDialogHeight: 720
-    readonly property int minimumDialogWidth: 460
-    readonly property int minimumDialogHeight: 520
+    readonly property int preferredDialogWidth: Math.round(680 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(720 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(460 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(520 * UiMetrics.fontScale)
     readonly property var currentProfile: audioConverterService.currentFormatProfile
     readonly property var preflight: audioConverterService.preflight
     readonly property var statusPresentation: audioConverterService.statusPresentation
     readonly property var errorPresentation: audioConverterService.errorPresentation
-    readonly property bool compactLayout: width < 720
+    readonly property bool compactLayout: width < UiMetrics.breakpoint(720)
     readonly property color cardBorderColor: Qt.rgba(themeManager.borderColor.r,
                                                      themeManager.borderColor.g,
                                                      themeManager.borderColor.b,
@@ -28,8 +28,8 @@ AppDialog {
                                                      themeManager.backgroundColor.g,
                                                      themeManager.backgroundColor.b,
                                                      themeManager.darkMode ? 0.96 : 0.98)
-    readonly property int sectionPadding: appSettings.skinMode === "compact" ? 10 : 14
-    readonly property int sectionSpacing: appSettings.skinMode === "compact" ? 8 : 10
+    readonly property int sectionPadding: appSettings.skinMode === "compact" ? UiMetrics.spaceS : UiMetrics.spaceM
+    readonly property int sectionSpacing: appSettings.skinMode === "compact" ? UiMetrics.spaceS : UiMetrics.spaceM
     readonly property bool rawOutputPathLooksInvalid: String(outputPathField.text || "").trim().length > 0
                                                   && !outputPathField.activeFocus
                                                   && String(audioConverterService.outputFile || "").trim().length === 0
@@ -725,7 +725,7 @@ AppDialog {
 
                         Label {
                             text: root.tr("audioConverter.title")
-                            font.pixelSize: Math.round(25 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.displayPointSize
                             font.bold: true
                         }
 
@@ -741,7 +741,7 @@ AppDialog {
                                   ? root.sourceDisplayName
                                   : root.fileNameFromPath(root.sourceFile)
                             wrapMode: Text.WordWrap
-                            font.pixelSize: Math.round(15 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.titlePointSize
                             font.bold: true
                         }
 
@@ -912,7 +912,7 @@ AppDialog {
                                           ? root.tr("audioConverter.badgeConflict")
                                           : root.tr("audioConverter.badgeAttention")
                                     color: root.preflightNoticeColor()
-                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                    font.pointSize: UiMetrics.captionPointSize
                                     font.bold: true
                                 }
                             }
@@ -1454,7 +1454,7 @@ AppDialog {
                                     id: stateBadgeLabel
                                     anchors.centerIn: parent
                                     text: root.statusBadgeText
-                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                    font.pointSize: UiMetrics.captionPointSize
                                     font.bold: true
                                     color: root.toneTextColor(root.statusTone)
                                 }

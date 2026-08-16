@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 Rectangle {
     id: root
@@ -12,9 +13,9 @@ Rectangle {
     property color frameColor: "transparent"
     property color titleColor: "white"
     property string fontFamily: ""
-    property int sectionPadding: 12
-    property int sectionSpacing: 10
-    property real borderRadius: 12
+    property int sectionPadding: UiMetrics.spaceL
+    property int sectionSpacing: UiMetrics.spaceM
+    property real borderRadius: UiMetrics.radiusLarge
 
     default property alias contentData: sectionLayout.data
 
@@ -36,8 +37,7 @@ Rectangle {
         Label {
             text: root.title
             color: root.titleColor
-            font.family: root.fontFamily
-            font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+            font.pointSize: UiMetrics.captionPointSize
             font.bold: true
             font.letterSpacing: 1.2
             visible: text.length > 0

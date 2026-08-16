@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 Rectangle {
     id: root
@@ -15,11 +16,11 @@ Rectangle {
     property color textColor: "white"
     property color mutedTextColor: "#808080"
     property string fontFamily: ""
-    property int sectionPadding: 12
-    property int sectionSpacing: 10
-    property int minimumInteractiveHeight: 34
+    property int sectionPadding: UiMetrics.spaceL
+    property int sectionSpacing: UiMetrics.spaceM
+    property int minimumInteractiveHeight: UiMetrics.controlHeightNormal
     property bool lowHeightMode: false
-    property real borderRadius: 12
+    property real borderRadius: UiMetrics.radiusLarge
 
     signal clearRequested()
     signal sectionRequested(string sectionId)
@@ -36,22 +37,21 @@ Rectangle {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: root.lowHeightMode ? 10 : root.sectionPadding
-        spacing: root.lowHeightMode ? 8 : root.sectionSpacing
+        anchors.margins: root.lowHeightMode ? UiMetrics.spaceM : root.sectionPadding
+        spacing: root.lowHeightMode ? UiMetrics.spaceS : root.sectionSpacing
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: UiMetrics.spaceM
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 4
+                spacing: UiMetrics.spaceXS
 
                 Label {
                     text: root.titleText
                     color: root.mutedTextColor
-                    font.family: root.fontFamily
-                    font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.captionPointSize
                     font.bold: true
                     font.letterSpacing: 1.2
                 }
@@ -60,8 +60,7 @@ Rectangle {
                     text: root.descriptionText
                     color: root.textColor
                     opacity: 0.82
-                    font.family: root.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }

@@ -31,7 +31,7 @@ AppDialog {
     property var pendingBandGainUpdates: ({})
     readonly property int presetSectionHeight: Math.round(Math.max(176, Math.min(236, root.height * 0.34)))
     readonly property int waveformSectionHeight: Math.round(Math.max(180, Math.min(320, root.height * 0.46)))
-    readonly property bool narrowLayout: root.width < 860
+    readonly property bool narrowLayout: root.width < UiMetrics.breakpoint(860)
 
     readonly property var builtInPresetItems: root.buildPresetItems(true)
     readonly property var userPresetItems: root.buildPresetItems(false)
@@ -467,8 +467,7 @@ AppDialog {
 
         contentItem: Text {
             text: tabButton.text
-            font.family: themeManager.fontFamily
-            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+            font.pointSize: UiMetrics.bodyPointSize
             font.bold: tabButton.checked
             color: tabButton.checked ? themeManager.textColor : themeManager.textSecondaryColor
             horizontalAlignment: Text.AlignHCenter
@@ -520,8 +519,7 @@ AppDialog {
 
         contentItem: Text {
             text: presetDelegate.modelData.name
-            font.family: themeManager.fontFamily
-            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+            font.pointSize: UiMetrics.bodyPointSize
             font.bold: presetDelegate.highlighted
             color: presetDelegate.highlighted ? themeManager.primaryColor : themeManager.textColor
             verticalAlignment: Text.AlignVCenter
@@ -650,8 +648,7 @@ AppDialog {
                                 .arg("Ctrl+Shift+I")
                                 .arg("Ctrl+Shift+X")
                         color: themeManager.textMutedColor
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                         wrapMode: Text.WordWrap
                     }
 
@@ -747,7 +744,6 @@ AppDialog {
                                     visible: root.userPresetItems.length === 0
                                     text: root.tr("equalizer.userEmpty")
                                     color: themeManager.textMutedColor
-                                    font.family: themeManager.fontFamily
                                 }
                             }
                         }
@@ -778,7 +774,6 @@ AppDialog {
                         Label {
                             text: root.tr("equalizer.preset")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
                             font.bold: true
                         }
 
@@ -790,8 +785,7 @@ AppDialog {
                                 return preset ? preset.name : "-"
                             }
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.subtitlePointSize
                             font.bold: true
                         }
 
@@ -1047,8 +1041,8 @@ AppDialog {
                                 color: Math.abs(parent.gain) > 0.05
                                        ? themeManager.primaryColor
                                        : themeManager.textMutedColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.microPointSize
                                 horizontalAlignment: Text.AlignHCenter
                             }
 
@@ -1074,8 +1068,8 @@ AppDialog {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: root.formatFrequency(parent.frequency)
                                 color: themeManager.textColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
+                                font.family: UiMetrics.monoFontFamily
+                                font.pointSize: UiMetrics.microPointSize
                                 horizontalAlignment: Text.AlignHCenter
                             }
                         }
@@ -1219,8 +1213,7 @@ AppDialog {
                                          ? root.tr("equalizer.statusError")
                                          : root.tr("equalizer.statusInfo"))
                                 color: root.statusToneAccent(root.statusDialogTone)
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.captionPointSize
                                 font.bold: true
                             }
                         }

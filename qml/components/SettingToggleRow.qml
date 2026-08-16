@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "."
 
 RowLayout {
     id: root
@@ -19,7 +20,7 @@ RowLayout {
     signal toggled(bool checked)
 
     Layout.fillWidth: true
-    Layout.minimumHeight: 38
+    Layout.minimumHeight: UiMetrics.controlHeightNormal
     spacing: rowSpacing
     visible: matchesSearch
 
@@ -53,6 +54,7 @@ RowLayout {
         text: root.highlightedText(root.title)
         textFormat: Text.StyledText
         color: themeManager.textColor
+        font.pointSize: UiMetrics.bodyPointSize
         font.family: themeManager.fontFamily
         wrapMode: Text.WordWrap
         maximumLineCount: 3

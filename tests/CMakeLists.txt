@@ -636,6 +636,7 @@ qt_add_executable(tst_app_dialog
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThemeManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/UiMetrics.cpp
 )
 
 target_include_directories(tst_app_dialog PRIVATE
@@ -653,6 +654,24 @@ target_link_libraries(tst_app_dialog PRIVATE
 )
 
 add_test(NAME tst_app_dialog COMMAND tst_app_dialog)
+
+qt_add_executable(tst_theme_manager_ui_metrics
+    tst_ThemeManagerUiMetrics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThemeManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/UiMetrics.cpp
+)
+
+target_include_directories(tst_theme_manager_ui_metrics PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_theme_manager_ui_metrics PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test
+)
+
+add_test(NAME tst_theme_manager_ui_metrics COMMAND tst_theme_manager_ui_metrics)
 
 # Exercise the production QML module registrar and the actual Main.qml graph.
 # This catches missing declarative C++ type registration that source-only QML

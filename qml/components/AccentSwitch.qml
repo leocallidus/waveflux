@@ -1,14 +1,18 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 Switch {
     id: control
 
-    spacing: 8
+    font.pointSize: UiMetrics.bodyPointSize
+    font.family: themeManager.fontFamily
+    spacing: UiMetrics.spaceM
+    implicitHeight: Math.max(UiMetrics.controlHeightCompact, Math.max(indicator.implicitHeight, contentItem.implicitHeight))
 
     indicator: Rectangle {
-        implicitWidth: 40
-        implicitHeight: 22
+        implicitWidth: Math.max(38, Math.round(40 * UiMetrics.fontScale))
+        implicitHeight: Math.max(20, Math.round(22 * UiMetrics.fontScale))
         radius: height * 0.5
         color: control.checked
                ? Qt.rgba(themeManager.primaryColor.r,
@@ -23,9 +27,9 @@ Switch {
         border.color: control.checked ? themeManager.primaryColor : themeManager.borderColor
 
         Rectangle {
-            width: 16
-            height: 16
-            radius: 8
+            width: Math.max(14, parent.implicitHeight - 6)
+            height: width
+            radius: width * 0.5
             y: (parent.height - height) * 0.5
             x: control.checked ? parent.width - width - 3 : 3
             color: control.checked
@@ -44,7 +48,10 @@ Switch {
     contentItem: Text {
         text: control.text
         color: control.enabled ? themeManager.textColor : themeManager.textMutedColor
-        font.family: themeManager.fontFamily
+        font.pointSize: control.font.pointSize
+        font.family: control.font.family ? control.font.family : themeManager.fontFamily
+        font.weight: control.font.weight
+        font.bold: control.font.bold
         verticalAlignment: Text.AlignVCenter
         leftPadding: control.indicator.width + control.spacing
     }

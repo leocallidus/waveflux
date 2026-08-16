@@ -1,5 +1,7 @@
 #include "ThemeManager.h"
 #include <QStyleHints>
+#include <QFontMetricsF>
+#include <algorithm>
 
 ThemeManager::ThemeManager(QObject *parent)
     : QObject(parent)
@@ -8,6 +10,22 @@ ThemeManager::ThemeManager(QObject *parent)
     , m_customFontSize(0)
     , m_playlistFontFamily("Default")
 {
+    // Capture baseline system font before applying any WaveFlux custom fonts
+    m_baselineSystemFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    if (m_baselineSystemFont.pointSizeF() <= 0.0) {
+        if (m_baselineSystemFont.pointSize() > 0) {
+            m_baselineSystemFont.setPointSizeF(m_baselineSystemFont.pointSize());
+        } else {
+            m_baselineSystemFont.setPointSizeF(10.0);
+        }
+    }
+    QFontMetricsF baseFm(m_baselineSystemFont);
+    m_baseFontLineSpacing = baseFm.lineSpacing();
+    if (m_baseFontLineSpacing <= 0.0) {
+        m_baseFontLineSpacing = baseFm.height() > 0.0 ? baseFm.height() : 14.0;
+    }
+    m_baseFontPointSize = m_baselineSystemFont.pointSizeF();
+
     // Initialize with system palette
     applySystemPalette();
     loadSettings();
@@ -16,6 +34,17 @@ ThemeManager::ThemeManager(QObject *parent)
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
             this, [this]() {
         applySystemPalette();
+        if (m_customFontFamily == QStringLiteral("Default") || m_customFontSize == 0) {
+            QFont sysFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+            if (sysFont.pointSizeF() <= 0.0) {
+                sysFont.setPointSizeF(sysFont.pointSize() > 0 ? sysFont.pointSize() : 10.0);
+            }
+            m_baselineSystemFont = sysFont;
+            QFontMetricsF sysFm(m_baselineSystemFont);
+            m_baseFontLineSpacing = sysFm.lineSpacing() > 0.0 ? sysFm.lineSpacing() : (sysFm.height() > 0.0 ? sysFm.height() : 14.0);
+            m_baseFontPointSize = m_baselineSystemFont.pointSizeF();
+            updateApplicationFont();
+        }
         emit themeChanged();
     });
 }
@@ -218,6 +247,20 @@ void ThemeManager::resetToDefault()
     m_customFontFamily = QStringLiteral("Default");
     m_customFontSize = 0;
     m_playlistFontFamily = QStringLiteral("Default");
+
+    // Refresh baseline system font in case it changed
+    m_baselineSystemFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    if (m_baselineSystemFont.pointSizeF() <= 0.0) {
+        if (m_baselineSystemFont.pointSize() > 0) {
+            m_baselineSystemFont.setPointSizeF(m_baselineSystemFont.pointSize());
+        } else {
+            m_baselineSystemFont.setPointSizeF(10.0);
+        }
+    }
+    QFontMetricsF baseFm(m_baselineSystemFont);
+    m_baseFontLineSpacing = baseFm.lineSpacing() > 0.0 ? baseFm.lineSpacing() : (baseFm.height() > 0.0 ? baseFm.height() : 14.0);
+    m_baseFontPointSize = m_baselineSystemFont.pointSizeF();
+
     emit customFontFamilyChanged();
     emit customFontSizeChanged();
     updateApplicationFont();
@@ -266,7 +309,11 @@ void ThemeManager::loadSettings()
         m_customFontFamily = QStringLiteral("Default");
     }
     if (m_settings.contains("customFontSize")) {
-        m_customFontSize = m_settings.value("customFontSize").toInt();
+        int loadedSize = m_settings.value("customFontSize").toInt();
+        if (loadedSize != 0) {
+            loadedSize = std::clamp(loadedSize, 8, 24);
+        }
+        m_customFontSize = loadedSize;
     } else {
         m_customFontSize = 0;
     }
@@ -356,9 +403,12 @@ void ThemeManager::applySystemPalette()
 QString ThemeManager::fontFamily() const
 {
     if (!m_customFontFamily.isEmpty() && m_customFontFamily != QStringLiteral("Default")) {
-        return m_customFontFamily;
+        const QStringList families = QFontDatabase::families();
+        if (families.contains(m_customFontFamily)) {
+            return m_customFontFamily;
+        }
     }
-    return QGuiApplication::font().family();
+    return m_baselineSystemFont.family();
 }
 
 void ThemeManager::setCustomFontFamily(const QString &family)
@@ -372,8 +422,12 @@ void ThemeManager::setCustomFontFamily(const QString &family)
 
 void ThemeManager::setCustomFontSize(int size)
 {
-    if (m_customFontSize != size) {
-        m_customFontSize = size;
+    int validatedSize = size;
+    if (validatedSize != 0) {
+        validatedSize = std::clamp(validatedSize, 8, 24);
+    }
+    if (m_customFontSize != validatedSize) {
+        m_customFontSize = validatedSize;
         emit customFontSizeChanged();
         updateApplicationFont();
     }
@@ -381,10 +435,7 @@ void ThemeManager::setCustomFontSize(int size)
 
 double ThemeManager::fontSizeMultiplier() const
 {
-    int defSize = QFontDatabase::systemFont(QFontDatabase::GeneralFont).pointSize();
-    if (defSize <= 0) defSize = 10; // Fallback
-    int curSize = m_customFontSize > 0 ? m_customFontSize : defSize;
-    return static_cast<double>(curSize) / defSize;
+    return m_fontMetricsScale;
 }
 
 QStringList ThemeManager::availableFonts() const
@@ -397,23 +448,62 @@ QStringList ThemeManager::availableFonts() const
 
 void ThemeManager::updateApplicationFont()
 {
-    QFont font = QGuiApplication::font();
+    QFont font = m_baselineSystemFont;
+    QString effectiveFamily = m_baselineSystemFont.family();
     if (!m_customFontFamily.isEmpty() && m_customFontFamily != QStringLiteral("Default")) {
-        font.setFamily(m_customFontFamily);
-    } else {
-        font.setFamily(QFontDatabase::systemFont(QFontDatabase::GeneralFont).family());
+        const QStringList families = QFontDatabase::families();
+        if (families.contains(m_customFontFamily)) {
+            effectiveFamily = m_customFontFamily;
+        }
     }
+    font.setFamily(effectiveFamily);
     
-    int defSize = QFontDatabase::systemFont(QFontDatabase::GeneralFont).pointSize();
-    if (defSize <= 0) defSize = 10;
-    int curSize = m_customFontSize > 0 ? m_customFontSize : defSize;
-    font.setPointSize(curSize);
+    qreal effectivePointSize = m_baseFontPointSize;
+    if (m_customFontSize >= 8 && m_customFontSize <= 24) {
+        effectivePointSize = static_cast<qreal>(m_customFontSize);
+    }
+    font.setPointSizeF(effectivePointSize);
     
     QGuiApplication::setFont(font);
+
+    QFontMetricsF fm(font);
+    qreal effectiveLineSpacing = fm.lineSpacing();
+    if (effectiveLineSpacing <= 0.0) {
+        effectiveLineSpacing = fm.height() > 0.0 ? fm.height() : (effectivePointSize * 1.4);
+    }
+    
+    m_effectiveFontPointSize = effectivePointSize;
+    m_effectiveFontLineSpacing = effectiveLineSpacing;
+    
+    qreal baseLs = m_baseFontLineSpacing > 0.0 ? m_baseFontLineSpacing : 14.0;
+    m_fontMetricsScale = std::clamp(effectiveLineSpacing / baseLs, 0.5, 3.0);
+
+    // Playlist font metrics
+    QFont plFont = font;
+    if (!m_playlistFontFamily.isEmpty() && m_playlistFontFamily != QStringLiteral("Default")) {
+        const QStringList families = QFontDatabase::families();
+        if (families.contains(m_playlistFontFamily)) {
+            plFont.setFamily(m_playlistFontFamily);
+        }
+    }
+    QFontMetricsF plFm(plFont);
+    qreal plLineSpacing = plFm.lineSpacing();
+    if (plLineSpacing <= 0.0) {
+        plLineSpacing = plFm.height() > 0.0 ? plFm.height() : (effectivePointSize * 1.4);
+    }
+    m_playlistFontLineSpacing = plLineSpacing;
+    m_playlistFontMetricsScale = std::clamp(plLineSpacing / baseLs, 0.5, 3.0);
     
     emit fontFamilyChanged();
     emit fontSizeMultiplierChanged();
+    emit fontMetricsScaleChanged();
+    emit baseFontPointSizeChanged();
+    emit effectiveFontPointSizeChanged();
+    emit effectiveFontLineSpacingChanged();
+    emit baseFontLineSpacingChanged();
     emit playlistFontFamilyChanged();
+    emit playlistFontMetricsScaleChanged();
+    emit playlistFontLineSpacingChanged();
     emit themeChanged();
 }
 
@@ -430,6 +520,6 @@ void ThemeManager::setPlaylistFontFamily(const QString &family)
     if (m_playlistFontFamily != family) {
         m_playlistFontFamily = family;
         emit playlistFontFamilyChanged();
-        emit themeChanged();
+        updateApplicationFont();
     }
 }

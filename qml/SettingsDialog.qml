@@ -50,23 +50,23 @@ AppDialog {
     readonly property color cardColor: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.55)
     readonly property color cardBorderColor: Qt.rgba(themeManager.borderColor.r, themeManager.borderColor.g, themeManager.borderColor.b, 0.85)
     readonly property var sectionOrder: ["appearance", "system", "audio", "waveform", "trackInfo", "colors", "shortcuts", "theme"]
-    readonly property int preferredDialogWidth: 780
-    readonly property int preferredDialogHeight: 700
-    readonly property int minimumDialogWidth: appSettings.skinMode === "compact" ? 500 : 620
-    readonly property int minimumDialogHeight: appSettings.skinMode === "compact" ? 420 : 520
+    readonly property int preferredDialogWidth: Math.round(780 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(700 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: appSettings.skinMode === "compact" ? Math.round(500 * UiMetrics.fontScale) : Math.round(620 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: appSettings.skinMode === "compact" ? Math.round(420 * UiMetrics.fontScale) : Math.round(520 * UiMetrics.fontScale)
     readonly property bool lowHeightMode: height <= (appSettings.skinMode === "compact" ? 470 : 590)
-    readonly property int dialogContentPadding: lowHeightMode ? 10 : 14
+    readonly property int dialogContentPadding: lowHeightMode ? UiMetrics.spaceS : UiMetrics.spaceM
     readonly property int dialogHeaderHeight: lowHeightMode ? 46 : 52
-    readonly property int sectionPadding: appSettings.skinMode === "compact" ? 10 : 12
-    readonly property int sectionSpacing: appSettings.skinMode === "compact" ? 8 : 10
+    readonly property int sectionPadding: appSettings.skinMode === "compact" ? UiMetrics.spaceS : UiMetrics.spaceM
+    readonly property int sectionSpacing: appSettings.skinMode === "compact" ? UiMetrics.spaceS : UiMetrics.spaceM
     readonly property int sectionTabBarHeight: lowHeightMode ? 44 : 50
     readonly property string sectionTabLayoutWideMode: "wide"
     readonly property string sectionTabLayoutMediumMode: "medium"
     readonly property string sectionTabLayoutCompactMode: "compact"
-    readonly property bool sectionTabComboFallback: width <= (appSettings.skinMode === "compact" ? 470 : 560)
+    readonly property bool sectionTabComboFallback: width <= (appSettings.skinMode === "compact" ? UiMetrics.breakpoint(470) : UiMetrics.breakpoint(560))
     readonly property string sectionTabLayoutMode: {
-        const compactThreshold = appSettings.skinMode === "compact" ? 620 : 720
-        const mediumThreshold = compactThreshold + 120
+        const compactThreshold = appSettings.skinMode === "compact" ? UiMetrics.breakpoint(620) : UiMetrics.breakpoint(720)
+        const mediumThreshold = compactThreshold + UiMetrics.breakpoint(120)
         if (width <= compactThreshold) {
             return sectionTabLayoutCompactMode
         }
@@ -75,10 +75,10 @@ AppDialog {
         }
         return sectionTabLayoutWideMode
     }
-    readonly property int resetDialogPreferredWidth: appSettings.skinMode === "compact" ? 700 : 760
-    readonly property int resetDialogMinimumWidth: appSettings.skinMode === "compact" ? 420 : 520
-    readonly property int resetDialogPreferredHeight: appSettings.skinMode === "compact" ? 430 : 480
-    readonly property int resetDialogMinimumHeight: appSettings.skinMode === "compact" ? 320 : 360
+    readonly property int resetDialogPreferredWidth: appSettings.skinMode === "compact" ? Math.round(700 * UiMetrics.fontScale) : Math.round(760 * UiMetrics.fontScale)
+    readonly property int resetDialogMinimumWidth: appSettings.skinMode === "compact" ? Math.round(420 * UiMetrics.fontScale) : Math.round(520 * UiMetrics.fontScale)
+    readonly property int resetDialogPreferredHeight: appSettings.skinMode === "compact" ? Math.round(430 * UiMetrics.fontScale) : Math.round(480 * UiMetrics.fontScale)
+    readonly property int resetDialogMinimumHeight: appSettings.skinMode === "compact" ? Math.round(320 * UiMetrics.fontScale) : Math.round(360 * UiMetrics.fontScale)
     readonly property string normalSectionsMode: "normalSectionsMode"
     readonly property string searchResultsMode: "searchResultsMode"
     property string activeSectionId: "appearance"
@@ -1592,8 +1592,7 @@ AppDialog {
                             Label {
                                 text: root.title
                                 color: themeManager.textColor
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.subtitlePointSize
                                 font.bold: true
                             }
 
@@ -1605,8 +1604,7 @@ AppDialog {
                                       : root.activeSectionMetadata.description
                                 color: themeManager.textColor
                                 opacity: 0.78
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.bodyPointSize
                                 wrapMode: Text.WordWrap
                                 maximumLineCount: root.lowHeightMode ? 2 : 3
                                 elide: Text.ElideRight
@@ -2290,8 +2288,7 @@ AppDialog {
                             text: root.highlightedSearchText(root.tr("settings.checkUpdatesNowDescription"))
                             textFormat: Text.StyledText
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.bodyPointSize
                             wrapMode: Text.WordWrap
                         }
 
@@ -2512,8 +2509,7 @@ AppDialog {
                                 text: root.highlightedSearchText(root.tr("settings.factoryResetDescription"))
                                 textFormat: Text.StyledText
                                 color: themeManager.textMutedColor
-                                font.family: themeManager.fontFamily
-                                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.bodyPointSize
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -3552,8 +3548,7 @@ AppDialog {
                                         Layout.fillWidth: true
                                         text: modelData.label
                                         color: themeManager.textMutedColor
-                                        font.family: themeManager.fontFamily
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.bodyPointSize
                                         elide: Text.ElideRight
                                     }
 
@@ -3563,7 +3558,7 @@ AppDialog {
                                         text: root.trackInfoOverlayFormat(modelData.key)
                                         activeFocusOnTab: true
                                         selectByMouse: true
-                                        font.family: themeManager.monoFontFamily
+                                        font.family: UiMetrics.monoFontFamily
                                         Accessible.name: modelData.label
                                         onEditingFinished: root.setTrackInfoOverlayFormat(modelData.key, text)
                                         onAccepted: root.setTrackInfoOverlayFormat(modelData.key, text)
@@ -3584,7 +3579,6 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.tr("settings.trackInfoPreview")
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             font.bold: true
                             wrapMode: Text.WordWrap
                         }
@@ -3594,7 +3588,7 @@ AppDialog {
                             visible: root.hasTrackInfoPreview()
                             text: root.trackInfoWindowTitlePreview()
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
+                            font.family: UiMetrics.monoFontFamily
                             wrapMode: Text.WordWrap
                         }
 
@@ -3603,7 +3597,7 @@ AppDialog {
                             visible: root.hasTrackInfoPreview()
                             text: root.trackInfoPreview(appSettings.trackInfoWaveformOverlayFormats.middleCenter || "", "waveformOverlay")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.monoFontFamily
+                            font.family: UiMetrics.monoFontFamily
                             wrapMode: Text.WordWrap
                         }
 
@@ -3612,7 +3606,6 @@ AppDialog {
                             visible: !root.hasTrackInfoPreview()
                             text: root.tr("settings.trackInfoNoPreview")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -3628,7 +3621,6 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.tr("settings.trackInfoSyntax")
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             font.bold: true
                             wrapMode: Text.WordWrap
                         }
@@ -3637,8 +3629,7 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.tr("settings.trackInfoSyntaxHint")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.bodyPointSize
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -3668,7 +3659,6 @@ AppDialog {
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                                 color: themeManager.textColor
-                                font.family: themeManager.fontFamily
                             }
                         }
 
@@ -3689,7 +3679,6 @@ AppDialog {
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                                 color: themeManager.textColor
-                                font.family: themeManager.fontFamily
                             }
                         }
                     }
@@ -3705,7 +3694,6 @@ AppDialog {
                 panelColor: root.cardColor
                 frameColor: root.cardBorderColor
                 titleColor: themeManager.textMutedColor
-                fontFamily: themeManager.fontFamily
                 sectionPadding: root.sectionPadding
                 sectionSpacing: root.sectionSpacing
                 borderRadius: themeManager.borderRadiusLarge
@@ -3719,7 +3707,6 @@ AppDialog {
                             text: root.highlightedSearchText(root.tr("settings.waveformColor"))
                             textFormat: Text.StyledText
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
@@ -3749,8 +3736,8 @@ AppDialog {
                             text: themeManager.waveformColor.toString()
                             color: themeManager.textColor
                             opacity: 0.82
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
                     }
 
@@ -3763,7 +3750,6 @@ AppDialog {
                             text: root.highlightedSearchText(root.tr("settings.waveformBackgroundColor"))
                             textFormat: Text.StyledText
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
@@ -3793,8 +3779,8 @@ AppDialog {
                             text: themeManager.waveformBackgroundColor.toString()
                             color: themeManager.textColor
                             opacity: 0.82
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
                     }
 
@@ -3807,7 +3793,6 @@ AppDialog {
                             text: root.highlightedSearchText(root.tr("settings.progressColor"))
                             textFormat: Text.StyledText
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
@@ -3837,8 +3822,8 @@ AppDialog {
                             text: themeManager.progressColor.toString()
                             color: themeManager.textColor
                             opacity: 0.82
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
                     }
 
@@ -3851,7 +3836,6 @@ AppDialog {
                             text: root.highlightedSearchText(root.tr("settings.accentColor"))
                             textFormat: Text.StyledText
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
@@ -3881,8 +3865,8 @@ AppDialog {
                             text: themeManager.accentColor.toString()
                             color: themeManager.textColor
                             opacity: 0.82
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.bodyPointSize
                         }
                     }
             }
@@ -3983,7 +3967,7 @@ AppDialog {
                             text: root.shortcutStatusText
                             visible: root.shortcutStatusText.length > 0
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
+                            font.pointSize: UiMetrics.captionPointSize
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -3997,31 +3981,28 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.tr("settings.shortcutAction")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                         }
 
                         Label {
-                            Layout.preferredWidth: 118
+                            Layout.preferredWidth: Math.round(118 * UiMetrics.fontScale)
                             text: root.tr("settings.shortcutCurrent")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                         }
 
                         Label {
-                            Layout.preferredWidth: 118
+                            Layout.preferredWidth: Math.round(118 * UiMetrics.fontScale)
                             text: root.tr("settings.shortcutDefault")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                             font.bold: true
                         }
 
                         Item {
-                            Layout.preferredWidth: 220
+                            Layout.preferredWidth: Math.round(220 * UiMetrics.fontScale)
                         }
                     }
 
@@ -4037,14 +4018,14 @@ AppDialog {
                                                                  themeManager.primaryColor.g,
                                                                  themeManager.primaryColor.b,
                                                                  0.08)
-                                                       : Qt.rgba(0, 0, 0, 0)
+                                                        : Qt.rgba(0, 0, 0, 0)
                             radius: 6
                             border.width: 1
                             border.color: modelData.hasCustom ? Qt.rgba(themeManager.primaryColor.r,
                                                                          themeManager.primaryColor.g,
                                                                          themeManager.primaryColor.b,
                                                                          0.28)
-                                                               : root.cardBorderColor
+                                                                : root.cardBorderColor
 
                             RowLayout {
                                 id: shortcutRowLayout
@@ -4060,7 +4041,7 @@ AppDialog {
                                         Layout.fillWidth: true
                                         text: root.shortcutActionLabel(modelData)
                                         color: themeManager.textColor
-                                        font.family: themeManager.fontFamily
+                                        font.pointSize: UiMetrics.bodyPointSize
                                         elide: Text.ElideRight
                                     }
 
@@ -4068,28 +4049,27 @@ AppDialog {
                                         Layout.fillWidth: true
                                         text: root.shortcutGroupLabel(modelData.group) + " | " + root.shortcutContextLabel(modelData.context)
                                         color: themeManager.textMutedColor
-                                        font.family: themeManager.fontFamily
-                                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                        font.pointSize: UiMetrics.captionPointSize
                                         elide: Text.ElideRight
                                     }
                                 }
 
                                 Label {
-                                    Layout.preferredWidth: 118
+                                    Layout.preferredWidth: Math.round(118 * UiMetrics.fontScale)
                                     text: modelData.userAssignable ? root.shortcutSequenceLabel(modelData)
                                                                    : root.tr("settings.shortcutNotAssignable")
                                     color: modelData.enabled ? themeManager.textColor : themeManager.textMutedColor
-                                    font.family: themeManager.monoFontFamily
-                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                    font.family: UiMetrics.monoFontFamily
+                                    font.pointSize: UiMetrics.captionPointSize
                                     elide: Text.ElideRight
                                 }
 
                                 Label {
-                                    Layout.preferredWidth: 118
+                                    Layout.preferredWidth: Math.round(118 * UiMetrics.fontScale)
                                     text: root.shortcutDefaultLabel(modelData)
                                     color: themeManager.textMutedColor
-                                    font.family: themeManager.monoFontFamily
-                                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                                    font.family: UiMetrics.monoFontFamily
+                                    font.pointSize: UiMetrics.captionPointSize
                                     elide: Text.ElideRight
                                 }
 
@@ -4257,8 +4237,7 @@ AppDialog {
                 Layout.topMargin: 18
                 text: root.shortcutCaptureTargetLabel
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(15 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.titlePointSize
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -4269,7 +4248,6 @@ AppDialog {
                 Layout.rightMargin: 18
                 text: root.tr("settings.shortcutCaptureHint")
                 color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
                 wrapMode: Text.WordWrap
             }
 
@@ -4280,8 +4258,7 @@ AppDialog {
                 visible: root.shortcutCaptureTargetAllowEmpty
                 text: root.tr("settings.shortcutCaptureClearHint")
                 color: themeManager.textMutedColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.bodyPointSize
                 wrapMode: Text.WordWrap
             }
 
@@ -4310,7 +4287,7 @@ AppDialog {
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         title: root.tr("settings.shortcutConflictTitle")
-        width: shortcutConflictDialog.isSeparateWindow ? 520 : (root.parent ? Math.min(520, root.parent.width - 40) : 520)
+        width: shortcutConflictDialog.isSeparateWindow ? Math.round(520 * UiMetrics.fontScale) : (root.parent ? Math.min(Math.round(520 * UiMetrics.fontScale), root.parent.width - 40) : Math.round(520 * UiMetrics.fontScale))
         anchors.centerIn: !shortcutConflictDialog.isSeparateWindow ? parent : undefined
 
         background: Rectangle {
@@ -4331,7 +4308,6 @@ AppDialog {
                 Layout.topMargin: 18
                 text: root.tr("settings.shortcutConflictMessage") + " " + String(root.pendingShortcutConflictReport.displaySequence || root.pendingShortcutConflictSequence)
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
                 wrapMode: Text.WordWrap
             }
 
@@ -4360,7 +4336,6 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.shortcutActionLabel(modelData)
                             color: themeManager.textColor
-                            font.family: themeManager.fontFamily
                             elide: Text.ElideRight
                         }
 
@@ -4368,8 +4343,7 @@ AppDialog {
                             Layout.fillWidth: true
                             text: root.shortcutContextLabel(modelData.context) + " | " + String(modelData.displaySequence || "")
                             color: themeManager.textMutedColor
-                            font.family: themeManager.fontFamily
-                            font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.captionPointSize
                             elide: Text.ElideRight
                         }
                     }
@@ -4450,8 +4424,7 @@ AppDialog {
                 Layout.fillWidth: true
                 text: root.tr("settings.factoryResetTitle")
                 color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.subtitlePointSize
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -4461,8 +4434,7 @@ AppDialog {
                 text: root.tr("settings.factoryResetMessage")
                 color: themeManager.textColor
                 opacity: 0.84
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.bodyPointSize
                 wrapMode: Text.WordWrap
             }
 
@@ -4487,16 +4459,14 @@ AppDialog {
                         Layout.alignment: Qt.AlignVCenter
                         text: root.factoryResetErrorText
                         color: "#d94c4c"
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                         wrapMode: Text.WordWrap
                     }
 
                     Button {
                         Layout.alignment: Qt.AlignVCenter
                         text: root.tr("settings.copyError")
-                        font.family: themeManager.fontFamily
-                        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                        font.pointSize: UiMetrics.bodyPointSize
                         onClicked: {
                             xdgPortalFilePicker.copyTextToClipboard(root.factoryResetErrorText)
                         }
@@ -4583,8 +4553,7 @@ AppDialog {
                     Layout.fillWidth: true
                     text: root.pendingResetTitle
                     color: themeManager.textColor
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.subtitlePointSize
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -4594,8 +4563,7 @@ AppDialog {
                     text: root.tr("settings.resetConfirmMessage")
                     color: themeManager.textColor
                     opacity: 0.82
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     wrapMode: Text.WordWrap
                 }
 
@@ -4632,7 +4600,6 @@ AppDialog {
                                     Label {
                                         text: modelData.label
                                         color: themeManager.textColor
-                                        font.family: themeManager.fontFamily
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
                                     }
@@ -4641,7 +4608,7 @@ AppDialog {
                                         text: modelData.from
                                         color: themeManager.textColor
                                         opacity: 0.78
-                                        font.family: themeManager.monoFontFamily
+                                        font.family: UiMetrics.monoFontFamily
                                         Layout.preferredWidth: Math.max(76, Math.min(150, resetChangesColumn.width * 0.22))
                                         Layout.alignment: Qt.AlignRight
                                         horizontalAlignment: Text.AlignRight
@@ -4652,14 +4619,14 @@ AppDialog {
                                         text: "->"
                                         color: themeManager.textColor
                                         opacity: 0.78
-                                        font.family: themeManager.monoFontFamily
+                                        font.family: UiMetrics.monoFontFamily
                                         Layout.alignment: Qt.AlignRight
                                     }
 
                                     Label {
                                         text: modelData.to
                                         color: themeManager.primaryColor
-                                        font.family: themeManager.monoFontFamily
+                                        font.family: UiMetrics.monoFontFamily
                                         Layout.preferredWidth: Math.max(96, Math.min(180, resetChangesColumn.width * 0.28))
                                         Layout.alignment: Qt.AlignRight
                                         horizontalAlignment: Text.AlignRight
@@ -4677,8 +4644,7 @@ AppDialog {
                     visible: root.pendingResetChanges.length === 0
                     color: themeManager.textColor
                     opacity: 0.82
-                    font.family: themeManager.fontFamily
-                    font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+                    font.pointSize: UiMetrics.bodyPointSize
                     wrapMode: Text.WordWrap
                 }
             }

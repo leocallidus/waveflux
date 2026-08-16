@@ -7,11 +7,11 @@ import "components"
 AppDialog {
     id: root
 
-    readonly property int preferredDialogWidth: 840
-    readonly property int preferredDialogHeight: 780
-    readonly property int minimumDialogWidth: 560
-    readonly property int minimumDialogHeight: 560
-    readonly property bool compactLayout: width < 760
+    readonly property int preferredDialogWidth: Math.round(840 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(780 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(560 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(560 * UiMetrics.fontScale)
+    readonly property bool compactLayout: width < UiMetrics.breakpoint(760)
     readonly property var probeResult: ytDlpImportService.probeResult
     readonly property var finalSummary: ytDlpImportService.finalSummary
     readonly property var completedReports: ytDlpImportService.completedReports || []
@@ -775,7 +775,7 @@ AppDialog {
 
                             Label {
                                 text: root.tr("ytDlpImport.dialogTitle")
-                                font.pixelSize: Math.round(22 * themeManager.fontSizeMultiplier)
+                                font.pointSize: UiMetrics.displayPointSize
                                 font.bold: true
                                 color: themeManager.textColor
                             }
@@ -1642,7 +1642,7 @@ AppDialog {
                             text: String(finalSummary.headlineText || "")
                             color: themeManager.textColor
                             font.bold: true
-                            font.pixelSize: Math.round(16 * themeManager.fontSizeMultiplier)
+                            font.pointSize: UiMetrics.titlePointSize
                             wrapMode: Text.WordWrap
                         }
 

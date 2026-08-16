@@ -8,10 +8,10 @@ import "IconResolver.js" as IconResolver
 AppDialog {
     id: root
 
-    readonly property int preferredDialogWidth: 560
-    readonly property int preferredDialogHeight: 560
-    readonly property int minimumDialogWidth: 420
-    readonly property int minimumDialogHeight: 360
+    readonly property int preferredDialogWidth: Math.round(560 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(560 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(420 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(360 * UiMetrics.fontScale)
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -91,7 +91,7 @@ AppDialog {
                 text: root.tr("tagEditor.title")
                 color: Kirigami.Theme.textColor
                 font.bold: true
-                font.pixelSize: Math.round(14 * themeManager.fontSizeMultiplier)
+                font.pointSize: UiMetrics.subtitlePointSize
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignVCenter

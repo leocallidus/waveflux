@@ -28,11 +28,15 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(bool cueWaveformOverlayLabelsEnabled READ cueWaveformOverlayLabelsEnabled WRITE setCueWaveformOverlayLabelsEnabled NOTIFY cueWaveformOverlayLabelsEnabledChanged)
     Q_PROPERTY(bool cueWaveformOverlayAutoHideOnZoom READ cueWaveformOverlayAutoHideOnZoom WRITE setCueWaveformOverlayAutoHideOnZoom NOTIFY cueWaveformOverlayAutoHideOnZoomChanged)
     Q_PROPERTY(bool showSpeedPitchControls READ showSpeedPitchControls WRITE setShowSpeedPitchControls NOTIFY showSpeedPitchControlsChanged)
+    Q_PROPERTY(bool fragmentRepeatEnabled READ fragmentRepeatEnabled WRITE setFragmentRepeatEnabled NOTIFY fragmentRepeatEnabledChanged)
+    Q_PROPERTY(bool persistFragmentLoopPerTrack READ persistFragmentLoopPerTrack WRITE setPersistFragmentLoopPerTrack NOTIFY persistFragmentLoopPerTrackChanged)
+    Q_PROPERTY(QVariantMap trackFragmentLoops READ trackFragmentLoops WRITE setTrackFragmentLoops NOTIFY trackFragmentLoopsChanged)
     Q_PROPERTY(bool reversePlayback READ reversePlayback WRITE setReversePlayback NOTIFY reversePlaybackChanged)
     Q_PROPERTY(QString audioQualityProfile READ audioQualityProfile WRITE setAudioQualityProfile NOTIFY audioQualityProfileChanged)
     Q_PROPERTY(bool displayVolumeInDecibels READ displayVolumeInDecibels WRITE setDisplayVolumeInDecibels NOTIFY displayVolumeInDecibelsChanged)
     Q_PROPERTY(bool dynamicSpectrum READ dynamicSpectrum WRITE setDynamicSpectrum NOTIFY dynamicSpectrumChanged)
     Q_PROPERTY(bool confirmTrashDeletion READ confirmTrashDeletion WRITE setConfirmTrashDeletion NOTIFY confirmTrashDeletionChanged)
+    Q_PROPERTY(bool separateWindowDialogs READ separateWindowDialogs WRITE setSeparateWindowDialogs NOTIFY separateWindowDialogsChanged)
     Q_PROPERTY(bool automaticPlaylistSearch READ automaticPlaylistSearch WRITE setAutomaticPlaylistSearch NOTIFY automaticPlaylistSearchChanged)
     Q_PROPERTY(bool autoAddTracksFromPlaylistFolder READ autoAddTracksFromPlaylistFolder WRITE setAutoAddTracksFromPlaylistFolder NOTIFY autoAddTracksFromPlaylistFolderChanged)
     Q_PROPERTY(bool playlistScrollBarVisible READ playlistScrollBarVisible WRITE setPlaylistScrollBarVisible NOTIFY playlistScrollBarVisibleChanged)
@@ -95,11 +99,15 @@ public:
     bool cueWaveformOverlayLabelsEnabled() const { return m_cueWaveformOverlayLabelsEnabled; }
     bool cueWaveformOverlayAutoHideOnZoom() const { return m_cueWaveformOverlayAutoHideOnZoom; }
     bool showSpeedPitchControls() const { return m_showSpeedPitchControls; }
+    bool fragmentRepeatEnabled() const { return m_fragmentRepeatEnabled; }
+    bool persistFragmentLoopPerTrack() const { return m_persistFragmentLoopPerTrack; }
+    QVariantMap trackFragmentLoops() const { return m_trackFragmentLoops; }
     bool reversePlayback() const { return m_reversePlayback; }
     QString audioQualityProfile() const { return m_audioQualityProfile; }
     bool displayVolumeInDecibels() const { return m_displayVolumeInDecibels; }
     bool dynamicSpectrum() const { return m_dynamicSpectrum; }
     bool confirmTrashDeletion() const { return m_confirmTrashDeletion; }
+    bool separateWindowDialogs() const { return m_separateWindowDialogs; }
     bool automaticPlaylistSearch() const { return m_automaticPlaylistSearch; }
     bool autoAddTracksFromPlaylistFolder() const { return m_autoAddTracksFromPlaylistFolder; }
     bool playlistScrollBarVisible() const { return m_playlistScrollBarVisible; }
@@ -166,6 +174,9 @@ public:
                                               const QVariantMap &trackInfo,
                                               const QString &contextName) const;
     Q_INVOKABLE void playSystemWarningSound() const;
+    Q_INVOKABLE void saveTrackFragmentLoop(const QString &filePath, qint64 startMs, qint64 endMs);
+    Q_INVOKABLE void removeTrackFragmentLoop(const QString &filePath);
+    Q_INVOKABLE QVariantMap getTrackFragmentLoop(const QString &filePath) const;
     bool fullApplicationResetPending() const { return m_fullApplicationResetPending; }
     static QString translateForCurrentLanguage(const QString &key);
 
@@ -183,11 +194,15 @@ public slots:
     void setCueWaveformOverlayLabelsEnabled(bool enabled);
     void setCueWaveformOverlayAutoHideOnZoom(bool enabled);
     void setShowSpeedPitchControls(bool show);
+    void setFragmentRepeatEnabled(bool enabled);
+    void setPersistFragmentLoopPerTrack(bool enabled);
+    void setTrackFragmentLoops(const QVariantMap &loops);
     void setReversePlayback(bool enabled);
     void setAudioQualityProfile(const QString &profile);
     void setDisplayVolumeInDecibels(bool enabled);
     void setDynamicSpectrum(bool enabled);
     void setConfirmTrashDeletion(bool enabled);
+    void setSeparateWindowDialogs(bool enabled);
     void setAutomaticPlaylistSearch(bool enabled);
     void setAutoAddTracksFromPlaylistFolder(bool enabled);
     void setPlaylistScrollBarVisible(bool visible);
@@ -248,11 +263,15 @@ signals:
     void cueWaveformOverlayLabelsEnabledChanged();
     void cueWaveformOverlayAutoHideOnZoomChanged();
     void showSpeedPitchControlsChanged();
+    void fragmentRepeatEnabledChanged();
+    void persistFragmentLoopPerTrackChanged();
+    void trackFragmentLoopsChanged();
     void reversePlaybackChanged();
     void audioQualityProfileChanged();
     void displayVolumeInDecibelsChanged();
     void dynamicSpectrumChanged();
     void confirmTrashDeletionChanged();
+    void separateWindowDialogsChanged();
     void automaticPlaylistSearchChanged();
     void autoAddTracksFromPlaylistFolderChanged();
     void playlistScrollBarVisibleChanged();
@@ -333,11 +352,15 @@ private:
     bool m_cueWaveformOverlayLabelsEnabled = true;
     bool m_cueWaveformOverlayAutoHideOnZoom = true;
     bool m_showSpeedPitchControls = false;
+    bool m_fragmentRepeatEnabled = false;
+    bool m_persistFragmentLoopPerTrack = false;
+    QVariantMap m_trackFragmentLoops;
     bool m_reversePlayback = false;
     QString m_audioQualityProfile = QStringLiteral("standard");
     bool m_displayVolumeInDecibels = false;
     bool m_dynamicSpectrum = false;
     bool m_confirmTrashDeletion = true;
+    bool m_separateWindowDialogs = false;
     bool m_automaticPlaylistSearch = false;
     bool m_autoAddTracksFromPlaylistFolder = true;
     bool m_playlistScrollBarVisible = true;

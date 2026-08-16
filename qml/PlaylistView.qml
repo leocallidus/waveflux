@@ -16,6 +16,7 @@ Item {
     property int appliedSearchRevision: searchRevision
     property int searchFieldMask: 0
     property int searchQuickFilterMask: 0
+    property bool filterViewportResetPending: false
     readonly property bool searchFiltersActive: searchFieldMask !== 0 || searchQuickFilterMask !== 0
     readonly property int searchFieldTitleBit: 1
     readonly property int searchFieldArtistBit: 2
@@ -23,6 +24,24 @@ Item {
     readonly property int searchFieldPathBit: 8
     readonly property int searchQuickLosslessBit: 1
     readonly property int searchQuickHiResBit: 2
+
+    readonly property var filteredTrackModel: playlistViewFilterModel
+
+    Binding {
+        target: root.filteredTrackModel
+        property: "normalizedQuery"
+        value: root.normalizedSearchQuery
+    }
+    Binding {
+        target: root.filteredTrackModel
+        property: "fieldMask"
+        value: root.searchFieldMask
+    }
+    Binding {
+        target: root.filteredTrackModel
+        property: "quickFilterMask"
+        value: root.searchQuickFilterMask
+    }
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -49,28 +68,18 @@ Item {
 
     function matchCount() {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.countMatchingAdvancedNormalized(
-                    root.normalizedSearchQuery,
-                    root.searchFieldMask,
-                    root.searchQuickFilterMask)
+        return filteredTrackModel.count
     }
 
     function matchCountBefore(index) {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.countMatchingAdvancedNormalizedBefore(
-                    index,
-                    root.normalizedSearchQuery,
-                    root.searchFieldMask,
-                    root.searchQuickFilterMask)
+        const proxyIndex = filteredTrackModel.proxyIndexForSource(index)
+        return proxyIndex >= 0 ? proxyIndex : 0
     }
 
     function matchesActiveFilterAt(index) {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.matchesSearchAdvancedNormalized(
-                    index,
-                    root.normalizedSearchQuery,
-                    root.searchFieldMask,
-                    root.searchQuickFilterMask)
+        return filteredTrackModel.proxyIndexForSource(index) >= 0
     }
 
     function uiActiveIndex() {
@@ -100,7 +109,10 @@ Item {
         }
         Qt.callLater(function() {
             if (!root.fastLocateCurrentTrack()) {
-                playlistView.positionViewAtIndex(current, ListView.Center)
+                const proxyIndex = filteredTrackModel.proxyIndexForSource(current)
+                if (proxyIndex >= 0) {
+                    playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+                }
             }
         })
     }
@@ -133,16 +145,24 @@ Item {
         onTriggered: root.appliedSearchRevision = root.searchRevision
     }
 
-    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync()
-    onSearchFieldMaskChanged: root.scheduleFilterViewportSync()
-    onSearchQuickFilterMaskChanged: root.scheduleFilterViewportSync()
-    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync()
+    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync(true)
+    onSearchFieldMaskChanged: root.scheduleFilterViewportSync(true)
+    onSearchQuickFilterMaskChanged: root.scheduleFilterViewportSync(true)
+    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync(true)
+
+    Connections {
+        target: filteredTrackModel
+        function onCountChanged() { root.scheduleFilterViewportSync() }
+    }
 
     Timer {
         id: filterViewportSyncTimer
         interval: 0
         repeat: false
-        onTriggered: root.syncViewportAfterFilterChange()
+        onTriggered: {
+            root.syncViewportAfterFilterChange()
+            Qt.callLater(root.syncViewportAfterFilterChange)
+        }
     }
 
     function applyCenteredContentY(visibleRow, visibleCount) {
@@ -153,7 +173,10 @@ Item {
         const rowHeight = 40
         const contentHeight = Math.max(visibleCount * rowHeight, viewportHeight)
         const centerY = (visibleRow + 0.5) * rowHeight
-        playlistView.contentY = Math.max(0, Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
+        const offset = Math.max(0,
+                                Math.min(contentHeight - viewportHeight,
+                                         centerY - viewportHeight * 0.5))
+        playlistView.contentY = Number(playlistView.originY || 0) + offset
         return true
     }
 
@@ -166,8 +189,10 @@ Item {
         if (!playlistView || playlistView.height <= 0) {
             return
         }
-        const maxY = Math.max(0, root.logicalVisibleCount() * 40 - playlistView.height)
-        playlistView.contentY = Math.max(0, Math.min(maxY, Number(playlistView.contentY) || 0))
+        const topY = Number(playlistView.originY || 0)
+        const maxOffset = Math.max(0, playlistView.contentHeight - playlistView.height)
+        const offset = Number(playlistView.contentY || 0) - topY
+        playlistView.contentY = topY + Math.max(0, Math.min(maxOffset, offset))
     }
 
     function locateModelIndexFast(index) {
@@ -190,9 +215,12 @@ Item {
         return root.applyCenteredContentY(visibleRow, visibleCount)
     }
 
-    function scheduleFilterViewportSync() {
+    function scheduleFilterViewportSync(resetToStart) {
         if (!playlistView || playlistView.height <= 0) {
             return
+        }
+        if (resetToStart === true) {
+            filterViewportResetPending = true
         }
         filterViewportSyncTimer.restart()
     }
@@ -204,6 +232,12 @@ Item {
 
         if (playlistView.forceLayout) {
             playlistView.forceLayout()
+        }
+
+        if (filterViewportResetPending) {
+            filterViewportResetPending = false
+            playlistView.positionViewAtBeginning()
+            return
         }
 
         const current = root.uiActiveIndex()
@@ -254,7 +288,10 @@ Item {
             const current = root.uiActiveIndex()
             if (current >= 0 && currentTrackMatchesActiveFilter()) {
                 if (!root.fastLocateCurrentTrack()) {
-                    playlistView.positionViewAtIndex(current, ListView.Center)
+                    const proxyIndex = filteredTrackModel.proxyIndexForSource(current)
+                    if (proxyIndex >= 0) {
+                        playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+                    }
                 }
             }
         })
@@ -411,7 +448,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: trackModel
+            model: filteredTrackModel
 
             ScrollBar.vertical: ScrollBar {
                 id: playlistScrollBar
@@ -442,6 +479,7 @@ Item {
             delegate: ItemDelegate {
                 id: trackDelegate
                 required property int index
+                required property int sourceIndex
                 required property string displayName
                 required property string title
                 required property string artist
@@ -453,17 +491,15 @@ Item {
                     return playbackController.queuedPosition(filePath)
                 }
                 readonly property int transitionStateValue: playbackController.transitionState
-                readonly property bool activeTrack: index === playbackController.activeTrackIndex
-                readonly property bool pendingTrack: index === playbackController.pendingTrackIndex
+                readonly property bool activeTrack: sourceIndex === playbackController.activeTrackIndex
+                readonly property bool pendingTrack: sourceIndex === playbackController.pendingTrackIndex
                                                     && (trackDelegate.transitionStateValue === 1
                                                         || trackDelegate.transitionStateValue === 2
                                                         || trackDelegate.transitionStateValue === 4)
                                                     && playbackController.pendingTrackIndex !== playbackController.activeTrackIndex
 
                 width: playlistView.width
-                visible: root.matchesActiveFilterAt(index)
-                height: visible ? 40 : 0
-                enabled: visible
+                height: 40
                 highlighted: activeTrack
 
                 background: Rectangle {
@@ -483,7 +519,7 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
 
                     Label {
-                        text: (index + 1) + "."
+                        text: (sourceIndex + 1) + "."
                         Layout.preferredWidth: 30
                         horizontalAlignment: Text.AlignRight
                         color: trackDelegate.highlighted ? themeManager.backgroundColor : themeManager.textColor
@@ -506,7 +542,7 @@ Item {
                         spacing: 2
 
                         Label {
-                            text: root.formatTrackDisplay(index, title, displayName)
+                            text: root.formatTrackDisplay(sourceIndex, title, displayName)
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             color: trackDelegate.highlighted ? themeManager.backgroundColor : themeManager.textColor
@@ -540,13 +576,13 @@ Item {
                         icon.width: 16
                         icon.height: 16
                         visible: trackDelegate.hovered
-                        onClicked: trackModel.removeAt(index)
+                        onClicked: trackModel.removeAt(sourceIndex)
                     }
                 }
 
-                onClicked: trackModel.currentIndex = index
+                onClicked: trackModel.currentIndex = sourceIndex
                 onDoubleClicked: {
-                    playbackController.requestPlayIndex(index, "playlist_view.double_click")
+                    playbackController.requestPlayIndex(sourceIndex, "playlist_view.double_click")
                 }
 
                 MouseArea {
@@ -554,7 +590,7 @@ Item {
                     acceptedButtons: Qt.RightButton
                     onClicked: function(mouse) {
                         if (mouse.button === Qt.RightButton) {
-                            contextMenu.trackIndex = index
+                            contextMenu.trackIndex = sourceIndex
                             contextMenu.popup()
                         }
                     }
@@ -597,32 +633,46 @@ Item {
         id: quickFilterMenu
 
         MenuItem {
-            text: (root.searchFieldMask === 0 ? "\u2713 " : "") + root.tr("header.filterAllFields")
+            text: root.tr("header.filterAllFields")
+            checkable: true
+            checked: root.searchFieldMask === 0
             onTriggered: root.searchFieldMask = 0
         }
         MenuItem {
-            text: ((root.searchFieldMask & root.searchFieldTitleBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterTitle")
+            text: root.tr("header.filterTitle")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldTitleBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldTitleBit)
         }
         MenuItem {
-            text: ((root.searchFieldMask & root.searchFieldArtistBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterArtist")
+            text: root.tr("header.filterArtist")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldArtistBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldArtistBit)
         }
         MenuItem {
-            text: ((root.searchFieldMask & root.searchFieldAlbumBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterAlbum")
+            text: root.tr("header.filterAlbum")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldAlbumBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldAlbumBit)
         }
         MenuItem {
-            text: ((root.searchFieldMask & root.searchFieldPathBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterPath")
+            text: root.tr("header.filterPath")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldPathBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldPathBit)
         }
         MenuSeparator {}
         MenuItem {
-            text: ((root.searchQuickFilterMask & root.searchQuickLosslessBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterLossless")
+            text: root.tr("header.filterLossless")
+            checkable: true
+            checked: (root.searchQuickFilterMask & root.searchQuickLosslessBit) !== 0
             onTriggered: root.searchQuickFilterMask = root.toggleMaskBit(root.searchQuickFilterMask, root.searchQuickLosslessBit)
         }
         MenuItem {
-            text: ((root.searchQuickFilterMask & root.searchQuickHiResBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterHiRes")
+            text: root.tr("header.filterHiRes")
+            checkable: true
+            checked: (root.searchQuickFilterMask & root.searchQuickHiResBit) !== 0
             onTriggered: root.searchQuickFilterMask = root.toggleMaskBit(root.searchQuickFilterMask, root.searchQuickHiResBit)
         }
         MenuSeparator {}
@@ -730,11 +780,11 @@ Item {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: trashConfirmDialog
         modal: true
         title: root.tr("playlist.confirmTrashTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         onAccepted: {
@@ -752,6 +802,30 @@ Item {
             wrapMode: Text.WordWrap
             color: themeManager.textColor
             padding: 8
+        }
+
+        footer: Rectangle {
+            implicitHeight: trashConfirmActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: trashConfirmActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: trashConfirmDialog.reject()
+                }
+                Button {
+                    text: root.tr("playlist.moveToTrash")
+                    accent: true
+                    onClicked: trashConfirmDialog.accept()
+                }
+            }
         }
     }
 

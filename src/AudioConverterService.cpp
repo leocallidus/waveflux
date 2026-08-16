@@ -37,6 +37,8 @@ constexpr AudioConverterService::FormatProfile kFormatProfiles[] = {
      false, false, true, true, true, 0, 44100},
     {"wav", "WAV", "wav", "RIFF/WAVE", "PCM", "wavenc", "identity",
      false, false, true, true, false, 0, 44100},
+    {"ogg", "Ogg Vorbis", "ogg", "Ogg", "Vorbis", "oggmux", "vorbisenc",
+     true, true, true, true, false, 192, 44100},
     {"opus", "Ogg Opus", "opus", "Ogg", "Opus", "oggmux", "opusenc",
      true, true, true, true, false, 192, 48000},
     {"webm", "WebM Opus", "webm", "WebM", "Opus", "webmmux", "opusenc",
@@ -51,6 +53,14 @@ QVariantList bitrateValuesForProfile(const AudioConverterService::FormatProfile 
     }
 
     const QString profileId = QString::fromLatin1(profile.id);
+    if (profileId == QStringLiteral("ogg")) {
+        const int allowed[] = {64, 96, 128, 160, 192, 224};
+        for (int value : allowed) {
+            values.push_back(value);
+        }
+        return values;
+    }
+
     if (profileId == QStringLiteral("opus") || profileId == QStringLiteral("webm")) {
         const int allowed[] = {64, 96, 128, 160, 192, 256};
         for (int value : allowed) {
@@ -1204,11 +1214,17 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
 
     if (profile->supportsBitrate && m_encoderElement && hasElementProperty(m_encoderElement, "bitrate")) {
         const QString profileId = QString::fromLatin1(profile->id);
-        const int bitrateValue = (profileId == QStringLiteral("opus")
+        const int bitrateValue = (profileId == QStringLiteral("ogg")
+                                  || profileId == QStringLiteral("opus")
                                   || profileId == QStringLiteral("webm"))
             ? m_bitrate * 1000
             : m_bitrate;
         g_object_set(m_encoderElement, "bitrate", bitrateValue, nullptr);
+    }
+
+    if (QString::fromLatin1(profile->id) == QStringLiteral("ogg") && m_encoderElement
+        && hasElementProperty(m_encoderElement, "managed")) {
+        g_object_set(m_encoderElement, "managed", TRUE, nullptr);
     }
 
     if (QString::fromLatin1(profile->id) == QStringLiteral("mp3") && m_encoderElement) {
@@ -1766,6 +1782,20 @@ int AudioConverterService::normalizeBitrateForFormat(int bitrate, const QString 
     }
 
     const QString profileId = QString::fromLatin1(profile->id);
+    if (profileId == QStringLiteral("ogg")) {
+        static const int kAllowedBitrates[] = {64, 96, 128, 160, 192, 224};
+        int best = kAllowedBitrates[0];
+        int bestDistance = qAbs(kAllowedBitrates[0] - bitrate);
+        for (int candidate : kAllowedBitrates) {
+            const int distance = qAbs(candidate - bitrate);
+            if (distance < bestDistance) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
     if (profileId == QStringLiteral("opus") || profileId == QStringLiteral("webm")) {
         static const int kAllowedBitrates[] = {64, 96, 128, 160, 192, 256};
         int best = kAllowedBitrates[0];

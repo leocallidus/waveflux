@@ -405,6 +405,25 @@ void PlaybackController::onAudioPositionChanged(qint64 positionMs)
     }
     setActiveTrackIndex(syncedIndex);
 
+    if (m_fragmentRepeatEnabled && hasValidFragmentBoundaries()) {
+        const bool reverse = m_audioEngine->reversePlayback();
+        if (!reverse) {
+            if (positionMs >= m_fragmentEndMs) {
+                m_audioEngine->seekWithSource(m_fragmentStartMs,
+                                              QStringLiteral("playback_controller.fragment_loop"));
+                m_audioEngine->play();
+                return;
+            }
+        } else {
+            if (positionMs <= m_fragmentStartMs) {
+                m_audioEngine->seekWithSource(m_fragmentEndMs,
+                                              QStringLiteral("playback_controller.fragment_loop_reverse"));
+                m_audioEngine->play();
+                return;
+            }
+        }
+    }
+
     const bool reversePlayback = m_audioEngine->reversePlayback();
     const bool cueTrack = m_trackModel->isCueTrack(syncedIndex);
     if (!cueTrack) {
@@ -1341,6 +1360,15 @@ void PlaybackController::handleTrackEndedInternal(quint64 eosTransitionId, bool 
         {QStringLiteral("fromEosSignal"), fromEosSignal}
     });
 
+    if (m_fragmentRepeatEnabled && hasValidFragmentBoundaries()) {
+        traceTransitionEvent("handle_track_ended_fragment_loop", eosTransitionId);
+        const bool reverse = m_audioEngine && m_audioEngine->reversePlayback();
+        const qint64 loopPos = reverse ? m_fragmentEndMs : m_fragmentStartMs;
+        m_audioEngine->seekWithSource(loopPos, QStringLiteral("playback_controller.fragment_loop_eos"));
+        m_audioEngine->play();
+        return;
+    }
+
     const bool openMptBackend = activeBackendIsOpenMpt();
 
     if (fromEosSignal && eosTransitionId > 0) {
@@ -1555,6 +1583,14 @@ void PlaybackController::prepareGaplessTransitionForSource(quint64 sourceTransit
     // RepeatOne is handled in handleTrackEnded, no gapless needed
     if (m_repeatMode == RepeatOne) {
         traceTransitionEvent("prepare_gapless_skipped_repeat_one", sourceTransitionId);
+        clearGaplessTransitionState();
+        setPendingTrackIndex(-1);
+        setTransitionState(TransitionIdle);
+        return;
+    }
+
+    if (m_fragmentRepeatEnabled && hasValidFragmentBoundaries()) {
+        traceTransitionEvent("prepare_gapless_skipped_fragment_repeat", sourceTransitionId);
         clearGaplessTransitionState();
         setPendingTrackIndex(-1);
         setTransitionState(TransitionIdle);
@@ -2815,6 +2851,21 @@ void PlaybackController::onCurrentFileChanged(const QString &filePath)
         traceTransitionEvent("current_file_changed_committed", fileTransitionId, {
             {QStringLiteral("filePath"), filePath}
         });
+
+        if (m_persistFragmentLoopPerTrack && m_appSettingsManager) {
+            const QVariantMap loop = m_appSettingsManager->getTrackFragmentLoop(filePath);
+            if (loop.contains(QStringLiteral("startMs")) && loop.contains(QStringLiteral("endMs"))) {
+                m_fragmentStartMs = loop.value(QStringLiteral("startMs")).toLongLong();
+                m_fragmentEndMs = loop.value(QStringLiteral("endMs")).toLongLong();
+            } else {
+                m_fragmentStartMs = -1;
+                m_fragmentEndMs = -1;
+            }
+        } else if (!m_persistFragmentLoopPerTrack) {
+            m_fragmentStartMs = -1;
+            m_fragmentEndMs = -1;
+        }
+        emit fragmentRepeatStateChanged();
     }
 }
 
@@ -2972,4 +3023,170 @@ void PlaybackController::confirmGaplessTransition(int index, quint64 transitionI
     }
 
     emit navigationStateChanged();
+}
+
+
+bool PlaybackController::fragmentRepeatActive() const
+{
+    return m_fragmentRepeatEnabled && hasValidFragmentBoundaries();
+}
+
+bool PlaybackController::hasValidFragmentBoundaries() const
+{
+    return m_fragmentStartMs >= 0 && m_fragmentEndMs > m_fragmentStartMs;
+}
+
+void PlaybackController::setAppSettingsManager(AppSettingsManager *settingsManager)
+{
+    m_appSettingsManager = settingsManager;
+}
+
+void PlaybackController::setFragmentRepeatEnabled(bool enabled)
+{
+    if (m_fragmentRepeatEnabled == enabled) {
+        return;
+    }
+    m_fragmentRepeatEnabled = enabled;
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::setPersistFragmentLoopPerTrack(bool enabled)
+{
+    if (m_persistFragmentLoopPerTrack == enabled) {
+        return;
+    }
+    m_persistFragmentLoopPerTrack = enabled;
+    emit persistFragmentLoopPerTrackChanged();
+    if (m_persistFragmentLoopPerTrack) {
+        saveFragmentBoundariesForCurrentTrack();
+    }
+}
+
+void PlaybackController::setFragmentStartMs(qint64 startMs)
+{
+    startMs = qMax<qint64>(-1, startMs);
+    if (m_audioEngine && m_audioEngine->duration() > 0 && startMs > m_audioEngine->duration()) {
+        startMs = m_audioEngine->duration();
+    }
+    if (m_fragmentStartMs == startMs) {
+        return;
+    }
+    m_fragmentStartMs = startMs;
+    if (m_persistFragmentLoopPerTrack) {
+        saveFragmentBoundariesForCurrentTrack();
+    }
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::setFragmentEndMs(qint64 endMs)
+{
+    endMs = qMax<qint64>(-1, endMs);
+    if (m_audioEngine && m_audioEngine->duration() > 0 && endMs > m_audioEngine->duration()) {
+        endMs = m_audioEngine->duration();
+    }
+    if (m_fragmentEndMs == endMs) {
+        return;
+    }
+    m_fragmentEndMs = endMs;
+    if (m_persistFragmentLoopPerTrack) {
+        saveFragmentBoundariesForCurrentTrack();
+    }
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::setFragmentBoundaries(qint64 startMs, qint64 endMs)
+{
+    startMs = qMax<qint64>(-1, startMs);
+    endMs = qMax<qint64>(-1, endMs);
+    if (startMs >= 0 && endMs >= 0 && startMs > endMs) {
+        std::swap(startMs, endMs);
+    }
+    if (m_audioEngine && m_audioEngine->duration() > 0) {
+        const qint64 dur = m_audioEngine->duration();
+        if (startMs > dur) {
+            startMs = dur;
+        }
+        if (endMs > dur) {
+            endMs = dur;
+        }
+    }
+    if (m_fragmentStartMs == startMs && m_fragmentEndMs == endMs) {
+        return;
+    }
+    m_fragmentStartMs = startMs;
+    m_fragmentEndMs = endMs;
+    if (m_persistFragmentLoopPerTrack) {
+        saveFragmentBoundariesForCurrentTrack();
+    }
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::setFragmentStartToCurrentPosition()
+{
+    if (m_audioEngine && m_audioEngine->duration() > 0) {
+        setFragmentStartMs(qMax<qint64>(0, m_audioEngine->position()));
+    }
+}
+
+void PlaybackController::setFragmentEndToCurrentPosition()
+{
+    if (m_audioEngine && m_audioEngine->duration() > 0) {
+        setFragmentEndMs(qMax<qint64>(0, m_audioEngine->position()));
+    }
+}
+
+void PlaybackController::clearFragmentStart()
+{
+    if (m_fragmentStartMs == -1) {
+        return;
+    }
+    m_fragmentStartMs = -1;
+    if (m_persistFragmentLoopPerTrack) {
+        saveFragmentBoundariesForCurrentTrack();
+    }
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::clearFragmentEnd()
+{
+    if (m_fragmentEndMs == -1) {
+        return;
+    }
+    m_fragmentEndMs = -1;
+    if (m_persistFragmentLoopPerTrack) {
+        saveFragmentBoundariesForCurrentTrack();
+    }
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::clearFragmentBoundaries()
+{
+    if (m_fragmentStartMs == -1 && m_fragmentEndMs == -1) {
+        return;
+    }
+    m_fragmentStartMs = -1;
+    m_fragmentEndMs = -1;
+    if (m_persistFragmentLoopPerTrack && m_appSettingsManager && m_audioEngine && !m_audioEngine->currentFile().isEmpty()) {
+        m_appSettingsManager->removeTrackFragmentLoop(m_audioEngine->currentFile());
+    }
+    emit fragmentRepeatStateChanged();
+}
+
+void PlaybackController::toggleFragmentRepeat()
+{
+    setFragmentRepeatEnabled(!m_fragmentRepeatEnabled);
+}
+
+void PlaybackController::saveFragmentBoundariesForCurrentTrack()
+{
+    if (!m_appSettingsManager || !m_audioEngine || m_audioEngine->currentFile().isEmpty()) {
+        return;
+    }
+    if (hasValidFragmentBoundaries()) {
+        m_appSettingsManager->saveTrackFragmentLoop(m_audioEngine->currentFile(),
+                                                    m_fragmentStartMs,
+                                                    m_fragmentEndMs);
+    } else {
+        m_appSettingsManager->removeTrackFragmentLoop(m_audioEngine->currentFile());
+    }
 }

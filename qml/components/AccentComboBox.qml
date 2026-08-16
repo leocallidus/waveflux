@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "../IconResolver.js" as IconResolver
 
 Control {
     id: control
@@ -78,7 +79,26 @@ Control {
             return String(fallbackText)
         }
 
-        return String(entry)
+        if (entry.tabTitle !== undefined && entry.tabTitle !== null) {
+            return String(entry.tabTitle)
+        }
+        if (entry.title !== undefined && entry.title !== null) {
+            return String(entry.title)
+        }
+        if (entry.text !== undefined && entry.text !== null) {
+            return String(entry.text)
+        }
+        if (entry.label !== undefined && entry.label !== null) {
+            return String(entry.label)
+        }
+        if (entry.name !== undefined && entry.name !== null) {
+            return String(entry.name)
+        }
+        if (entry.shortTitle !== undefined && entry.shortTitle !== null) {
+            return String(entry.shortTitle)
+        }
+
+        return ""
     }
 
     function itemEnabled(entry) {
@@ -144,28 +164,28 @@ Control {
         elide: Text.ElideRight
     }
 
-    Text {
+    Image {
+        width: 14
+        height: 14
         x: control.width - width - 12
-        y: (control.height - height) * 0.5
-        text: "\u25be"
-        color: control.enabled ? themeManager.textSecondaryColor : themeManager.textMutedColor
-        font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
+        y: Math.round((control.height - height) * 0.5)
+        source: IconResolver.themed("go-down", themeManager.darkMode)
+        sourceSize.width: width
+        sourceSize.height: height
+        opacity: control.enabled ? 1.0 : 0.5
+        fillMode: Image.PreserveAspectFit
     }
 
-    MouseArea {
-        anchors.fill: parent
+    TapHandler {
         acceptedButtons: Qt.LeftButton
         enabled: control.enabled
-        onClicked: {
+        onTapped: {
             control.forceActiveFocus()
             if (popup.visible) {
                 popup.close()
             } else {
                 popup.open()
             }
-        }
-        onWheel: function(wheel) {
-            wheel.accepted = true
         }
     }
 

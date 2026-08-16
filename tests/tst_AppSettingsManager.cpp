@@ -95,6 +95,8 @@ private slots:
     void fullApplicationResetRestoresRuntimeDefaults();
     void resolvesImportToolRuntimeDeterministically();
     void usesDashVersionForRealFfmpegContract();
+    void persistsAndManagesFragmentRepeatSettings();
+    void translatesWaveformPlaceholderKeys();
 };
 
 void AppSettingsManagerTest::initTestCase()
@@ -125,6 +127,7 @@ void AppSettingsManagerTest::defaultsNewPlaylistFolderAutoAddToEnabled()
 {
     AppSettingsManager settings;
     QCOMPARE(settings.autoAddTracksFromPlaylistFolder(), true);
+    QCOMPARE(settings.separateWindowDialogs(), false);
     QCOMPARE(settings.autoCheckUpdates(), true);
     QCOMPARE(settings.includePrereleaseUpdates(), false);
     QCOMPARE(settings.trackInfoEnabled(), false);
@@ -164,6 +167,10 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     batchLastSettings.insert(QStringLiteral("pitchSemitones"), -2);
     batchLastSettings.insert(QStringLiteral("addResultsToPlaylist"), true);
     batchLastSettings.insert(QStringLiteral("applyEqualizer"), false);
+    batchLastSettings.insert(QStringLiteral("applyReverb"), false);
+    batchLastSettings.insert(QStringLiteral("reverbRoomSize"), 0.55);
+    batchLastSettings.insert(QStringLiteral("reverbDamping"), 0.35);
+    batchLastSettings.insert(QStringLiteral("reverbWetLevel"), 0.28);
     batchLastSettings.insert(QStringLiteral("equalizerBandGains"),
                              gains({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
 
@@ -254,6 +261,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         settings.setAudioQualityProfile(QStringLiteral("studio"));
         settings.setDynamicSpectrum(true);
         settings.setConfirmTrashDeletion(false);
+        settings.setSeparateWindowDialogs(true);
         settings.setAutoAddTracksFromPlaylistFolder(false);
         settings.setAutoCheckUpdates(false);
         settings.setIncludePrereleaseUpdates(true);
@@ -311,6 +319,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         QStringLiteral("audioQualityProfile"),
         QStringLiteral("dynamicSpectrum"),
         QStringLiteral("confirmTrashDeletion"),
+        QStringLiteral("separateWindowDialogs"),
         QStringLiteral("autoAddTracksFromPlaylistFolder"),
         QStringLiteral("trackInfo.enabled"),
         QStringLiteral("trackInfo.waveformOverlayHoverOnly"),
@@ -376,6 +385,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     QCOMPARE(reloaded.audioQualityProfile(), QStringLiteral("studio"));
     QCOMPARE(reloaded.dynamicSpectrum(), true);
     QCOMPARE(reloaded.confirmTrashDeletion(), false);
+    QCOMPARE(reloaded.separateWindowDialogs(), true);
     QCOMPARE(reloaded.autoAddTracksFromPlaylistFolder(), false);
     QCOMPARE(reloaded.autoCheckUpdates(), false);
     QCOMPARE(reloaded.includePrereleaseUpdates(), true);
@@ -763,6 +773,79 @@ void AppSettingsManagerTest::usesDashVersionForRealFfmpegContract()
     QCOMPARE(inspection.value(QStringLiteral("ok")).toBool(), true);
     QCOMPARE(inspection.value(QStringLiteral("source")).toString(), QStringLiteral("configured"));
     QCOMPARE(inspection.value(QStringLiteral("version")).toString(), QStringLiteral("ffmpeg version 7.1"));
+}
+
+void AppSettingsManagerTest::persistsAndManagesFragmentRepeatSettings()
+{
+    const QString track1 = QStringLiteral("/music/song1.flac");
+    const QString track2 = QStringLiteral("/music/song2.mp3");
+
+    {
+        AppSettingsManager settings;
+
+        // Check defaults
+        QCOMPARE(settings.fragmentRepeatEnabled(), false);
+        QCOMPARE(settings.persistFragmentLoopPerTrack(), false);
+        QVERIFY(settings.trackFragmentLoops().isEmpty());
+
+        // Toggle settings and check signals
+        QSignalSpy repeatSpy(&settings, &AppSettingsManager::fragmentRepeatEnabledChanged);
+        QSignalSpy persistSpy(&settings, &AppSettingsManager::persistFragmentLoopPerTrackChanged);
+        QSignalSpy loopsSpy(&settings, &AppSettingsManager::trackFragmentLoopsChanged);
+
+        settings.setFragmentRepeatEnabled(true);
+        QCOMPARE(settings.fragmentRepeatEnabled(), true);
+        QCOMPARE(repeatSpy.count(), 1);
+
+        settings.setPersistFragmentLoopPerTrack(true);
+        QCOMPARE(settings.persistFragmentLoopPerTrack(), true);
+        QCOMPARE(persistSpy.count(), 1);
+
+        // Save track loops
+        settings.saveTrackFragmentLoop(track1, 10000, 25000);
+        QCOMPARE(loopsSpy.count(), 1);
+
+        QVariantMap loop1 = settings.getTrackFragmentLoop(track1);
+        QCOMPARE(loop1.value(QStringLiteral("startMs")).toLongLong(), 10000);
+        QCOMPARE(loop1.value(QStringLiteral("endMs")).toLongLong(), 25000);
+
+        settings.saveTrackFragmentLoop(track2, 5000, 15000);
+        QCOMPARE(loopsSpy.count(), 2);
+        QCOMPARE(settings.trackFragmentLoops().size(), 2);
+    }
+
+    AppSettingsManager reloaded;
+
+    QCOMPARE(reloaded.fragmentRepeatEnabled(), true);
+    QCOMPARE(reloaded.persistFragmentLoopPerTrack(), true);
+    QCOMPARE(reloaded.trackFragmentLoops().size(), 2);
+
+    QVariantMap reloadedLoop1 = reloaded.getTrackFragmentLoop(track1);
+    QCOMPARE(reloadedLoop1.value(QStringLiteral("startMs")).toLongLong(), 10000);
+    QCOMPARE(reloadedLoop1.value(QStringLiteral("endMs")).toLongLong(), 25000);
+
+    // Remove one track loop
+    reloaded.removeTrackFragmentLoop(track1);
+    QVERIFY(reloaded.getTrackFragmentLoop(track1).isEmpty());
+    QCOMPARE(reloaded.trackFragmentLoops().size(), 1);
+    QVERIFY(!reloaded.getTrackFragmentLoop(track2).isEmpty());
+}
+
+void AppSettingsManagerTest::translatesWaveformPlaceholderKeys()
+{
+    AppSettingsManager settings;
+
+    // Test English translations
+    settings.setLanguage(QStringLiteral("en"));
+    QCOMPARE(settings.translate(QStringLiteral("waveform.emptyPlaceholder")), QStringLiteral("Drop audio file here"));
+    QCOMPARE(settings.translate(QStringLiteral("waveform.generationDisabledPlaceholder")), QStringLiteral("Waveform generation is disabled"));
+    QCOMPARE(settings.translate(QStringLiteral("waveform.externalCachePlaceholder")), QStringLiteral("External waveform cache only"));
+
+    // Test Russian translations
+    settings.setLanguage(QStringLiteral("ru"));
+    QCOMPARE(settings.translate(QStringLiteral("waveform.emptyPlaceholder")), QStringLiteral("Перетащите сюда аудиофайл"));
+    QCOMPARE(settings.translate(QStringLiteral("waveform.generationDisabledPlaceholder")), QStringLiteral("Генерация волны отключена"));
+    QCOMPARE(settings.translate(QStringLiteral("waveform.externalCachePlaceholder")), QStringLiteral("Только внешний кэш волны"));
 }
 
 QTEST_MAIN(AppSettingsManagerTest)

@@ -43,7 +43,7 @@ QAudioFormat openMptAudioFormat()
     return format;
 }
 
-qint64 secondsToMs(double seconds)
+static qint64 secondsToMs(double seconds)
 {
     return std::max<qint64>(0, qRound64(seconds * 1000.0));
 }

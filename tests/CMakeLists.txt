@@ -314,8 +314,10 @@ add_test(NAME tst_openmpt_waveform_renderer COMMAND tst_openmpt_waveform_rendere
 
 qt_add_executable(tst_waveform_provider
     tst_WaveformProvider.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/WaveformItem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/WaveformProvider.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/PeaksCacheManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/PerformanceProfiler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/IPlaybackBackend.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
@@ -342,6 +344,7 @@ target_link_libraries(tst_waveform_provider PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Multimedia
+    Qt6::Quick
     Qt6::Test
     ${OPENMPT_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
@@ -534,6 +537,7 @@ add_test(NAME tst_playback_controller_scenarios COMMAND tst_playback_controller_
 qt_add_executable(tst_track_model
     tst_TrackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackFilterProxyModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/XspfPlaylistParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/CueSheetParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/PerformanceProfiler.cpp
@@ -626,6 +630,39 @@ target_link_libraries(tst_remote_tracker_source_cache PRIVATE
 )
 
 add_test(NAME tst_remote_tracker_source_cache COMMAND tst_remote_tracker_source_cache)
+
+qt_add_executable(tst_app_dialog
+    tst_AppDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThemeManager.cpp
+)
+
+target_include_directories(tst_app_dialog PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_app_dialog PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::QuickControls2
+    Qt6::Test
+    KF6::I18n
+)
+
+add_test(NAME tst_app_dialog COMMAND tst_app_dialog)
+
+# Exercise the production QML module registrar and the actual Main.qml graph.
+# This catches missing declarative C++ type registration that source-only QML
+# linting cannot detect.
+add_test(NAME tst_waveflux_qml_startup
+    COMMAND ${CMAKE_COMMAND}
+        -DWAVEFLUX_BINARY=$<TARGET_FILE:waveflux>
+        -DWAVEFLUX_SMOKE_STATE_DIR=${CMAKE_CURRENT_BINARY_DIR}/waveflux-startup-smoke-state
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/RunWaveFluxStartupSmoke.cmake)
+set_tests_properties(tst_waveflux_qml_startup PROPERTIES TIMEOUT 15)
 
 find_program(WAVEFLUX_QMLLINT_EXECUTABLE qmllint)
 if(WAVEFLUX_QMLLINT_EXECUTABLE)

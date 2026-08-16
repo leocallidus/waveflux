@@ -20,7 +20,7 @@ constexpr int kWindowSamples = 512;
 constexpr int kMaxWindowSamples = 16 * 1024;
 constexpr int kRawPeakSoftLimitMultiplier = 16;
 constexpr int kRawPeakCompactTargetMultiplier = 8;
-constexpr qint64 kSamplePullTimeoutNs = 100 * GST_MSECOND;
+constexpr qint64 kSamplePullTimeoutNs = 20 * GST_MSECOND;
 constexpr qint64 kMaxEmptyPulls = 50;
 constexpr double kMinCompletionRatio = 0.90;
 
@@ -372,17 +372,17 @@ WaveformProvider::WaveformData WaveformProvider::extractWaveform(
 
     QVector<QString> pipelineCandidates;
     pipelineCandidates.reserve(2);
-    if (!uri.isEmpty()) {
-        pipelineCandidates.push_back(QString(
-            "uridecodebin uri=\"%1\" ! audioconvert ! audioresample ! "
-            "audio/x-raw,format=F32LE,channels=1,rate=22050 ! appsink name=sink sync=false"
-        ).arg(uri));
-    }
     if (!localPath.isEmpty()) {
         pipelineCandidates.push_back(QString(
             "filesrc location=\"%1\" ! decodebin ! audioconvert ! audioresample ! "
             "audio/x-raw,format=F32LE,channels=1,rate=22050 ! appsink name=sink sync=false"
         ).arg(escapeGstLaunchString(localPath)));
+    }
+    if (!uri.isEmpty()) {
+        pipelineCandidates.push_back(QString(
+            "uridecodebin uri=\"%1\" ! audioconvert ! audioresample ! "
+            "audio/x-raw,format=F32LE,channels=1,rate=22050 ! appsink name=sink sync=false"
+        ).arg(uri));
     }
 
     GstElement *pipeline = nullptr;
@@ -422,9 +422,9 @@ WaveformProvider::WaveformData WaveformProvider::extractWaveform(
             continue;
         }
 
-        // Configure appsink - enable emit-signals for better EOS detection
+        // Configure appsink
         g_object_set(sink,
-                     "emit-signals", TRUE,
+                     "emit-signals", FALSE,
                      "max-buffers", 100,
                      "drop", FALSE,
                      nullptr);
@@ -568,26 +568,15 @@ WaveformProvider::WaveformData WaveformProvider::extractWaveform(
         
         gst_sample_unref(sample);
 
-        if (partialUpdateTimer.elapsed() >= 90) {
-            gint64 queriedDurationNs = GST_CLOCK_TIME_NONE;
-            gint64 positionNs = 0;
-            const bool hasDuration = gst_element_query_duration(pipeline, GST_FORMAT_TIME, &queriedDurationNs);
-            const bool hasPosition = gst_element_query_position(pipeline, GST_FORMAT_TIME, &positionNs);
-
-            double progressBySamples = 0.0;
-            double progressByPosition = 0.0;
-            if (hasDuration && queriedDurationNs > 0) {
+        if (partialUpdateTimer.elapsed() >= 120) {
+            double progress = 0.0;
+            if (hasKnownDuration && durationNs > 0) {
                 const double expectedSamples =
-                    (static_cast<double>(queriedDurationNs) / static_cast<double>(GST_SECOND)) * kAnalysisSampleRate;
+                    (static_cast<double>(durationNs) / static_cast<double>(GST_SECOND)) * kAnalysisSampleRate;
                 if (expectedSamples > 0.0) {
-                    progressBySamples = static_cast<double>(totalSamplesProcessed) / expectedSamples;
-                }
-                if (hasPosition && positionNs >= 0) {
-                    progressByPosition = static_cast<double>(positionNs) / static_cast<double>(queriedDurationNs);
+                    progress = static_cast<double>(totalSamplesProcessed) / expectedSamples;
                 }
             }
-
-            double progress = std::max(progressBySamples, progressByPosition);
             progress = std::clamp(progress, 0.0, 0.99);
 
             QVector<float> partialPeaks = resampleMax(rawPeaks, targetSamples);

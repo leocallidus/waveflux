@@ -5,6 +5,7 @@
 #include <QFileSystemWatcher>
 #include <QFutureWatcher>
 #include <QHash>
+#include <QQueue>
 #include <QTimer>
 #include <QString>
 #include <QStringList>
@@ -47,7 +48,8 @@ struct Track {
     qint64 cueEndMs = -1;
     int cueTrackNumber = 0;
     QString cueSheetPath;
-    
+    QString searchBlob;
+
     QString displayName() const {
         if (!title.isEmpty()) {
             if (!artist.isEmpty()) {
@@ -78,14 +80,14 @@ struct TrackPlaybackEvent {
 
 /**
  * @brief TrackModel - QML-compatible list model for the playlist
- * 
+ *
  * Provides the data model for displaying tracks in the playlist view.
  * Supports drag & drop, track reordering, and removal.
  */
 class TrackModel : public QAbstractListModel
 {
     Q_OBJECT
-    
+
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     Q_PROPERTY(int currentIndex READ currentIndex WRITE setCurrentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QString currentTitle READ currentTitle NOTIFY currentTrackChanged)
@@ -111,7 +113,7 @@ class TrackModel : public QAbstractListModel
     Q_PROPERTY(bool deterministicShuffleEnabled READ deterministicShuffleEnabled WRITE setDeterministicShuffleEnabled NOTIFY deterministicShuffleEnabledChanged)
     Q_PROPERTY(quint32 shuffleSeed READ shuffleSeed WRITE setShuffleSeed NOTIFY shuffleSeedChanged)
     Q_PROPERTY(bool repeatableShuffle READ repeatableShuffle WRITE setRepeatableShuffle NOTIFY repeatableShuffleChanged)
-    
+
 public:
     enum SearchFieldFlag {
         SearchFieldNone = 0,
@@ -150,18 +152,18 @@ public:
         AlbumArtRole
     };
     Q_ENUM(Roles)
-    
+
     explicit TrackModel(QObject *parent = nullptr);
     ~TrackModel() override;
-    
+
     // QAbstractListModel interface
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
-    
+
     int currentIndex() const { return m_currentIndex; }
     void setCurrentIndex(int index);
-    
+
     QString currentTitle() const;
     QString currentArtist() const;
     QString currentAlbum() const;
@@ -191,7 +193,7 @@ public:
     void setAutoAddTracksFromPlaylistFolderEnabled(bool enabled);
     void configureLibraryStorage(bool enabled, const QString &databasePath);
     void recordPlaybackEvents(const QVector<TrackPlaybackEvent> &events, bool blocking = false);
-    
+
     Q_INVOKABLE void addFile(const QString &filePath);
     Q_INVOKABLE void addFiles(const QStringList &filePaths);
     Q_INVOKABLE QVariantMap addFilesWithReport(const QStringList &filePaths);
@@ -202,7 +204,7 @@ public:
     Q_INVOKABLE void removeAt(int index);
     Q_INVOKABLE void clear();
     Q_INVOKABLE void move(int from, int to);
-    
+
     Q_INVOKABLE QString getFilePath(int index) const;
     Q_INVOKABLE QVariantMap trackInfoAt(int index) const;
     Q_INVOKABLE QVariantMap currentTrackInfo() const;
@@ -240,7 +242,7 @@ public:
     Q_INVOKABLE QVariantList exportTracksSnapshot() const;
     Q_INVOKABLE void importTracksSnapshot(const QVariantList &snapshot, int requestedCurrentIndex = -1);
     Q_INVOKABLE void applySmartCollectionRows(const QVariantList &rows);
-    
+
     Q_INVOKABLE void playNext();
     Q_INVOKABLE void playPrevious();
     Q_INVOKABLE void applyTagOverridesForFiles(const QStringList &filePaths,
@@ -262,7 +264,7 @@ public:
 
     const QVector<Track> &tracks() const { return m_tracks; }
     void setTracks(QVector<Track> tracks);
-    
+
 signals:
     void countChanged();
     void currentIndexChanged(int index);
@@ -277,7 +279,7 @@ signals:
     void shuffleSeedChanged();
     void repeatableShuffleChanged();
     void playlistDurationChanged();
-    
+
 private:
     friend class PlaybackController;
 
@@ -315,6 +317,7 @@ private:
     struct AsyncSearchRequest {
         int token = 0;
         int modelRevision = 0;
+        int searchRevision = 0;
         QString normalizedQuery;
         int fieldMask = SearchFieldAll;
         int quickFilterMask = SearchQuickFilterNone;
@@ -325,6 +328,7 @@ private:
     struct AsyncSearchResult {
         int token = 0;
         int modelRevision = 0;
+        int searchRevision = 0;
         QString normalizedQuery;
         int fieldMask = SearchFieldAll;
         int quickFilterMask = SearchQuickFilterNone;
@@ -349,17 +353,18 @@ private:
     void onAsyncSearchFinished();
     void notifySearchResultsUpdated();
     void applyParsedMetadata(const ParsedMetadata &metadata);
+    void applyParsedMetadataBatch(const QVector<ParsedMetadata> &batch);
     void scheduleMetadataRead(const QString &filePath, bool includeAlbumArt);
+    void enqueueMetadataRead(const QString &filePath, bool includeAlbumArt, bool highPriority = false);
     void pumpMetadataReadQueue();
     static QString buildSearchTextLower(const Track &track);
+    static void updateTrackSearchBlob(Track &track);
+    void rebuildFilePathIndexCache();
     void internTrackStrings(Track &track);
     QString internString(const QString &value);
-    void clearSearchTextCache();
-    const QString &searchTextLowerAt(int index) const;
-    void invalidateSearchCache();
+    void invalidateSearchCache(bool rebuildPathIndex = true);
     void resetTransientSearchState();
     void resetTransientMetadataState();
-    bool shouldMaterializeAsyncSearchText(int fieldMask, int quickFilterMask) const;
     void ensureSearchCache(const QString &normalizedQuery,
                            int fieldMask,
                            int quickFilterMask) const;
@@ -387,10 +392,11 @@ private:
     void trimAlbumArtToCurrentTrack(bool emitDataChangedForRows = false);
     void syncCurrentAlbumArtCache();
     void updateProfilerPlaylistCount();
-    
+
     QVector<Track> m_tracks;
     int m_currentIndex = -1;
     int m_searchRevision = 0;
+    int m_structureRevision = 0;
     mutable int m_cachedSearchRevision = -1;
     mutable QString m_cachedSearchQuery;
     mutable int m_cachedSearchFieldMask = SearchFieldAll;
@@ -421,17 +427,17 @@ private:
     QSet<QString> m_stringPool;
     QThreadPool m_metadataThreadPool;
     QHash<QString, bool> m_pendingMetadataReads;
+    QQueue<QString> m_pendingMetadataReadOrder;
     QHash<QString, bool> m_inFlightMetadataReads;
+    int m_inFlightMetadataBatches = 0;
+    int m_metadataFastStartBatchesRemaining = 4;
+    QHash<QString, QVector<int>> m_filePathToIndices;
     quint64 m_metadataReadGeneration = 0;
     QString m_currentAlbumArt;
     QFileSystemWatcher m_playlistFolderWatcher;
     QTimer m_playlistFolderRescanTimer;
     QString m_watchedPlaylistFolder;
     QSet<QString> m_knownWatchedFolderEntries;
-    mutable QVector<QString> m_searchTextLowerCache;
-    mutable QVector<quint8> m_searchTextLowerReady;
-
-    static constexpr int kExpandedAsyncSearchTextTrackBudget = 1500;
 };
 
 #endif // TRACKMODEL_H

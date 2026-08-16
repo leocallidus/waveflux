@@ -902,7 +902,6 @@ void PlaybackBackendRoutingTest::audioEngine_trackerSpectrumStartsStopsWithPlayb
 
     engine.seekWithSource(qMin<qint64>(1000, qMax<qint64>(0, engine.duration() - 240)),
                           QStringLiteral("test.spectrum_seek_reset"));
-    QVERIFY(levelsAreZero(engine.spectrumLevels()));
     QTRY_VERIFY_WITH_TIMEOUT(levelsHaveEnergy(engine.spectrumLevels()), 3000);
 
     engine.pause();

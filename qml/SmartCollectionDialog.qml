@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "components"
 import "IconResolver.js" as IconResolver
 
-Dialog {
+AppDialog {
     id: dialogRoot
 
     property string errorText: ""
@@ -380,9 +380,11 @@ Dialog {
     title: tr("collections.createDialogTitle")
     modal: true
     focus: true
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    width: Math.min(760, parent ? parent.width * 0.9 : 760)
-    height: Math.min(640, parent ? parent.height * 0.9 : 640)
+    implicitWidth: 760
+    implicitHeight: 640
+    width: (dialogRoot.isSeparateWindow && parent) ? parent.width : Math.min(760, parent ? parent.width * 0.9 : 760)
+    height: (dialogRoot.isSeparateWindow && parent) ? parent.height : Math.min(640, parent ? parent.height * 0.9 : 640)
+    anchors.centerIn: (!dialogRoot.isSeparateWindow && parent) ? parent : undefined
     standardButtons: Dialog.NoButton
 
     background: Rectangle {

@@ -125,6 +125,7 @@ set(SOURCES
     src/playback/PlaybackBackendRouting.cpp
     src/WaveformProvider.cpp
     src/TrackModel.cpp
+    src/TrackFilterProxyModel.cpp
     src/TrackInfoFormatter.cpp
     src/XspfPlaylistParser.cpp
     src/CueSheetParser.cpp
@@ -185,6 +186,7 @@ set(HEADERS
     src/WaveformProvider.h
     src/PeaksCacheManager.h
     src/TrackModel.h
+    src/TrackFilterProxyModel.h
     src/TrackInfoFormatter.h
     src/XspfPlaylistParser.h
     src/CueSheetParser.h
@@ -252,6 +254,7 @@ qt_add_qml_module(waveflux
         qml/components/SettingSliderRow.qml
         qml/components/SettingComboRow.qml
         qml/components/SettingHintText.qml
+        qml/components/AppDialog.qml
         qml/components/Button.qml
         qml/components/AccentSlider.qml
         qml/components/AccentSwitch.qml
@@ -286,6 +289,7 @@ qt_add_qml_module(waveflux
         qml/components/KeyboardShortcutsDialog.qml
         qml/SettingsDialog.qml
         qml/EqualizerDialog.qml
+        qml/FragmentRepeatDialog.qml
         qml/SmartCollectionDialog.qml
         qml/components/CollectionsSidebar.qml
     RESOURCES

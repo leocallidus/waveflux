@@ -919,7 +919,7 @@ void YtDlpImportServiceTest::sourceIntakeDeduplicatesAndSeparatesInvalidInputs()
                           "\"id\":\"fail-1\","
                           "\"title\":\"Failing Track\","
                           "\"extractor_key\":\"Youtube\","
-                          "\"webpage_url\":\"https://example.com/fail-me\","
+                          "\"webpage_url\":\"https://www.youtube.com/watch?v=vid123\","
                           "\"availability\":\"public\""
                           "}"));
     QVERIFY(!payloadPath.isEmpty());
@@ -1419,7 +1419,7 @@ void YtDlpImportServiceTest::importRemovesStagingDirectoryAfterCompletion()
     QVERIFY(service.startImport());
     QTRY_VERIFY_WITH_TIMEOUT(!service.isRunning(), 5000);
 
-    QCOMPARE(service.finalSummary().value(QStringLiteral("failedCount")).toInt(), 1);
+    QCOMPARE(service.finalSummary().value(QStringLiteral("completedCount")).toInt(), 1);
     QVERIFY(!QFileInfo::exists(stagingDirectory));
 }
 

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "." as AppComponents
 import "../IconResolver.js" as IconResolver
 
 Item {
@@ -21,23 +22,24 @@ Item {
     property int ctrlDragAnchorIndex: -1
     property bool ctrlDragMoved: false
     property bool ctrlDragConsumeClick: false
-    property int titleSortState: 0 // 0:none, 1:asc(▼), 2:desc(▲)
+    property int titleSortState: 0 // 0:none, 1:ascending, 2:descending
     property var titleSortBaselinePaths: []
-    property int artistSortState: 0 // 0:none, 1:asc(▼), 2:desc(▲)
+    property int artistSortState: 0 // 0:none, 1:ascending, 2:descending
     property var artistSortBaselinePaths: []
-    property int albumSortState: 0 // 0:none, 1:asc(▼), 2:desc(▲)
+    property int albumSortState: 0 // 0:none, 1:ascending, 2:descending
     property var albumSortBaselinePaths: []
     property int indexSortState: 0 // 0:none, 1:asc, 2:desc
     property var indexSortBaselinePaths: []
-    property int durationSortState: 0 // 0:none, 1:asc(▼), 2:desc(▲)
+    property int durationSortState: 0 // 0:none, 1:ascending, 2:descending
     property var durationSortBaselinePaths: []
-    property int bitrateSortState: 0 // 0:none, 1:asc(▼), 2:desc(▲)
+    property int bitrateSortState: 0 // 0:none, 1:ascending, 2:descending
     property var bitrateSortBaselinePaths: []
     property var sharedSortBaselinePaths: []
     property var sharedSortBaselineKeys: []
     property bool suppressSortReapplyOnModelReset: false
     property bool suppressSortStatePersistence: false
     property real pendingRestoredContentY: -1
+    property bool filterViewportResetPending: false
     property bool externalDropActive: false
     property int externalDropIndex: -1
     property real externalDropY: 0
@@ -53,6 +55,24 @@ Item {
     property int appliedSearchRevision: searchRevision
     readonly property bool searchFiltersActive: searchFieldMask !== 0 || searchQuickFilterMask !== 0
     readonly property int selectedCount: selectedFilePaths.length
+
+    readonly property var filteredTrackModel: playlistTableFilterModel
+
+    Binding {
+        target: root.filteredTrackModel
+        property: "normalizedQuery"
+        value: root.normalizedSearchQuery
+    }
+    Binding {
+        target: root.filteredTrackModel
+        property: "fieldMask"
+        value: root.searchFieldMask
+    }
+    Binding {
+        target: root.filteredTrackModel
+        property: "quickFilterMask"
+        value: root.searchQuickFilterMask
+    }
     readonly property string effectiveColumnPreset: {
         const preset = String(columnPreset || "").toLowerCase()
         if (preset === "full" || preset === "reduced" || preset === "minimal") {
@@ -84,12 +104,13 @@ Item {
         repeat: true
         running: root.externalDropActive && root.externalDropAutoScrollDirection !== 0
         onTriggered: {
-            const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
-            if (maxY <= 0) {
+            const topY = Number(playlistView.originY || 0)
+            const maxY = topY + Math.max(0, playlistView.contentHeight - playlistView.height)
+            if (maxY <= topY) {
                 return
             }
             playlistView.contentY = Math.max(
-                        0,
+                        topY,
                         Math.min(maxY, playlistView.contentY + root.externalDropAutoScrollDirection * 18))
             root.updateExternalDropIndicator(root.externalDropPointerY)
         }
@@ -151,10 +172,19 @@ Item {
         onTriggered: root.appliedSearchRevision = root.searchRevision
     }
 
-    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync()
-    onSearchFieldMaskChanged: root.scheduleFilterViewportSync()
-    onSearchQuickFilterMaskChanged: root.scheduleFilterViewportSync()
-    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync()
+    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync(true)
+    onSearchFieldMaskChanged: root.scheduleFilterViewportSync(true)
+    onSearchQuickFilterMaskChanged: root.scheduleFilterViewportSync(true)
+    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync(true)
+
+    Connections {
+        target: filteredTrackModel
+        function onCountChanged() {
+            root.scheduleFilterViewportSync(root.normalizedSearchQuery.length > 0
+                                            || root.searchFiltersActive
+                                            || root.filterViewportResetPending)
+        }
+    }
 
     Timer {
         id: filterViewportSyncTimer
@@ -584,7 +614,9 @@ Item {
 
     function exportTrackListViewState() {
         return {
-            "contentY": Math.max(0, Number(playlistView.contentY || 0))
+            "contentY": Math.max(0,
+                                 Number(playlistView.contentY || 0)
+                                 - Number(playlistView.originY || 0))
         }
     }
 
@@ -601,29 +633,34 @@ Item {
         if (playlistView.height <= 0) {
             return
         }
-        const maxContentY = Math.max(0, playlistView.contentHeight - playlistView.height)
-        playlistView.contentY = Math.max(0, Math.min(maxContentY, pendingRestoredContentY))
+        const topY = Number(playlistView.originY || 0)
+        const maxOffset = Math.max(0, playlistView.contentHeight - playlistView.height)
+        playlistView.contentY = topY + Math.max(0, Math.min(maxOffset, pendingRestoredContentY))
         pendingRestoredContentY = -1
     }
 
-    function scheduleFilterViewportSync() {
+    function scheduleFilterViewportSync(resetToStart) {
         if (!playlistView || playlistView.height <= 0) {
             return
+        }
+        if (resetToStart === true) {
+            filterViewportResetPending = true
         }
         filterViewportSyncTimer.restart()
     }
 
     function logicalVisibleCount() {
-        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
-        return filterActive ? root.matchCount() : trackModel.count
+        return filteredTrackModel.count
     }
 
     function clampContentYToLogicalBounds() {
         if (!playlistView || playlistView.height <= 0) {
             return
         }
-        const maxY = Math.max(0, root.logicalVisibleCount() * root.rowHeight - playlistView.height)
-        playlistView.contentY = Math.max(0, Math.min(maxY, Number(playlistView.contentY) || 0))
+        const topY = Number(playlistView.originY || 0)
+        const maxOffset = Math.max(0, playlistView.contentHeight - playlistView.height)
+        const offset = Number(playlistView.contentY || 0) - topY
+        playlistView.contentY = topY + Math.max(0, Math.min(maxOffset, offset))
     }
 
     function firstMatchingVisibleIndex() {
@@ -690,9 +727,9 @@ Item {
             playlistView.forceLayout()
         }
 
-        const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
-        if (filterActive) {
-            playlistView.contentY = 0
+        if (filterViewportResetPending) {
+            filterViewportResetPending = false
+            playlistView.positionViewAtBeginning()
             return
         }
 
@@ -755,28 +792,18 @@ Item {
 
     function matchCount() {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.countMatchingAdvancedNormalized(
-                    root.normalizedSearchQuery,
-                    root.searchFieldMask,
-                    root.searchQuickFilterMask)
+        return filteredTrackModel.count
     }
 
     function matchCountBefore(index) {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.countMatchingAdvancedNormalizedBefore(
-                    index,
-                    root.normalizedSearchQuery,
-                    root.searchFieldMask,
-                    root.searchQuickFilterMask)
+        const proxyIndex = filteredTrackModel.proxyIndexForSource(index)
+        return proxyIndex >= 0 ? proxyIndex : 0
     }
 
     function matchesActiveFilterAt(index) {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.matchesSearchAdvancedNormalized(
-                    index,
-                    root.normalizedSearchQuery,
-                    root.searchFieldMask,
-                    root.searchQuickFilterMask)
+        return filteredTrackModel.proxyIndexForSource(index) >= 0
     }
 
     function uiActiveIndex() {
@@ -796,7 +823,10 @@ Item {
         }
         Qt.callLater(function() {
             if (!root.fastLocateCurrentTrack()) {
-                playlistView.positionViewAtIndex(current, ListView.Center)
+                const proxyIndex = filteredTrackModel.proxyIndexForSource(current)
+                if (proxyIndex >= 0) {
+                    playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+                }
             }
         })
     }
@@ -807,24 +837,29 @@ Item {
             return
         }
         Qt.callLater(function() {
-            playlistView.positionViewAtIndex(Math.floor(safeIndex), ListView.Center)
+            const proxyIndex = filteredTrackModel.proxyIndexForSource(Math.floor(safeIndex))
+            if (proxyIndex >= 0) {
+                playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+            }
         })
     }
 
     function scrollToBeginning() {
-        playlistView.contentY = 0
+        playlistView.positionViewAtBeginning()
     }
 
     function scrollToEnd() {
-        const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
-        playlistView.contentY = maxY
+        playlistView.positionViewAtEnd()
     }
 
     function scrollPage(direction) {
         const safeDirection = Number(direction) < 0 ? -1 : 1
         const pageStep = Math.max(root.rowHeight, playlistView.height - root.rowHeight)
-        const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
-        playlistView.contentY = Math.max(0, Math.min(maxY, playlistView.contentY + safeDirection * pageStep))
+        const topY = Number(playlistView.originY || 0)
+        const maxY = topY + Math.max(0, playlistView.contentHeight - playlistView.height)
+        playlistView.contentY = Math.max(topY,
+                                         Math.min(maxY,
+                                                  playlistView.contentY + safeDirection * pageStep))
     }
 
     function externalDropInsertionIndexAt(viewY) {
@@ -832,9 +867,9 @@ Item {
         const contentY = Math.max(0, Number(playlistView.contentY) || 0)
         const contentPointY = contentY + safeY
         const item = playlistView.itemAt(root.horizontalPadding, contentPointY)
-        if (item && item.index !== undefined && item.height > 0) {
+        if (item && item.sourceIndex !== undefined && item.height > 0) {
             const afterItem = contentPointY >= item.y + item.height * 0.5
-            return Math.max(0, Math.min(trackModel.count, item.index + (afterItem ? 1 : 0)))
+            return Math.max(0, Math.min(trackModel.count, item.sourceIndex + (afterItem ? 1 : 0)))
         }
         if (contentPointY <= 0) {
             return 0
@@ -847,9 +882,9 @@ Item {
         const contentPointY = playlistView.contentY + safeY
         const item = playlistView.itemAt(root.horizontalPadding, contentPointY)
         root.externalDropPointerY = safeY
-        if (item && item.index !== undefined && item.height > 0) {
+        if (item && item.sourceIndex !== undefined && item.height > 0) {
             const afterItem = contentPointY >= item.y + item.height * 0.5
-            root.externalDropIndex = Math.max(0, Math.min(trackModel.count, item.index + (afterItem ? 1 : 0)))
+            root.externalDropIndex = Math.max(0, Math.min(trackModel.count, item.sourceIndex + (afterItem ? 1 : 0)))
             root.externalDropY = Math.max(
                         0,
                         Math.min(playlistView.height, item.y - playlistView.contentY + (afterItem ? item.height : 0)))
@@ -914,7 +949,7 @@ Item {
         const contentHeight = Math.max(visibleCount * root.rowHeight, viewportHeight)
         const centerY = (visibleRow + 0.5) * root.rowHeight
         const targetY = Math.max(0, Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
-        playlistView.contentY = targetY
+        playlistView.contentY = Number(playlistView.originY || 0) + targetY
         return true
     }
 
@@ -960,7 +995,10 @@ Item {
                 return
             }
             if (!root.fastLocateCurrentTrack()) {
-                playlistView.positionViewAtIndex(delayedCurrent, ListView.Center)
+                const proxyIndex = filteredTrackModel.proxyIndexForSource(delayedCurrent)
+                if (proxyIndex >= 0) {
+                    playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+                }
             }
         })
     }
@@ -982,7 +1020,10 @@ Item {
             const current = root.uiActiveIndex()
             if (current >= 0 && currentTrackMatchesActiveFilter()) {
                 if (!root.fastLocateCurrentTrack()) {
-                    playlistView.positionViewAtIndex(current, ListView.Center)
+                    const proxyIndex = filteredTrackModel.proxyIndexForSource(current)
+                    if (proxyIndex >= 0) {
+                        playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+                    }
                 }
             }
         })
@@ -1341,14 +1382,14 @@ Item {
                             font.letterSpacing: 1.3
                         }
 
-                        Label {
-                            text: root.indexSortState === 1
-                                  ? "▲"
-                                  : (root.indexSortState === 2 ? "▼" : "")
-                            color: themeManager.primaryColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
+                        Image {
+                            visible: root.indexSortState !== 0
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            source: IconResolver.themed(root.indexSortState === 1 ? "go-up" : "go-down", themeManager.darkMode)
+                            sourceSize.width: 12
+                            sourceSize.height: 12
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
 
@@ -1378,16 +1419,14 @@ Item {
                             font.letterSpacing: 1.3
                         }
 
-                        Label {
-                            // Same mapping as duration/bitrate:
-                            // ▼ = A->Z, ▲ = Z->A
-                            text: root.titleSortState === 1
-                                  ? "▼"
-                                  : (root.titleSortState === 2 ? "▲" : "")
-                            color: themeManager.primaryColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
+                        Image {
+                            visible: root.titleSortState !== 0
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            source: IconResolver.themed(root.titleSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
+                            sourceSize.width: 12
+                            sourceSize.height: 12
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
 
@@ -1418,16 +1457,14 @@ Item {
                             font.letterSpacing: 1.3
                         }
 
-                        Label {
-                            // Same mapping as title:
-                            // ▼ = A->Z, ▲ = Z->A
-                            text: root.artistSortState === 1
-                                  ? "▼"
-                                  : (root.artistSortState === 2 ? "▲" : "")
-                            color: themeManager.primaryColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
+                        Image {
+                            visible: root.artistSortState !== 0
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            source: IconResolver.themed(root.artistSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
+                            sourceSize.width: 12
+                            sourceSize.height: 12
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
 
@@ -1458,16 +1495,14 @@ Item {
                             font.letterSpacing: 1.3
                         }
 
-                        Label {
-                            // Same mapping as title:
-                            // ▼ = A->Z, ▲ = Z->A
-                            text: root.albumSortState === 1
-                                  ? "▼"
-                                  : (root.albumSortState === 2 ? "▲" : "")
-                            color: themeManager.primaryColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
+                        Image {
+                            visible: root.albumSortState !== 0
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            source: IconResolver.themed(root.albumSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
+                            sourceSize.width: 12
+                            sourceSize.height: 12
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
 
@@ -1497,16 +1532,14 @@ Item {
                             font.letterSpacing: 1.3
                         }
 
-                        Label {
-                            // Requested mapping:
-                            // ▼ = smallest->largest, ▲ = largest->smallest
-                            text: root.durationSortState === 1
-                                  ? "▼"
-                                  : (root.durationSortState === 2 ? "▲" : "")
-                            color: themeManager.primaryColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
+                        Image {
+                            visible: root.durationSortState !== 0
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            source: IconResolver.themed(root.durationSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
+                            sourceSize.width: 12
+                            sourceSize.height: 12
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
 
@@ -1537,16 +1570,14 @@ Item {
                             font.letterSpacing: 1.3
                         }
 
-                        Label {
-                            // Same mapping as duration:
-                            // ▼ = smallest->largest, ▲ = largest->smallest
-                            text: root.bitrateSortState === 1
-                                  ? "▼"
-                                  : (root.bitrateSortState === 2 ? "▲" : "")
-                            color: themeManager.primaryColor
-                            font.family: themeManager.playlistFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
+                        Image {
+                            visible: root.bitrateSortState !== 0
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            source: IconResolver.themed(root.bitrateSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
+                            sourceSize.width: 12
+                            sourceSize.height: 12
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
 
@@ -1566,7 +1597,7 @@ Item {
             Layout.fillHeight: true
             clip: true
             spacing: 0
-            model: trackModel
+            model: filteredTrackModel
             onContentHeightChanged: {
                 root.applyPendingTrackListViewState()
                 root.scheduleFilterViewportSync()
@@ -1595,7 +1626,8 @@ Item {
                     when: !playlistScrollBar.pressed
                     value: playlistView.contentHeight > 0
                            ? Math.max(0, Math.min(1.0 - playlistScrollBar.size,
-                                                  playlistView.contentY / playlistView.contentHeight))
+                                                  (playlistView.contentY - playlistView.originY)
+                                                  / playlistView.contentHeight))
                            : 0
                 }
 
@@ -1603,8 +1635,11 @@ Item {
                     if (!pressed || playlistView.contentHeight <= playlistView.height) {
                         return
                     }
-                    const maxY = Math.max(0, playlistView.contentHeight - playlistView.height)
-                    playlistView.contentY = Math.max(0, Math.min(maxY, position * playlistView.contentHeight))
+                    const topY = Number(playlistView.originY || 0)
+                    const maxY = topY + Math.max(0, playlistView.contentHeight - playlistView.height)
+                    playlistView.contentY = Math.max(topY,
+                                                     Math.min(maxY,
+                                                              topY + position * playlistView.contentHeight))
                 }
 
                 background: Rectangle {
@@ -1632,6 +1667,7 @@ Item {
             delegate: ItemDelegate {
                 id: trackDelegate
                 required property int index
+                required property int sourceIndex
                 required property string filePath
                 required property string displayName
                 required property string title
@@ -1641,8 +1677,8 @@ Item {
                 required property int bitrate
                 required property int duration
                 readonly property int transitionStateValue: playbackController.transitionState
-                readonly property bool activeTrack: trackDelegate.index === playbackController.activeTrackIndex
-                readonly property bool pendingTrack: trackDelegate.index === playbackController.pendingTrackIndex
+                readonly property bool activeTrack: trackDelegate.sourceIndex === playbackController.activeTrackIndex
+                readonly property bool pendingTrack: trackDelegate.sourceIndex === playbackController.pendingTrackIndex
                                                     && (trackDelegate.transitionStateValue === 1
                                                         || trackDelegate.transitionStateValue === 2
                                                         || trackDelegate.transitionStateValue === 4)
@@ -1655,8 +1691,6 @@ Item {
                     const _queueRevision = playbackController.queueRevision
                     return playbackController.queuedPosition(filePath)
                 }
-
-                readonly property bool searchVisible: root.matchesActiveFilterAt(index)
 
                 function truncatedCellTooltipAt(mouseX) {
                     function tooltipForLabel(label) {
@@ -1682,9 +1716,7 @@ Item {
                 }
 
                 width: playlistView.width
-                height: searchVisible ? root.rowHeight : 0
-                visible: searchVisible
-                enabled: searchVisible
+                height: root.rowHeight
                 highlighted: trackDelegate.activeTrack
 
                 background: Rectangle {
@@ -1749,7 +1781,7 @@ Item {
                         Label {
                             anchors.centerIn: parent
                             visible: !trackDelegate.highlighted
-                            text: root.formatTrackNumber(trackDelegate.index)
+                            text: root.formatTrackNumber(trackDelegate.sourceIndex)
                             color: themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: Math.round(11 * themeManager.fontSizeMultiplier)
@@ -1772,7 +1804,7 @@ Item {
                     Label {
                         id: titleLabel
                         Layout.preferredWidth: root.titleColumnWidth
-                        text: root.formatTrackTitle(trackDelegate.index,
+                        text: root.formatTrackTitle(trackDelegate.sourceIndex,
                                                     trackDelegate.title,
                                                     trackDelegate.displayName)
                         elide: Text.ElideRight
@@ -1841,15 +1873,15 @@ Item {
                         if ((mouse.modifiers & Qt.ControlModifier) === 0) {
                             return
                         }
-                        root.beginCtrlDragSelection(trackDelegate.index)
+                        root.beginCtrlDragSelection(trackDelegate.sourceIndex)
                     }
                     onPositionChanged: function(mouse) {
                         if (!root.ctrlDragSelecting || (mouse.buttons & Qt.LeftButton) === 0) {
                             return
                         }
                         const pointInList = delegateMouseArea.mapToItem(playlistView.contentItem, mouse.x, mouse.y)
-                        const targetIndex = playlistView.indexAt(10, pointInList.y)
-                        root.updateCtrlDragSelectionAt(targetIndex)
+                        const targetProxyIndex = playlistView.indexAt(10, pointInList.y)
+                        root.updateCtrlDragSelectionAt(filteredTrackModel.sourceIndexAt(targetProxyIndex))
                     }
                     onReleased: function(mouse) {
                         if (mouse.button === Qt.LeftButton) {
@@ -1860,26 +1892,26 @@ Item {
                     onClicked: function(mouse) {
                         if (mouse.button === Qt.LeftButton) {
                             if (mouse.modifiers & Qt.ShiftModifier) {
-                                root.selectRangeToIndex(trackDelegate.index)
+                                root.selectRangeToIndex(trackDelegate.sourceIndex)
                                 return
                             } else if (mouse.modifiers & Qt.ControlModifier) {
                                 if (root.consumeCtrlDragClick()) {
                                     return
                                 }
-                                root.toggleIndexSelection(trackDelegate.index)
+                                root.toggleIndexSelection(trackDelegate.sourceIndex)
                                 return
                             } else {
-                                root.selectOnlyIndex(trackDelegate.index)
-                                trackModel.currentIndex = trackDelegate.index
+                                root.selectOnlyIndex(trackDelegate.sourceIndex)
+                                trackModel.currentIndex = trackDelegate.sourceIndex
                                 return
                             }
                         }
 
                         if (!root.isFileSelected(trackDelegate.filePath)) {
-                            root.selectOnlyIndex(trackDelegate.index)
+                            root.selectOnlyIndex(trackDelegate.sourceIndex)
                         }
                         if (mouse.button === Qt.RightButton) {
-                            contextMenu.trackIndex = trackDelegate.index
+                            contextMenu.trackIndex = trackDelegate.sourceIndex
                             contextMenu.trackFilePath = trackDelegate.filePath
                             contextMenu.popup()
                         }
@@ -1893,9 +1925,9 @@ Item {
                             return
                         }
                         if (!root.isFileSelected(trackDelegate.filePath)) {
-                            root.selectOnlyIndex(trackDelegate.index)
+                            root.selectOnlyIndex(trackDelegate.sourceIndex)
                         }
-                        playbackController.requestPlayIndex(trackDelegate.index, "playlist.double_click")
+                        playbackController.requestPlayIndex(trackDelegate.sourceIndex, "playlist.double_click")
                     }
                 }
             }
@@ -2115,20 +2147,20 @@ Item {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: trashConfirmDialog
         readonly property real messageContentWidth: Math.min(Math.max(240, root.width * 0.72), 420)
         modal: true
         title: root.tr("playlist.confirmTrashTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         contentWidth: messageContentWidth
         contentHeight: trashConfirmText.paintedHeight + 16
         width: leftPadding + rightPadding + contentWidth
         height: Math.min(Math.max(150, contentHeight + 104), Math.max(150, root.height - 12))
         implicitWidth: width
         implicitHeight: height
-        x: Math.max(0, Math.round((root.width - width) * 0.5))
-        y: Math.max(0, Math.round((root.height - height) * 0.5))
+        x: (!trashConfirmDialog.isSeparateWindow) ? Math.max(0, Math.round((root.width - width) * 0.5)) : undefined
+        y: (!trashConfirmDialog.isSeparateWindow) ? Math.max(0, Math.round((root.height - height) * 0.5)) : undefined
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         onAccepted: {
@@ -2150,6 +2182,30 @@ Item {
                 wrapMode: Text.WordWrap
                 color: themeManager.textColor
                 font.family: themeManager.fontFamily
+            }
+        }
+
+        footer: Rectangle {
+            implicitHeight: trashConfirmActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: trashConfirmActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                AppComponents.Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: trashConfirmDialog.reject()
+                }
+                AppComponents.Button {
+                    text: root.tr("playlist.moveToTrash")
+                    accent: true
+                    onClicked: trashConfirmDialog.accept()
+                }
             }
         }
     }

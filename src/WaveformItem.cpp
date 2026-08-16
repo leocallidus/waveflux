@@ -30,6 +30,10 @@ WaveformItem::WaveformItem(QQuickItem *parent)
     connect(&m_repaintTimer, &QTimer::timeout, this, &WaveformItem::flushScheduledRepaint);
     m_repaintClock.start();
 
+    m_loadingAnimationTimer.setInterval(kLoadingAnimationIntervalMs);
+    connect(&m_loadingAnimationTimer, &QTimer::timeout,
+            this, &WaveformItem::advanceLoadingAnimation);
+
     connect(this, &QQuickItem::visibleChanged, this, [this]() {
         if (isVisible()) {
             forceFullRedraw();
@@ -182,7 +186,49 @@ QRectF WaveformItem::generationDirtyRect(int oldPixel, int newPixel) const
     const qreal labelWidth = std::min<qreal>(150.0, w);
     const qreal labelHeight = std::min<qreal>(24.0, h);
     const QRectF labelRect(std::max<qreal>(0.0, w - labelWidth - 8.0), 0.0, labelWidth, labelHeight);
-    return dirty.united(labelRect);
+    const QRectF centeredLabelRect(0.0, std::max<qreal>(0.0, h * 0.5 - 18.0), w, std::min<qreal>(36.0, h));
+    const QRectF progressBarRect(0.0, std::max<qreal>(0.0, h - 14.0), w, std::min<qreal>(14.0, h));
+    return dirty.united(labelRect).united(centeredLabelRect).united(progressBarRect);
+}
+
+void WaveformItem::advanceLoadingAnimation()
+{
+    if (!m_loading) {
+        m_loadingAnimationTimer.stop();
+        return;
+    }
+
+    const int w = static_cast<int>(width());
+    const int oldGenerationPixel = w > 0
+        ? trackPositionToPixel(m_displayGenerationProgress, w)
+        : -1;
+
+    const double distance = m_generationProgress - m_displayGenerationProgress;
+    if (std::abs(distance) > 0.0005) {
+        // Smooth bursty worker updates without allowing the visual boundary to
+        // run ahead of data that has actually been decoded.
+        const double step = std::max(0.0025, std::abs(distance) * 0.24);
+        m_displayGenerationProgress += std::copysign(std::min(std::abs(distance), step), distance);
+        m_displayGenerationProgress = std::clamp(m_displayGenerationProgress, 0.0, 1.0);
+    } else {
+        m_displayGenerationProgress = m_generationProgress;
+    }
+
+    m_loadingAnimationPhase += 0.025;
+    if (m_loadingAnimationPhase >= 1.0) {
+        m_loadingAnimationPhase -= 1.0;
+    }
+
+    const int newGenerationPixel = w > 0
+        ? trackPositionToPixel(m_displayGenerationProgress, w)
+        : -1;
+    if (sourcePeaks().isEmpty()) {
+        // The lightweight placeholder shimmer spans the item, so redraw the
+        // small waveform surface as a single FBO pass at a capped 30 FPS.
+        requestRepaint();
+    } else {
+        requestRepaint(generationDirtyRect(oldGenerationPixel, newGenerationPixel));
+    }
 }
 
 void WaveformItem::requestRepaint(const QRectF &dirtyRect)
@@ -322,14 +368,58 @@ void WaveformItem::paint(QPainter *painter)
         m_cachedPlayedLayer = QImage();
         // No waveform data
         painter->setPen(m_waveformColor.lighter(150));
+        const double displayedProgress = m_loading
+            ? m_displayGenerationProgress
+            : m_generationProgress;
         const QString label = m_loading
-            ? m_loadingLabelTemplate.arg(qRound(m_generationProgress * 100.0))
+            ? m_loadingLabelTemplate.arg(qRound(displayedProgress * 100.0))
             : m_emptyStateText;
+
+        if (m_loading) {
+            const int barCount = std::clamp(w / 10, 24, 96);
+            const qreal centerY = h * 0.5;
+            const qreal maxHalfHeight = std::max<qreal>(4.0, h * 0.27);
+            const qreal barStep = static_cast<qreal>(w) / static_cast<qreal>(barCount);
+            const qreal shimmerCenter = m_loadingAnimationPhase * (w + 120.0) - 60.0;
+
+            painter->setPen(Qt::NoPen);
+            for (int i = 0; i < barCount; ++i) {
+                const qreal x = (i + 0.5) * barStep;
+                const qreal shape = 0.30
+                    + 0.36 * std::abs(std::sin((i + 1) * 0.71))
+                    + 0.18 * std::abs(std::sin((i + 3) * 0.19));
+                const qreal halfHeight = std::min(maxHalfHeight, maxHalfHeight * shape);
+                const qreal shimmerDistance = std::abs(x - shimmerCenter);
+                const qreal shimmer = std::max<qreal>(0.0, 1.0 - shimmerDistance / 70.0);
+                QColor barColor = m_waveformColor;
+                barColor.setAlphaF(std::clamp(0.20 + shimmer * 0.70, 0.0, 1.0));
+                painter->setBrush(barColor);
+                painter->drawRoundedRect(QRectF(x - 1.25,
+                                                centerY - halfHeight,
+                                                2.5,
+                                                halfHeight * 2.0),
+                                         1.25,
+                                         1.25);
+            }
+
+            QColor labelBackdrop = m_backgroundColor;
+            labelBackdrop.setAlpha(205);
+            const qreal labelWidth = std::min<qreal>(std::max<qreal>(160.0, w * 0.42), std::max(0, w - 16));
+            const QRectF labelBackdropRect((w - labelWidth) * 0.5,
+                                           std::max<qreal>(2.0, centerY - 15.0),
+                                           labelWidth,
+                                           30.0);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(labelBackdrop);
+            painter->drawRoundedRect(labelBackdropRect, 6.0, 6.0);
+        }
+
+        painter->setPen(m_waveformColor.lighter(150));
         painter->drawText(QRectF(0, 0, w, h), Qt::AlignCenter, label);
 
         if (m_loading) {
             const QRectF barBg(8.0, h - 10.0, std::max(0, w - 16), 4.0);
-            const QRectF barFill(barBg.x(), barBg.y(), barBg.width() * std::clamp(m_generationProgress, 0.0, 1.0), barBg.height());
+            const QRectF barFill(barBg.x(), barBg.y(), barBg.width() * std::clamp(displayedProgress, 0.0, 1.0), barBg.height());
             painter->fillRect(barBg, m_waveformColor.darker(160));
             painter->fillRect(barFill, m_progressColor);
         }
@@ -341,7 +431,7 @@ void WaveformItem::paint(QPainter *painter)
     
     const int progressX = trackPositionToPixel(m_progress, w);
     const int generatedEnd = m_loading
-        ? std::clamp(trackPositionToPixel(m_generationProgress, w), 0, w)
+        ? std::clamp(trackPositionToPixel(m_displayGenerationProgress, w), 0, w)
         : w;
     const int playedEnd = std::clamp(progressX, 0, generatedEnd);
     const QRectF playedRect(0, 0, qMax(0, playedEnd), h);
@@ -411,7 +501,7 @@ void WaveformItem::paint(QPainter *painter)
 
         painter->setPen(m_progressColor.lighter(120));
         painter->drawText(QRectF(8, 0, w - 16, h), Qt::AlignTop | Qt::AlignRight,
-                          QStringLiteral("%1%").arg(qRound(m_generationProgress * 100.0)));
+                          QStringLiteral("%1%").arg(qRound(m_displayGenerationProgress * 100.0)));
     }
 
     recordPaint();
@@ -511,6 +601,19 @@ void WaveformItem::setLoading(bool loading)
 {
     if (m_loading != loading) {
         m_loading = loading;
+        if (m_loading) {
+            // A newly started job must begin at the worker's current progress.
+            // Keeping the previous track's displayed value can briefly reveal a
+            // large stale generated region when the next track starts at zero.
+            m_displayGenerationProgress = m_generationProgress;
+            m_loadingAnimationPhase = 0.0;
+            if (!m_loadingAnimationTimer.isActive()) {
+                m_loadingAnimationTimer.start();
+            }
+        } else {
+            m_loadingAnimationTimer.stop();
+            m_displayGenerationProgress = m_generationProgress;
+        }
         requestRepaint();
         emit loadingChanged();
     }
@@ -527,7 +630,17 @@ void WaveformItem::setGenerationProgress(double progress)
     const int oldGenerationPixel = w > 0 ? trackPositionToPixel(m_generationProgress, w) : -1;
 
     m_generationProgress = progress;
-    const int newGenerationPixel = w > 0 ? trackPositionToPixel(m_generationProgress, w) : -1;
+    if (!m_loading) {
+        m_displayGenerationProgress = m_generationProgress;
+    } else if (m_displayGenerationProgress > m_generationProgress) {
+        // Progress can move backwards when a new generation request replaces a
+        // previous one. Never display waveform data beyond what exists for the
+        // active request; upward changes remain smoothly animated by the timer.
+        m_displayGenerationProgress = m_generationProgress;
+    }
+    const int newGenerationPixel = w > 0
+        ? trackPositionToPixel(m_loading ? m_displayGenerationProgress : m_generationProgress, w)
+        : -1;
     requestRepaint(generationDirtyRect(oldGenerationPixel, newGenerationPixel));
     emit generationProgressChanged();
 }

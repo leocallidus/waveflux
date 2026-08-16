@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     readonly property int preferredDialogWidth: 840
@@ -60,6 +60,9 @@ Dialog {
     }
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -700,13 +703,16 @@ Dialog {
                  ? Popup.NoAutoClose
                  : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
 
-    width: root.parent
-           ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
-           : preferredDialogWidth
-    height: root.parent
-            ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24)
-            : preferredDialogHeight
-    anchors.centerIn: parent
+    implicitWidth: preferredDialogWidth
+    implicitHeight: preferredDialogHeight
+
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: {
         sourceUrlField.text = ytDlpImportService.sourceUrl
@@ -1898,7 +1904,7 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: errorDialog
         objectName: "errorDialog"
         modal: true
@@ -1906,13 +1912,32 @@ Dialog {
         title: root.tr("ytDlpImport.errorDialogTitle")
         anchors.centerIn: Overlay.overlay
         width: Math.min(root.width - 32, 560)
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.NoButton
 
         contentItem: Kirigami.SelectableLabel {
             id: errorDialogMessage
             text: ""
             wrapMode: Text.WordWrap
             color: themeManager.textColor
+        }
+
+        footer: Rectangle {
+            implicitHeight: errorDialogActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: errorDialogActions
+                anchors.fill: parent
+                anchors.margins: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("settings.close")
+                    accent: true
+                    onClicked: errorDialog.close()
+                }
+            }
         }
     }
 }

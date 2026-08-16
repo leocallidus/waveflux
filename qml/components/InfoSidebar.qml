@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "../IconResolver.js" as IconResolver
 
 Rectangle {
     id: root
@@ -66,20 +67,27 @@ Rectangle {
         return lossless.indexOf(safeFormat) >= 0 ? safeFormat + " (" + root.tr("sidebar.lossless") + ")" : safeFormat
     }
 
-    readonly property int specLabelWidth: 84
+    readonly property int specLabelWidth: Math.max(64, Math.min(84, Math.floor(width * 0.38)))
 
     color: themeManager.backgroundColor
     border.width: 1
     border.color: themeManager.borderColor
 
     ScrollView {
+        id: infoScrollView
+        objectName: "infoScrollView"
         anchors.fill: parent
         clip: true
+        contentWidth: availableWidth
+        contentHeight: sidebarContent.implicitHeight
 
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
         Item {
-            width: parent.width
+            id: sidebarContent
+            objectName: "sidebarContent"
+            width: infoScrollView.availableWidth
             implicitHeight: detailsColumn.implicitHeight + 28
 
             ColumnLayout {
@@ -420,12 +428,14 @@ Rectangle {
                         Image {
                             anchors.fill: parent
                             source: root.albumArt
-                            sourceSize.width: Math.max(1, Math.ceil(width))
-                            sourceSize.height: Math.max(1, Math.ceil(height))
+                            // Decode once at a bounded size instead of invalidating the
+                            // image cache for every pixel while the window is resized.
+                            sourceSize.width: 320
+                            sourceSize.height: 320
                             visible: root.albumArt.length > 0
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
-                            cache: false
+                            cache: true
                         }
 
                         Rectangle {
@@ -434,12 +444,16 @@ Rectangle {
                             color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.06)
                         }
 
-                        Label {
+                        Image {
                             anchors.centerIn: parent
                             visible: root.albumArt.length === 0
-                            text: "♪"
-                            color: themeManager.textMutedColor
-                            font.pixelSize: Math.round(40 * themeManager.fontSizeMultiplier)
+                            width: Math.min(48, parent.width * 0.32)
+                            height: width
+                            source: IconResolver.themed("audio-x-generic", themeManager.darkMode)
+                            sourceSize.width: Math.max(1, Math.ceil(width))
+                            sourceSize.height: Math.max(1, Math.ceil(height))
+                            opacity: 0.7
+                            fillMode: Image.PreserveAspectFit
                         }
                     }
                 }

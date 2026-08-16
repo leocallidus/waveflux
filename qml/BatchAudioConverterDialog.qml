@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     readonly property int preferredDialogWidth: 820
@@ -55,6 +55,9 @@ Dialog {
     }
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -646,13 +649,16 @@ Dialog {
     standardButtons: Dialog.NoButton
     closePolicy: Popup.NoAutoClose
 
-    width: root.parent
-           ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
-           : preferredDialogWidth
-    height: root.parent
-            ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24)
-            : preferredDialogHeight
-    anchors.centerIn: parent
+    implicitWidth: preferredDialogWidth
+    implicitHeight: preferredDialogHeight
+
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: {
         outputDirectoryField.text = batchAudioConverterService.outputDirectory
@@ -1821,11 +1827,11 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: deletePresetDialog
         title: root.tr("batchAudioConverter.deletePresetTitle")
         modal: true
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
 
         contentItem: Kirigami.SelectableLabel {
             id: deletePresetText
@@ -1834,6 +1840,30 @@ Dialog {
             wrapMode: Text.WordWrap
             color: themeManager.textColor
             font.family: themeManager.fontFamily
+        }
+
+        footer: Rectangle {
+            implicitHeight: deletePresetActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: deletePresetActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: deletePresetDialog.reject()
+                }
+                Button {
+                    text: root.tr("batchAudioConverter.deletePreset")
+                    accent: true
+                    onClicked: deletePresetDialog.accept()
+                }
+            }
         }
 
         onAccepted: root.confirmDeleteSelectedPreset()

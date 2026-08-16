@@ -7,6 +7,7 @@
 #include "AudioEngine.h"
 #include "PlaybackController.h"
 #include "TrackModel.h"
+#include "AppSettingsManager.h" 
 #undef protected
 #undef private
 
@@ -49,10 +50,17 @@ class FakeAudioEngine final : public AudioEngine
 public:
     using AudioEngine::AudioEngine;
 
+    qint64 lastSeekTargetMs() const { return m_lastSeekTargetMs; }
+
     void setCurrentFileForTest(const QString &filePath, quint64 transitionId)
     {
         m_currentFile = filePath;
         m_currentTransitionId = transitionId;
+    }
+
+    void setDurationForTest(qint64 dur)
+    {
+        m_lastStableDurationMs = dur;
     }
 
     void emitCurrentFileForTest(const QString &filePath, quint64 transitionId)
@@ -445,6 +453,184 @@ private slots:
         QCOMPARE(controller.pendingTrackIndex(), 0);
         QCOMPARE(controller.transitionState(),
                  PlaybackController::TransitionPendingCommit);
+    }
+
+    void fragmentRepeatBoundaryValidationAndToggles()
+    {
+        FakeAudioEngine audioEngine;
+        FakeTrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+
+        audioEngine.setDurationForTest(180000); // 3 minutes
+
+        QCOMPARE(controller.fragmentRepeatEnabled(), false);
+        QCOMPARE(controller.fragmentStartMs(), -1);
+        QCOMPARE(controller.fragmentEndMs(), -1);
+        QCOMPARE(controller.hasValidFragmentBoundaries(), false);
+        QCOMPARE(controller.fragmentRepeatActive(), false);
+
+        QSignalSpy spy(&controller, &PlaybackController::fragmentRepeatStateChanged);
+
+        // Setting invalid or single boundary
+        controller.setFragmentStartMs(10000);
+        QCOMPARE(controller.fragmentStartMs(), 10000);
+        QCOMPARE(controller.hasValidFragmentBoundaries(), false);
+        QCOMPARE(controller.fragmentRepeatActive(), false);
+        QCOMPARE(spy.count(), 1);
+
+        controller.setFragmentEndMs(25000);
+        QCOMPARE(controller.fragmentEndMs(), 25000);
+        QCOMPARE(controller.hasValidFragmentBoundaries(), true);
+        QCOMPARE(controller.fragmentRepeatActive(), false); // Not enabled yet
+
+        // Enable repeat
+        controller.setFragmentRepeatEnabled(true);
+        QCOMPARE(controller.fragmentRepeatEnabled(), true);
+        QCOMPARE(controller.fragmentRepeatActive(), true);
+
+        // Clear start
+        controller.clearFragmentStart();
+        QCOMPARE(controller.fragmentStartMs(), -1);
+        QCOMPARE(controller.hasValidFragmentBoundaries(), false);
+        QCOMPARE(controller.fragmentRepeatActive(), false);
+
+        // Set boundaries helper (handles reversed arguments automatically)
+        controller.setFragmentBoundaries(50000, 20000);
+        QCOMPARE(controller.fragmentStartMs(), 20000);
+        QCOMPARE(controller.fragmentEndMs(), 50000);
+        QCOMPARE(controller.hasValidFragmentBoundaries(), true);
+        QCOMPARE(controller.fragmentRepeatActive(), true);
+
+        // Clear all
+        controller.clearFragmentBoundaries();
+        QCOMPARE(controller.fragmentStartMs(), -1);
+        QCOMPARE(controller.fragmentEndMs(), -1);
+        QCOMPARE(controller.hasValidFragmentBoundaries(), false);
+    }
+
+    void fragmentRepeatForwardPlaybackLoopsToStart()
+    {
+        FakeAudioEngine audioEngine;
+        FakeTrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+
+        trackModel.seed({
+                            makeTrack(QStringLiteral("/tmp/song1.flac"), QStringLiteral("Song 1")),
+                            makeTrack(QStringLiteral("/tmp/song2.flac"), QStringLiteral("Song 2"))
+                        },
+                        0);
+
+        audioEngine.setCurrentFileForTest(trackModel.getFilePath(0), 100);
+        audioEngine.setDurationForTest(180000);
+        audioEngine.m_reversePlayback = false;
+        controller.onCurrentFileChanged(trackModel.getFilePath(0));
+
+        controller.setFragmentBoundaries(10000, 30000);
+        controller.setFragmentRepeatEnabled(true);
+        QVERIFY(controller.fragmentRepeatActive());
+
+        // Normal playback inside boundary
+        controller.onAudioPositionChanged(15000);
+        QCOMPARE(controller.activeTrackIndex(), 0);
+
+        // Position reaches/exceeds end boundary -> should seek to start boundary (10000)
+        controller.onAudioPositionChanged(30050);
+        QCOMPARE(audioEngine.lastSeekTargetMs(), 10000);
+
+        // EOS signal -> loops to start boundary and stays on track 0 instead of advancing
+        controller.handleTrackEndedInternal(101, true);
+        QCOMPARE(audioEngine.lastSeekTargetMs(), 10000);
+        QCOMPARE(controller.activeTrackIndex(), 0);
+    }
+
+    void fragmentRepeatReversePlaybackLoopsToEnd()
+    {
+        FakeAudioEngine audioEngine;
+        FakeTrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+
+        trackModel.seed({
+                            makeTrack(QStringLiteral("/tmp/song1.flac"), QStringLiteral("Song 1")),
+                            makeTrack(QStringLiteral("/tmp/song2.flac"), QStringLiteral("Song 2"))
+                        },
+                        0);
+
+        audioEngine.setCurrentFileForTest(trackModel.getFilePath(0), 200);
+        audioEngine.setDurationForTest(180000);
+        audioEngine.m_reversePlayback = true;
+        controller.onCurrentFileChanged(trackModel.getFilePath(0));
+
+        controller.setFragmentBoundaries(10000, 30000);
+        controller.setFragmentRepeatEnabled(true);
+        QVERIFY(controller.fragmentRepeatActive());
+
+        // Reverse playback position reaches/drops below start boundary -> seeks to end boundary (30000)
+        controller.onAudioPositionChanged(9950);
+        QCOMPARE(audioEngine.lastSeekTargetMs(), 30000);
+
+        // EOS signal in reverse -> loops to end boundary (30000)
+        controller.handleTrackEndedInternal(201, true);
+        QCOMPARE(audioEngine.lastSeekTargetMs(), 30000);
+        QCOMPARE(controller.activeTrackIndex(), 0);
+    }
+
+    void fragmentRepeatPerTrackPersistenceBehavior()
+    {
+        AppSettingsManager settings;
+        FakeAudioEngine audioEngine;
+        FakeTrackModel trackModel;
+        PlaybackController controller(&trackModel, &audioEngine);
+        controller.setAppSettingsManager(&settings);
+
+        const QString track1 = QStringLiteral("/tmp/song1.flac");
+        const QString track2 = QStringLiteral("/tmp/song2.flac");
+
+        trackModel.seed({
+                            makeTrack(track1, QStringLiteral("Song 1")),
+                            makeTrack(track2, QStringLiteral("Song 2"))
+                        },
+                        0);
+
+        // Test 1: Persistence OFF -> track change clears boundaries
+        controller.setPersistFragmentLoopPerTrack(false);
+        audioEngine.setCurrentFileForTest(track1, 300);
+        audioEngine.setDurationForTest(180000);
+        controller.onCurrentFileChanged(track1);
+
+        controller.setFragmentBoundaries(5000, 20000);
+        QCOMPARE(controller.fragmentStartMs(), 5000);
+        QCOMPARE(controller.fragmentEndMs(), 20000);
+
+        // Switch to Track 2
+        audioEngine.setCurrentFileForTest(track2, 301);
+        controller.onCurrentFileChanged(track2);
+        QCOMPARE(controller.fragmentStartMs(), -1);
+        QCOMPARE(controller.fragmentEndMs(), -1);
+
+        // Test 2: Persistence ON -> saved boundaries restored on return
+        controller.setPersistFragmentLoopPerTrack(true);
+        controller.setFragmentBoundaries(12000, 45000); // Set for Track 2
+
+        // Switch to Track 1 (currently no saved loop in settings for track 1 yet)
+        audioEngine.setCurrentFileForTest(track1, 302);
+        controller.onCurrentFileChanged(track1);
+        QCOMPARE(controller.fragmentStartMs(), -1);
+        QCOMPARE(controller.fragmentEndMs(), -1);
+
+        // Set loop for Track 1
+        controller.setFragmentBoundaries(8000, 28000);
+
+        // Switch back to Track 2 -> restores Track 2 loop [12000, 45000]
+        audioEngine.setCurrentFileForTest(track2, 303);
+        controller.onCurrentFileChanged(track2);
+        QCOMPARE(controller.fragmentStartMs(), 12000);
+        QCOMPARE(controller.fragmentEndMs(), 45000);
+
+        // Switch back to Track 1 -> restores Track 1 loop [8000, 28000]
+        audioEngine.setCurrentFileForTest(track1, 304);
+        controller.onCurrentFileChanged(track1);
+        QCOMPARE(controller.fragmentStartMs(), 8000);
+        QCOMPARE(controller.fragmentEndMs(), 28000);
     }
 };
 

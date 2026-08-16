@@ -12,7 +12,7 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr double kEqualizerQ = 1.1;
 constexpr float kLimiterThreshold = 1.0f;
 
-qint64 secondsToMs(double seconds)
+static qint64 secondsToMs(double seconds)
 {
     return std::max<qint64>(0, qRound64(seconds * 1000.0));
 }

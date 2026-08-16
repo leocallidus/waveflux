@@ -73,6 +73,8 @@ public:
 
     double generationProgress() const { return m_generationProgress; }
     void setGenerationProgress(double progress);
+    double displayedGenerationProgress() const { return m_displayGenerationProgress; }
+    bool loadingAnimationRunning() const { return m_loadingAnimationTimer.isActive(); }
 
     QString loadingLabelTemplate() const { return m_loadingLabelTemplate; }
     void setLoadingLabelTemplate(const QString &text);
@@ -141,6 +143,7 @@ private:
     QRectF itemBoundsRect() const;
     QRectF progressDirtyRect(int oldPixel, int newPixel) const;
     QRectF generationDirtyRect(int oldPixel, int newPixel) const;
+    void advanceLoadingAnimation();
     void requestRepaint(const QRectF &dirtyRect = QRectF());
     void flushScheduledRepaint();
     void stopPanInertia();
@@ -179,6 +182,8 @@ private:
     
     double m_progress = 0.0;
     double m_generationProgress = 0.0;
+    double m_displayGenerationProgress = 0.0;
+    double m_loadingAnimationPhase = 0.0;
     bool m_loading = false;
     QString m_loadingLabelTemplate = QStringLiteral("Waveform %1%");
     QString m_emptyStateText = QStringLiteral("Drop audio file here");
@@ -201,6 +206,7 @@ private:
     bool m_pendingFullRepaint = false;
     QTimer m_repaintTimer;
     QElapsedTimer m_repaintClock;
+    QTimer m_loadingAnimationTimer;
     
     QColor m_waveformColor{QGuiApplication::palette().color(QPalette::Mid)};
     QColor m_progressColor{QGuiApplication::palette().color(QPalette::Highlight)};
@@ -220,6 +226,7 @@ private:
     static constexpr int kMinRepaintIntervalMs = 1000 / kRepaintFpsLimit;
     static constexpr int kDirtyMarginPx = 3;
     static constexpr int kPanInertiaIntervalMs = 1000 / 60;
+    static constexpr int kLoadingAnimationIntervalMs = 1000 / 30;
     static constexpr double kPanVelocitySmoothing = 0.35;
     static constexpr double kPanDecayPerSecond = 7.0;
     static constexpr double kPanStopVelocity = 0.003;

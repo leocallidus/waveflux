@@ -31,6 +31,7 @@
 #include "BatchAudioConverterService.h"
 #include "WaveformProvider.h"
 #include "TrackModel.h"
+#include "TrackFilterProxyModel.h"
 #include "WaveformItem.h"
 #include "TagEditor.h"
 #include "ThemeManager.h"
@@ -286,6 +287,12 @@ int main(int argc, char *argv[])
         BatchAudioConverterService batchAudioConverterService;
         WaveformProvider waveformProvider;
         TrackModel trackModel;
+        TrackFilterProxyModel playlistTableFilterModel;
+        TrackFilterProxyModel playlistViewFilterModel;
+        TrackFilterProxyModel compactPlaylistFilterModel;
+        playlistTableFilterModel.setSourceModel(&trackModel);
+        playlistViewFilterModel.setSourceModel(&trackModel);
+        compactPlaylistFilterModel.setSourceModel(&trackModel);
         TagEditor tagEditor;
         ThemeManager themeManager;
         PlaybackController playbackController(&trackModel, &audioEngine);
@@ -358,6 +365,31 @@ int main(int argc, char *argv[])
                 appSettingsManager.autoAddTracksFromPlaylistFolder());
         };
         applyPlaylistFolderAutoAddSetting();
+
+        playbackController.setAppSettingsManager(&appSettingsManager);
+        playbackController.setFragmentRepeatEnabled(appSettingsManager.fragmentRepeatEnabled());
+        playbackController.setPersistFragmentLoopPerTrack(appSettingsManager.persistFragmentLoopPerTrack());
+
+        QObject::connect(&appSettingsManager, &AppSettingsManager::fragmentRepeatEnabledChanged,
+                         &playbackController, [&]() {
+                             playbackController.setFragmentRepeatEnabled(appSettingsManager.fragmentRepeatEnabled());
+                         });
+        QObject::connect(&playbackController, &PlaybackController::fragmentRepeatStateChanged,
+                         &appSettingsManager, [&]() {
+                             if (appSettingsManager.fragmentRepeatEnabled() != playbackController.fragmentRepeatEnabled()) {
+                                 appSettingsManager.setFragmentRepeatEnabled(playbackController.fragmentRepeatEnabled());
+                             }
+                         });
+        QObject::connect(&appSettingsManager, &AppSettingsManager::persistFragmentLoopPerTrackChanged,
+                         &playbackController, [&]() {
+                             playbackController.setPersistFragmentLoopPerTrack(appSettingsManager.persistFragmentLoopPerTrack());
+                         });
+        QObject::connect(&playbackController, &PlaybackController::persistFragmentLoopPerTrackChanged,
+                         &appSettingsManager, [&]() {
+                             if (appSettingsManager.persistFragmentLoopPerTrack() != playbackController.persistFragmentLoopPerTrack()) {
+                                 appSettingsManager.setPersistFragmentLoopPerTrack(playbackController.persistFragmentLoopPerTrack());
+                             }
+                         });
         if (!reversePlaybackEnabledByCli && appSettingsManager.reversePlayback()) {
             appSettingsManager.setReversePlayback(false);
         }
@@ -610,6 +642,12 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("batchAudioConverterService", &batchAudioConverterService);
         engine.rootContext()->setContextProperty("waveformProvider", &waveformProvider);
         engine.rootContext()->setContextProperty("trackModel", &trackModel);
+        engine.rootContext()->setContextProperty("playlistTableFilterModel",
+                                                 &playlistTableFilterModel);
+        engine.rootContext()->setContextProperty("playlistViewFilterModel",
+                                                 &playlistViewFilterModel);
+        engine.rootContext()->setContextProperty("compactPlaylistFilterModel",
+                                                 &compactPlaylistFilterModel);
         engine.rootContext()->setContextProperty("tagEditor", &tagEditor);
         engine.rootContext()->setContextProperty("themeManager", &themeManager);
         engine.rootContext()->setContextProperty("playbackController", &playbackController);
@@ -629,13 +667,14 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("smartCollectionsEngine", &smartCollectionsEngine);
 
         // Load main QML file
-        using namespace Qt::StringLiterals;
-        const QUrl url(u"qrc:/WaveFlux/qml/Main.qml"_s);
+        const QUrl mainQmlUrl(QStringLiteral("qrc:/WaveFlux/qml/Main.qml"));
         QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
-                         &app, []() { QCoreApplication::exit(-1); },
+                         &app, [mainQmlUrl]() {
+                             qCritical() << "Failed to create the main QML object:" << mainQmlUrl;
+                             QCoreApplication::exit(-1);
+                         },
                          Qt::QueuedConnection);
-        engine.load(url);
-
+        engine.load(mainQmlUrl);
         QWindow *mainWindow = nullptr;
         if (!engine.rootObjects().isEmpty()) {
             mainWindow = qobject_cast<QWindow *>(engine.rootObjects().constFirst());

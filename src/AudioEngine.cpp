@@ -1458,6 +1458,8 @@ void AudioEngine::seekWithSource(qint64 position, const QString &source)
         return;
     }
 
+    m_lastSeekTargetMs = position;
+
     if (usingOpenMptBackend()) {
         QString seekSource = source.trimmed();
         if (seekSource.isEmpty()) {

@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     readonly property int preferredDialogWidth: 680
@@ -90,6 +90,9 @@ Dialog {
     }
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -628,14 +631,17 @@ Dialog {
     standardButtons: Dialog.NoButton
     closePolicy: Popup.NoAutoClose
 
-    width: root.parent
-           ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
-           : preferredDialogWidth
-    height: root.parent
-            ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24)
-            : preferredDialogHeight
+    implicitWidth: preferredDialogWidth
+    implicitHeight: preferredDialogHeight
 
-    anchors.centerIn: parent
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: {
         terminalState = "none"
@@ -1665,11 +1671,11 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: cancelAndCloseDialog
         modal: true
         title: root.tr("audioConverter.escapeRunningConfirmTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         onAccepted: root.close()
@@ -1680,13 +1686,37 @@ Dialog {
             color: Kirigami.Theme.textColor
             padding: 8
         }
+
+        footer: Rectangle {
+            implicitHeight: cancelAndCloseActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: cancelAndCloseActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: cancelAndCloseDialog.reject()
+                }
+                Button {
+                    text: root.tr("audioConverter.close")
+                    accent: true
+                    onClicked: cancelAndCloseDialog.accept()
+                }
+            }
+        }
     }
 
-    Dialog {
+    AppDialog {
         id: replaceConfirmDialog
         modal: true
         title: root.tr("audioConverter.confirmReplaceTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         onAccepted: {
@@ -1708,6 +1738,30 @@ Dialog {
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.textColor
             padding: 8
+        }
+
+        footer: Rectangle {
+            implicitHeight: replaceConfirmActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: replaceConfirmActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: replaceConfirmDialog.reject()
+                }
+                Button {
+                    text: root.tr("audioConverter.replace")
+                    accent: true
+                    onClicked: replaceConfirmDialog.accept()
+                }
+            }
         }
     }
 

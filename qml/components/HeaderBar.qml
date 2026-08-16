@@ -160,18 +160,12 @@ Rectangle {
     }
 
     function playlistEntryText(playlistId, playlistName, trackCount) {
-        const selected = !root.collectionModeActive && root.selectedPlaylistProfileId === playlistId
-        const prefix = selected ? "\u2713 " : ""
         const safeName = playlistName && playlistName.length > 0 ? playlistName : ("#" + playlistId)
-        return prefix + safeName + " (" + Math.max(0, trackCount) + ")"
+        return safeName + " (" + Math.max(0, trackCount) + ")"
     }
 
     function collectionEntryText(collectionId, collectionName, pinned) {
-        const selected = root.collectionModeActive && root.selectedCollectionId === collectionId
-        const prefix = selected ? "\u2713 " : ""
-        const safeName = collectionName && collectionName.length > 0 ? collectionName : ("#" + collectionId)
-        const pinSuffix = pinned ? " \u2605" : ""
-        return prefix + safeName + pinSuffix
+        return collectionName && collectionName.length > 0 ? collectionName : ("#" + collectionId)
     }
 
     readonly property color headerTint: Qt.rgba(themeManager.primaryColor.r,
@@ -323,24 +317,27 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
         }
 
-        indicator: Text {
-            visible: menuItem.hasIndicator
+        indicator: Image {
+            visible: menuItem.hasIndicator && menuItem.checked
             x: 12
             y: Math.round((menuItem.height - height) * 0.5)
-            width: menuItem.indicatorSlotWidth
-            horizontalAlignment: Text.AlignHCenter
-            text: menuItem.checked ? "\u2713" : ""
-            color: menuItem.enabled ? themeManager.primaryColor : themeManager.textMutedColor
-            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
-            font.bold: true
+            width: 16
+            height: 16
+            source: IconResolver.themed("dialog-ok-apply", themeManager.darkMode)
+            sourceSize.width: width
+            sourceSize.height: height
+            opacity: menuItem.enabled ? 1.0 : 0.5
         }
 
-        arrow: Text {
+        arrow: Image {
             id: submenuArrow
-            text: "\u203a"
             visible: menuItem.subMenu
-            color: menuItem.enabled ? themeManager.textSecondaryColor : themeManager.textMutedColor
-            font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
+            width: 16
+            height: 16
+            source: IconResolver.themed("go-next", themeManager.darkMode)
+            sourceSize.width: width
+            sourceSize.height: height
+            opacity: menuItem.enabled ? 1.0 : 0.5
         }
     }
 
@@ -636,32 +633,46 @@ Rectangle {
         id: searchFilterMenu
 
         FluxMenuItem {
-            text: (root.searchFieldMask === 0 ? "\u2713 " : "") + root.tr("header.filterAllFields")
+            text: root.tr("header.filterAllFields")
+            checkable: true
+            checked: root.searchFieldMask === 0
             onTriggered: root.searchFieldMask = 0
         }
         FluxMenuItem {
-            text: ((root.searchFieldMask & root.searchFieldTitleBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterTitle")
+            text: root.tr("header.filterTitle")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldTitleBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldTitleBit)
         }
         FluxMenuItem {
-            text: ((root.searchFieldMask & root.searchFieldArtistBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterArtist")
+            text: root.tr("header.filterArtist")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldArtistBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldArtistBit)
         }
         FluxMenuItem {
-            text: ((root.searchFieldMask & root.searchFieldAlbumBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterAlbum")
+            text: root.tr("header.filterAlbum")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldAlbumBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldAlbumBit)
         }
         FluxMenuItem {
-            text: ((root.searchFieldMask & root.searchFieldPathBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterPath")
+            text: root.tr("header.filterPath")
+            checkable: true
+            checked: (root.searchFieldMask & root.searchFieldPathBit) !== 0
             onTriggered: root.searchFieldMask = root.toggleMaskBit(root.searchFieldMask, root.searchFieldPathBit)
         }
         MenuSeparator {}
         FluxMenuItem {
-            text: ((root.searchQuickFilterMask & root.searchQuickLosslessBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterLossless")
+            text: root.tr("header.filterLossless")
+            checkable: true
+            checked: (root.searchQuickFilterMask & root.searchQuickLosslessBit) !== 0
             onTriggered: root.searchQuickFilterMask = root.toggleMaskBit(root.searchQuickFilterMask, root.searchQuickLosslessBit)
         }
         FluxMenuItem {
-            text: ((root.searchQuickFilterMask & root.searchQuickHiResBit) !== 0 ? "\u2713 " : "") + root.tr("header.filterHiRes")
+            text: root.tr("header.filterHiRes")
+            checkable: true
+            checked: (root.searchQuickFilterMask & root.searchQuickHiResBit) !== 0
             onTriggered: root.searchQuickFilterMask = root.toggleMaskBit(root.searchQuickFilterMask, root.searchQuickHiResBit)
         }
         MenuSeparator {}
@@ -800,6 +811,8 @@ Rectangle {
                     readonly property string playlistName: (modelData.name || "").trim()
                     readonly property int trackCount: Number(modelData.trackCount ?? 0)
                     text: root.playlistEntryText(playlistId, playlistName, trackCount)
+                    checkable: true
+                    checked: !root.collectionModeActive && root.selectedPlaylistProfileId === playlistId
                     enabled: playlistId > 0
                     onTriggered: root.playlistProfileRequested(playlistId, playlistName)
                 }
@@ -839,6 +852,8 @@ Rectangle {
                     readonly property bool pinned: modelData.pinned === true
                     readonly property bool entryEnabled: modelData.enabled !== false
                     text: root.collectionEntryText(collectionId, collectionName, pinned)
+                    checkable: true
+                    checked: root.collectionModeActive && root.selectedCollectionId === collectionId
                     enabled: root.collectionsEnabled && entryEnabled && collectionId > 0
                     onTriggered: root.collectionRequested(collectionId, collectionName)
                 }
@@ -960,6 +975,8 @@ Rectangle {
                         readonly property string playlistName: (modelData.name || "").trim()
                         readonly property int trackCount: Number(modelData.trackCount ?? 0)
                         text: root.playlistEntryText(playlistId, playlistName, trackCount)
+                        checkable: true
+                        checked: !root.collectionModeActive && root.selectedPlaylistProfileId === playlistId
                         enabled: playlistId > 0
                         onTriggered: root.playlistProfileRequested(playlistId, playlistName)
                     }
@@ -999,6 +1016,8 @@ Rectangle {
                         readonly property bool pinned: modelData.pinned === true
                         readonly property bool entryEnabled: modelData.enabled !== false
                         text: root.collectionEntryText(collectionId, collectionName, pinned)
+                        checkable: true
+                        checked: root.collectionModeActive && root.selectedCollectionId === collectionId
                         enabled: root.collectionsEnabled && entryEnabled && collectionId > 0
                         onTriggered: root.collectionRequested(collectionId, collectionName)
                     }

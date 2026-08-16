@@ -9,7 +9,7 @@ import "IconResolver.js" as IconResolver
 
 Kirigami.ApplicationWindow {
     id: root
-    
+
     title: root.windowTitleText()
     readonly property int compactSkinMinimumWidth: 520
     readonly property int compactSkinMinimumHeight: 240
@@ -34,7 +34,7 @@ Kirigami.ApplicationWindow {
             Qt.quit()
         }
     }
-    
+
     // Theme colors from backend
     property color waveformColor: themeManager.waveformColor
     property color progressColor: themeManager.progressColor
@@ -73,20 +73,34 @@ Kirigami.ApplicationWindow {
     // Derived adaptive flags for normal skin layout.
     readonly property bool showCollectionsSidebar: appSettings.collectionsSidebarVisible
                                                    && windowMode !== "ultraNarrow"
-    readonly property int playlistMinimumWidthWithSidebars: 400
-    readonly property int infoSidebarMinimumWidth: 160
-    readonly property int infoSidebarPreferredWidth: root.width < bpInfoWide ? 180 : themeManager.sidebarWidth
-    readonly property int availableWidthForInfoSidebar: root.width
-                                                       - (root.showCollectionsSidebar ? root.collectionsSidebarPreferredWidth : 0)
-                                                       - root.playlistMinimumWidthWithSidebars
-    readonly property bool showInfoSidebar: appSettings.sidebarVisible
-                                            && (windowMode === "wide" || windowMode === "medium")
-                                            && root.availableWidthForInfoSidebar >= root.infoSidebarMinimumWidth
-    readonly property int infoSidebarEffectiveWidth: Math.min(
-                                                          root.infoSidebarPreferredWidth,
-                                                          Math.max(root.infoSidebarMinimumWidth,
-                                                                   root.availableWidthForInfoSidebar)
+    readonly property int playlistMinimumWidthWithSidebars: 420
+    readonly property int infoSidebarMinimumWidth: 176
+    readonly property int infoSidebarMaximumWidth: 300
+    readonly property int infoSidebarRevealWidth: 900
+    readonly property int infoSidebarPreferredWidth: root.width < bpInfoWide ? 196 : themeManager.sidebarWidth
+    readonly property int collectionsSidebarEffectiveWidth: root.showCollectionsSidebar
+                                                           ? Math.max(188, Math.min(280, root.collectionsSidebarPreferredWidth))
+                                                           : 0
+    // This calculation depends only on the window and the left sidebar, never on
+    // the right sidebar's current Loader width. Keeping it non-recursive prevents
+    // resize oscillation at the visibility threshold.
+    readonly property int availableWidthForInfoSidebar: Math.max(
+                                                          0,
+                                                          root.width
+                                                          - root.collectionsSidebarEffectiveWidth
+                                                          - root.playlistMinimumWidthWithSidebars
                                                       )
+    readonly property bool showInfoSidebar: appSettings.sidebarVisible
+                                            && !root.isCompactSkin
+                                            && root.width >= root.infoSidebarRevealWidth
+                                            && root.availableWidthForInfoSidebar >= root.infoSidebarMinimumWidth
+    readonly property int infoSidebarEffectiveWidth: root.showInfoSidebar
+                                                     ? Math.min(
+                                                           root.infoSidebarMaximumWidth,
+                                                           root.infoSidebarPreferredWidth,
+                                                           root.availableWidthForInfoSidebar
+                                                       )
+                                                     : 0
     readonly property bool useCollectionsDrawerFallback: appSettings.collectionsSidebarVisible
                                                          && !root.showCollectionsSidebar
                                                          && !root.isCompactSkin
@@ -2496,6 +2510,11 @@ Kirigami.ApplicationWindow {
         readonly property var playbackOpenEqualizer: actionPlaybackOpenEqualizer
         readonly property var playbackResetSpeed: actionPlaybackResetSpeed
         readonly property var playbackResetPitch: actionPlaybackResetPitch
+        readonly property var playbackToggleFragmentRepeat: actionPlaybackToggleFragmentRepeat
+        readonly property var playbackSetFragmentStart: actionPlaybackSetFragmentStart
+        readonly property var playbackSetFragmentEnd: actionPlaybackSetFragmentEnd
+        readonly property var playbackClearFragmentBoundaries: actionPlaybackClearFragmentBoundaries
+        readonly property var playbackOpenFragmentDialog: actionPlaybackOpenFragmentDialog
 
         readonly property var libraryCurrentPlaylist: actionLibraryCurrentPlaylist
         readonly property var librarySaveCurrentPlaylist: actionLibrarySaveCurrentPlaylist
@@ -2561,7 +2580,12 @@ Kirigami.ApplicationWindow {
             actionPlaybackLocateCurrent,
             actionPlaybackOpenEqualizer,
             actionPlaybackResetSpeed,
-            actionPlaybackResetPitch
+            actionPlaybackResetPitch,
+            actionPlaybackToggleFragmentRepeat,
+            actionPlaybackSetFragmentStart,
+            actionPlaybackSetFragmentEnd,
+            actionPlaybackClearFragmentBoundaries,
+            actionPlaybackOpenFragmentDialog
         ]
 
         readonly property var libraryActions: [
@@ -3015,6 +3039,51 @@ Kirigami.ApplicationWindow {
     }
 
     Action {
+        id: actionPlaybackSetFragmentStart
+        objectName: "playback.setFragmentStart"
+        text: root.tr("shortcut.setFragmentStart")
+        shortcut: root.actionShortcut(objectName)
+        enabled: audioEngine.duration > 0
+        onTriggered: playbackController.setFragmentStartToCurrentPosition()
+    }
+
+    Action {
+        id: actionPlaybackSetFragmentEnd
+        objectName: "playback.setFragmentEnd"
+        text: root.tr("shortcut.setFragmentEnd")
+        shortcut: root.actionShortcut(objectName)
+        enabled: audioEngine.duration > 0
+        onTriggered: playbackController.setFragmentEndToCurrentPosition()
+    }
+
+    Action {
+        id: actionPlaybackToggleFragmentRepeat
+        objectName: "playback.toggleFragmentRepeat"
+        text: root.tr("shortcut.toggleFragmentRepeat")
+        shortcut: root.actionShortcut(objectName)
+        checkable: true
+        checked: playbackController.fragmentRepeatEnabled
+        onTriggered: playbackController.toggleFragmentRepeat()
+    }
+
+    Action {
+        id: actionPlaybackClearFragmentBoundaries
+        objectName: "playback.clearFragmentBoundaries"
+        text: root.tr("shortcut.clearFragmentBoundaries")
+        shortcut: root.actionShortcut(objectName)
+        enabled: playbackController.fragmentStartMs >= 0 || playbackController.fragmentEndMs >= 0
+        onTriggered: playbackController.clearFragmentBoundaries()
+    }
+
+    Action {
+        id: actionPlaybackOpenFragmentDialog
+        objectName: "playback.openFragmentDialog"
+        text: root.tr("shortcut.openFragmentDialog")
+        shortcut: root.actionShortcut(objectName)
+        onTriggered: fragmentRepeatDialog.open()
+    }
+
+    Action {
         id: actionLibraryCurrentPlaylist
         objectName: "library.currentPlaylist"
         text: root.tr("collections.currentPlaylist")
@@ -3073,7 +3142,7 @@ Kirigami.ApplicationWindow {
         shortcut: root.actionShortcut(objectName)
         onTriggered: root.cmdOpenHelpShortcuts()
     }
-    
+
     // Enable drag & drop
     DropArea {
         id: windowDropArea
@@ -3154,7 +3223,7 @@ Kirigami.ApplicationWindow {
             }
         }
     }
-    
+
     // Global keyboard shortcuts
     // Accelerated keyboard seek state without relying on key-release hooks.
     property int _seekBurstCount: 0
@@ -3434,6 +3503,31 @@ Kirigami.ApplicationWindow {
         }
     }
     Shortcut {
+        sequence: root.shortcutSequence("playback.setFragmentStart")
+        enabled: root.shortcutActive("playback.setFragmentStart") && audioEngine.duration > 0
+        onActivated: playbackController.setFragmentStartToCurrentPosition()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playback.setFragmentEnd")
+        enabled: root.shortcutActive("playback.setFragmentEnd") && audioEngine.duration > 0
+        onActivated: playbackController.setFragmentEndToCurrentPosition()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playback.toggleFragmentRepeat")
+        enabled: root.shortcutActive("playback.toggleFragmentRepeat")
+        onActivated: playbackController.toggleFragmentRepeat()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playback.clearFragmentBoundaries")
+        enabled: root.shortcutActive("playback.clearFragmentBoundaries")
+        onActivated: playbackController.clearFragmentBoundaries()
+    }
+    Shortcut {
+        sequence: root.shortcutSequence("playback.openFragmentDialog")
+        enabled: root.shortcutActive("playback.openFragmentDialog")
+        onActivated: fragmentRepeatDialog.open()
+    }
+    Shortcut {
         sequence: root.shortcutSequence("view.profilerOverlay")
         enabled: root.shortcutActive("view.profilerOverlay")
         onActivated: {
@@ -3512,7 +3606,7 @@ Kirigami.ApplicationWindow {
             }
         }
     }
-    
+
     // Main layout - switches between normal and compact skins
     pageStack.initialPage: Kirigami.Page {
         id: mainPage
@@ -3528,10 +3622,10 @@ Kirigami.ApplicationWindow {
                 root.clearSearchFieldFocusAt(eventPoint.position)
             }
         }
-        
+
         // Remove default page header
         globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-        
+
         // Compact skin loader
         Loader {
             id: compactSkinLoader
@@ -3662,7 +3756,7 @@ Kirigami.ApplicationWindow {
             anchors.fill: parent
             spacing: 0
             visible: !root.isCompactSkin
-            
+
             // Header bar
             HeaderBar {
                 id: headerBar
@@ -3819,12 +3913,17 @@ Kirigami.ApplicationWindow {
                 }
 
                 Loader {
+                    id: infoSidebarLoader
+                    objectName: "infoSidebarLoader"
                     Layout.fillHeight: true
                     Layout.preferredWidth: root.infoSidebarEffectiveWidth
                     Layout.minimumWidth: root.showInfoSidebar ? root.infoSidebarMinimumWidth : 0
-                    Layout.maximumWidth: 300
-                    active: root.showInfoSidebar
-                    visible: active
+                    Layout.maximumWidth: root.showInfoSidebar ? root.infoSidebarMaximumWidth : 0
+                    // Keep the component instantiated while the normal skin is active.
+                    // Destroying and recreating it at every resize threshold caused
+                    // visible blank frames and expensive album-art/spectrum rebuilds.
+                    active: appSettings.sidebarVisible && !root.isCompactSkin
+                    visible: root.showInfoSidebar
                     source: "components/InfoSidebar.qml"
                     onLoaded: {
                         if (!item) {
@@ -4282,7 +4381,7 @@ Kirigami.ApplicationWindow {
             }
         }
     }
-    
+
     TagEditorDialog {
         id: tagEditorDialog
     }
@@ -4671,6 +4770,17 @@ Kirigami.ApplicationWindow {
         id: smartCollectionDialog
     }
 
+    FragmentRepeatDialog {
+        id: fragmentRepeatDialog
+    }
+
+    Connections {
+        target: fragmentRepeatDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.fragment_repeat.closed")
+        }
+    }
+
     Connections {
         target: smartCollectionDialog
         function onClosed() {
@@ -4769,7 +4879,7 @@ Kirigami.ApplicationWindow {
             }
         }
     }
-    
+
     // Connect signals
     Connections {
         target: trackModel

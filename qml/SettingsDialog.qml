@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     property var sidebarSectionController: null
@@ -19,6 +19,9 @@ Dialog {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -31,13 +34,16 @@ Dialog {
         return key.length > 0 ? root.tr(key) : ""
     }
 
-    width: root.parent
-           ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
-           : preferredDialogWidth
-    height: root.parent
-            ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24)
-            : preferredDialogHeight
-    anchors.centerIn: parent
+    implicitWidth: preferredDialogWidth
+    implicitHeight: preferredDialogHeight
+
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     readonly property color frameColor: themeManager.borderColor
     readonly property color panelColor: themeManager.surfaceColor
@@ -1189,14 +1195,17 @@ Dialog {
     }
 
     function fallbackSectionMetadata() {
+        const fallbackTitle = root.tr("settings.appearance")
         return {
             id: "appearance",
             titleKey: "settings.appearance",
             descriptionKey: "settings.sectionAppearanceDescription",
-            title: root.tr("settings.appearance"),
+            title: fallbackTitle,
+            shortTitle: root.sectionShortTitle("appearance"),
+            tabTitle: fallbackTitle,
             description: root.tr("settings.sectionAppearanceDescription"),
             icon: "",
-            searchTerms: [root.tr("settings.appearance")]
+            searchTerms: [fallbackTitle]
         }
     }
 
@@ -1212,12 +1221,14 @@ Dialog {
             searchTerms.push(root.tr(searchTermKeys[i]))
         }
 
+        const resolvedTitle = root.tr(raw.titleKey)
         return {
             id: raw.id,
             titleKey: raw.titleKey,
             descriptionKey: raw.descriptionKey,
-            title: root.tr(raw.titleKey),
+            title: resolvedTitle,
             shortTitle: root.sectionShortTitle(raw.id),
+            tabTitle: resolvedTitle,
             description: root.tr(raw.descriptionKey),
             icon: raw.icon || "",
             searchTerms: searchTerms
@@ -1530,6 +1541,10 @@ Dialog {
     }
 
     onOpened: Qt.callLater(function() {
+        if (root.isSeparateWindow && root.Window.window) {
+            root.Window.window.minimumWidth = root.minimumDialogWidth
+            root.Window.window.minimumHeight = root.minimumDialogHeight
+        }
         applyInitialNavigation()
         refreshImportToolInspections()
         if (settingsSearchField) {
@@ -2130,6 +2145,24 @@ Dialog {
                         text: root.tr("settings.confirmTrashDeletionDescription")
                         searchQuery: root.settingsSearchQuery
                         forceVisible: confirmTrashDeletionRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: separateWindowDialogsRow
+                        title: root.tr("settings.separateWindowDialogs")
+                        checked: appSettings.separateWindowDialogs
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.separateWindowDialogsDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.separateWindowDialogs = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.separateWindowDialogsDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: separateWindowDialogsRow.visible
                     }
 
                     SettingToggleRow {
@@ -2849,6 +2882,42 @@ Dialog {
                         text: root.tr("settings.showSpeedPitchDescription")
                         searchQuery: root.settingsSearchQuery
                         forceVisible: showSpeedPitchRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: fragmentRepeatRow
+                        title: root.tr("settings.fragmentRepeatEnabled")
+                        checked: appSettings.fragmentRepeatEnabled
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.fragmentRepeatDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.fragmentRepeatEnabled = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.fragmentRepeatDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: fragmentRepeatRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: persistFragmentLoopRow
+                        title: root.tr("settings.persistFragmentLoopPerTrack")
+                        checked: appSettings.persistFragmentLoopPerTrack
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.persistFragmentLoopPerTrackDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.persistFragmentLoopPerTrack = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.persistFragmentLoopPerTrackDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: persistFragmentLoopRow.visible
                     }
 
                     SettingHintText {
@@ -4124,17 +4193,17 @@ Dialog {
         Component.onCompleted: Qt.callLater(root.syncActiveSectionFromScroll)
     }
 
-    Dialog {
+    AppDialog {
         id: shortcutCaptureDialog
-        parent: Overlay.overlay
+        parent: shortcutCaptureDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         focus: true
         padding: 0
         standardButtons: Dialog.NoButton
         closePolicy: Popup.NoAutoClose
         title: root.tr("settings.shortcutCaptureTitle")
-        width: root.parent ? Math.min(460, root.parent.width - 40) : 460
-        anchors.centerIn: parent
+        width: shortcutCaptureDialog.isSeparateWindow ? 460 : (root.parent ? Math.min(460, root.parent.width - 40) : 460)
+        anchors.centerIn: !shortcutCaptureDialog.isSeparateWindow ? parent : undefined
 
         onOpened: Qt.callLater(shortcutCaptureKeySink.forceActiveFocus)
         onClosed: {
@@ -4232,17 +4301,17 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: shortcutConflictDialog
-        parent: Overlay.overlay
+        parent: shortcutConflictDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         focus: true
         padding: 0
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         title: root.tr("settings.shortcutConflictTitle")
-        width: root.parent ? Math.min(520, root.parent.width - 40) : 520
-        anchors.centerIn: parent
+        width: shortcutConflictDialog.isSeparateWindow ? 520 : (root.parent ? Math.min(520, root.parent.width - 40) : 520)
+        anchors.centerIn: !shortcutConflictDialog.isSeparateWindow ? parent : undefined
 
         background: Rectangle {
             color: root.panelColor
@@ -4343,9 +4412,9 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: factoryResetDialog
-        parent: Overlay.overlay
+        parent: factoryResetDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         focus: true
         padding: 14
@@ -4353,9 +4422,9 @@ Dialog {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         title: root.tr("settings.factoryResetTitle")
 
-        width: root.boundedDialogSize(root.resetDialogPreferredWidth, root.resetDialogMinimumWidth, root.width - 24)
-        x: Math.round((parent ? parent.width - width : 0) * 0.5)
-        y: Math.round((parent ? parent.height - height : 0) * 0.5)
+        width: factoryResetDialog.isSeparateWindow ? root.resetDialogPreferredWidth : root.boundedDialogSize(root.resetDialogPreferredWidth, root.resetDialogMinimumWidth, root.width - 24)
+        x: (!factoryResetDialog.isSeparateWindow && parent) ? Math.round((parent.width - width) * 0.5) : undefined
+        y: (!factoryResetDialog.isSeparateWindow && parent) ? Math.round((parent.height - height) * 0.5) : undefined
 
         onOpened: Qt.callLater(function() {
             if (factoryResetCancelButton) {
@@ -4466,9 +4535,9 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: resetConfirmDialog
-        parent: Overlay.overlay
+        parent: resetConfirmDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         focus: true
         padding: 0
@@ -4476,10 +4545,10 @@ Dialog {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         title: root.pendingResetTitle
 
-        width: root.boundedDialogSize(root.resetDialogPreferredWidth, root.resetDialogMinimumWidth, root.width - 24)
-        height: root.boundedDialogSize(root.resetDialogPreferredHeight, root.resetDialogMinimumHeight, root.height - 24)
-        x: Math.round((parent ? parent.width - width : 0) * 0.5)
-        y: Math.round((parent ? parent.height - height : 0) * 0.5)
+        width: resetConfirmDialog.isSeparateWindow ? root.resetDialogPreferredWidth : root.boundedDialogSize(root.resetDialogPreferredWidth, root.resetDialogMinimumWidth, root.width - 24)
+        height: resetConfirmDialog.isSeparateWindow ? root.resetDialogPreferredHeight : root.boundedDialogSize(root.resetDialogPreferredHeight, root.resetDialogMinimumHeight, root.height - 24)
+        x: (!resetConfirmDialog.isSeparateWindow && parent) ? Math.round((parent.width - width) * 0.5) : undefined
+        y: (!resetConfirmDialog.isSeparateWindow && parent) ? Math.round((parent.height - height) * 0.5) : undefined
 
         onOpened: Qt.callLater(function() {
             if (resetCancelButton) {

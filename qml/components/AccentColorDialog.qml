@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+AppDialog {
     id: root
 
     modal: true
@@ -47,6 +47,9 @@ Dialog {
     }
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -111,13 +114,16 @@ Dialog {
         value = clamp01(1.0 - (mouseY / Math.max(1, saturationValueArea.height)))
     }
 
-    width: root.parent
-           ? boundedDialogSize(640, 460, root.parent.width - 24)
-           : 640
-    height: root.parent
-            ? boundedDialogSize(560, 460, root.parent.height - 24)
-            : 560
-    anchors.centerIn: parent
+    implicitWidth: 640
+    implicitHeight: 560
+
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(640, 460, root.parent.width - 24) : 640)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(560, 460, root.parent.height - 24) : 560)
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: syncFromColor(selectedColor)
 

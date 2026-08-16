@@ -39,6 +39,7 @@ Item {
     property bool ctrlDragMoved: false
     property bool ctrlDragConsumeClick: false
     property real pendingRestoredPlaylistContentY: -1
+    property bool filterViewportResetPending: false
     property var cueSegments: []
     readonly property int selectedCount: selectedFilePaths.length
     readonly property bool isPlaying: audioEngine ? audioEngine.state === 1 : false
@@ -68,6 +69,23 @@ Item {
     readonly property string normalizedSearchQuery: debouncedSearchQuery.trim().toLowerCase()
     readonly property int searchRevision: trackModel.searchRevision
     property int appliedSearchRevision: searchRevision
+    readonly property var filteredTrackModel: compactPlaylistFilterModel
+
+    Binding {
+        target: root.filteredTrackModel
+        property: "normalizedQuery"
+        value: root.normalizedSearchQuery
+    }
+    Binding {
+        target: root.filteredTrackModel
+        property: "fieldMask"
+        value: 0
+    }
+    Binding {
+        target: root.filteredTrackModel
+        property: "quickFilterMask"
+        value: 0
+    }
 
     function uiActiveIndex() {
         const pending = playbackController.pendingTrackIndex
@@ -356,16 +374,21 @@ Item {
             if (!playbackController.shuffleEnabled || delayedCurrent < 0) {
                 return
             }
+            const proxyIndex = filteredTrackModel.proxyIndexForSource(delayedCurrent)
+            if (proxyIndex < 0) {
+                return
+            }
             const viewportHeight = compactPlaylist.height
             if (viewportHeight > 0) {
                 const rowHeight = 24
-                const contentHeight = Math.max(trackModel.count * rowHeight, viewportHeight)
-                const centerY = (delayedCurrent + 0.5) * rowHeight
-                compactPlaylist.contentY = Math.max(
+                const contentHeight = Math.max(filteredTrackModel.count * rowHeight, viewportHeight)
+                const centerY = (proxyIndex + 0.5) * rowHeight
+                const offset = Math.max(
                             0,
                             Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
+                compactPlaylist.contentY = Number(compactPlaylist.originY || 0) + offset
             } else {
-                compactPlaylist.positionViewAtIndex(delayedCurrent, ListView.Center)
+                compactPlaylist.positionViewAtIndex(proxyIndex, ListView.Center)
             }
         })
     }
@@ -381,33 +404,30 @@ Item {
             if (delayedCurrent < 0) {
                 return
             }
+            const proxyIndex = filteredTrackModel.proxyIndexForSource(delayedCurrent)
+            if (proxyIndex < 0) {
+                return
+            }
             const viewportHeight = compactPlaylist.height
             if (viewportHeight <= 0) {
-                compactPlaylist.positionViewAtIndex(delayedCurrent, ListView.Center)
+                compactPlaylist.positionViewAtIndex(proxyIndex, ListView.Center)
                 return
             }
             const rowHeight = 24
-            if (root.normalizedSearchQuery.length > 0 && root.matchesTrackAt(delayedCurrent)) {
-                const visibleRow = root.matchCountBefore(delayedCurrent)
-                const visibleCount = root.matchCount()
-                const contentHeight = Math.max(visibleCount * rowHeight, viewportHeight)
-                const centerY = (visibleRow + 0.5) * rowHeight
-                compactPlaylist.contentY = Math.max(
-                            0,
-                            Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
-                return
-            }
-            const contentHeight = Math.max(trackModel.count * rowHeight, viewportHeight)
-            const centerY = (delayedCurrent + 0.5) * rowHeight
-            compactPlaylist.contentY = Math.max(
+            const contentHeight = Math.max(filteredTrackModel.count * rowHeight, viewportHeight)
+            const centerY = (proxyIndex + 0.5) * rowHeight
+            const offset = Math.max(
                         0,
                         Math.min(contentHeight - viewportHeight, centerY - viewportHeight * 0.5))
+            compactPlaylist.contentY = Number(compactPlaylist.originY || 0) + offset
         })
     }
 
     function exportTrackListViewState() {
         return {
-            "contentY": Math.max(0, Number(compactPlaylist.contentY || 0))
+            "contentY": Math.max(0,
+                                 Number(compactPlaylist.contentY || 0)
+                                 - Number(compactPlaylist.originY || 0))
         }
     }
 
@@ -424,8 +444,11 @@ Item {
         if (!compactPlaylist || compactPlaylist.height <= 0) {
             return
         }
-        const maxContentY = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
-        compactPlaylist.contentY = Math.max(0, Math.min(maxContentY, pendingRestoredPlaylistContentY))
+        const topY = Number(compactPlaylist.originY || 0)
+        const maxOffset = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
+        compactPlaylist.contentY = topY + Math.max(0,
+                                                   Math.min(maxOffset,
+                                                            pendingRestoredPlaylistContentY))
         pendingRestoredPlaylistContentY = -1
     }
 
@@ -436,10 +459,11 @@ Item {
         const safeY = Math.max(0, Math.min(compactPlaylist.height, Number(viewY) || 0))
         const contentY = compactPlaylist.contentY + safeY
         const item = compactPlaylist.itemAt(8, contentY)
-        if (item && item.index !== undefined && item.height > 0) {
+        if (item && item.sourceIndex !== undefined && item.height > 0) {
             return Math.max(0,
                             Math.min(trackModel.count,
-                                     item.index + (contentY >= item.y + item.height * 0.5 ? 1 : 0)))
+                                     item.sourceIndex
+                                     + (contentY >= item.y + item.height * 0.5 ? 1 : 0)))
         }
         if (safeY <= 0) {
             return 0
@@ -452,9 +476,11 @@ Item {
         const contentY = compactPlaylist.contentY + safeY
         const item = compactPlaylist.itemAt(8, contentY)
         root.externalDropPointerY = safeY
-        if (item && item.index !== undefined && item.height > 0) {
+        if (item && item.sourceIndex !== undefined && item.height > 0) {
             const afterItem = contentY >= item.y + item.height * 0.5
-            root.externalDropIndex = Math.max(0, Math.min(trackModel.count, item.index + (afterItem ? 1 : 0)))
+            root.externalDropIndex = Math.max(0,
+                                              Math.min(trackModel.count,
+                                                       item.sourceIndex + (afterItem ? 1 : 0)))
             root.externalDropY = Math.max(
                         0,
                         Math.min(compactPlaylist.height, item.y - compactPlaylist.contentY + (afterItem ? item.height : 0)))
@@ -535,21 +561,22 @@ Item {
 
     function matchCount() {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.countMatchingAdvancedNormalized(root.normalizedSearchQuery, 0, 0)
+        return filteredTrackModel.count
     }
 
     function matchCountBefore(index) {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.countMatchingAdvancedNormalizedBefore(index, root.normalizedSearchQuery, 0, 0)
+        const proxyIndex = filteredTrackModel.proxyIndexForSource(index)
+        return proxyIndex >= 0 ? proxyIndex : 0
     }
 
     function matchesTrackAt(index) {
         const _searchRevision = root.appliedSearchRevision
-        return trackModel.matchesSearchAdvancedNormalized(index, root.normalizedSearchQuery, 0, 0)
+        return filteredTrackModel.proxyIndexForSource(index) >= 0
     }
 
     function compactLogicalVisibleCount() {
-        return root.normalizedSearchQuery.length > 0 ? root.matchCount() : trackModel.count
+        return filteredTrackModel.count
     }
 
     function compactApplyCenteredContentY(visibleRow, visibleCount) {
@@ -559,9 +586,10 @@ Item {
         const rowHeight = 24
         const contentHeight = Math.max(visibleCount * rowHeight, compactPlaylist.height)
         const centerY = (visibleRow + 0.5) * rowHeight
-        compactPlaylist.contentY = Math.max(0,
-                                            Math.min(contentHeight - compactPlaylist.height,
-                                                     centerY - compactPlaylist.height * 0.5))
+        const offset = Math.max(0,
+                                Math.min(contentHeight - compactPlaylist.height,
+                                         centerY - compactPlaylist.height * 0.5))
+        compactPlaylist.contentY = Number(compactPlaylist.originY || 0) + offset
         return true
     }
 
@@ -597,9 +625,12 @@ Item {
         return -1
     }
 
-    function scheduleFilterViewportSync() {
+    function scheduleFilterViewportSync(resetToStart) {
         if (!compactPlaylist || compactPlaylist.height <= 0) {
             return
+        }
+        if (resetToStart === true) {
+            filterViewportResetPending = true
         }
         filterViewportSyncTimer.restart()
     }
@@ -612,13 +643,16 @@ Item {
             compactPlaylist.forceLayout()
         }
 
-        if (root.normalizedSearchQuery.length > 0) {
-            compactPlaylist.contentY = 0
+        if (filterViewportResetPending) {
+            filterViewportResetPending = false
+            compactPlaylist.positionViewAtBeginning()
             return
         }
 
-        const maxY = Math.max(0, root.compactLogicalVisibleCount() * 24 - compactPlaylist.height)
-        compactPlaylist.contentY = Math.max(0, Math.min(maxY, Number(compactPlaylist.contentY) || 0))
+        const topY = Number(compactPlaylist.originY || 0)
+        const maxOffset = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
+        const offset = Number(compactPlaylist.contentY || 0) - topY
+        compactPlaylist.contentY = topY + Math.max(0, Math.min(maxOffset, offset))
     }
 
     function moveTrackToTrash(filePath, originalIndex) {
@@ -731,8 +765,13 @@ Item {
         onTriggered: root.appliedSearchRevision = root.searchRevision
     }
 
-    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync()
-    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync()
+    onDebouncedSearchQueryChanged: root.scheduleFilterViewportSync(true)
+    onAppliedSearchRevisionChanged: root.scheduleFilterViewportSync(true)
+
+    Connections {
+        target: filteredTrackModel
+        function onCountChanged() { root.scheduleFilterViewportSync() }
+    }
 
     Timer {
         id: filterViewportSyncTimer
@@ -750,12 +789,14 @@ Item {
         repeat: true
         running: root.externalDropActive && root.externalDropAutoScrollDirection !== 0
         onTriggered: {
-            const maxY = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
-            if (maxY <= 0) {
+            const topY = Number(compactPlaylist.originY || 0)
+            const maxY = topY + Math.max(0,
+                                         compactPlaylist.contentHeight - compactPlaylist.height)
+            if (maxY <= topY) {
                 return
             }
             compactPlaylist.contentY = Math.max(
-                        0,
+                        topY,
                         Math.min(maxY, compactPlaylist.contentY + root.externalDropAutoScrollDirection * 18))
             root.updateExternalDropIndicator(root.externalDropPointerY)
         }
@@ -1406,24 +1447,26 @@ Item {
                         ToolTip.text: root.tr("collections.openPanel")
                         ToolTip.visible: hovered
 
-                        Label {
+                        Rectangle {
                             anchors.right: parent.right
                             anchors.top: parent.top
                             anchors.rightMargin: -3
                             anchors.topMargin: -3
                             visible: root.collectionModeActive
-                            text: "\u2605"
-                            color: themeManager.primaryColor
-                            font.family: themeManager.monoFontFamily
-                            font.pixelSize: Math.round(8 * themeManager.fontSizeMultiplier)
-                            font.bold: true
-                            padding: 2
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: themeManager.surfaceColor
+                            border.width: 1
+                            border.color: themeManager.primaryColor
 
-                            background: Rectangle {
-                                radius: 7
-                                color: themeManager.surfaceColor
-                                border.width: 1
-                                border.color: themeManager.primaryColor
+                            Image {
+                                anchors.centerIn: parent
+                                width: 9
+                                height: 9
+                                source: IconResolver.themed("favorite", themeManager.darkMode)
+                                sourceSize.width: width
+                                sourceSize.height: height
                             }
                         }
                     }
@@ -1867,21 +1910,16 @@ Item {
                         spacing: 6
 
                         ToolButton {
-                            text: "\u2315"
-                            display: AbstractButton.TextOnly
+                            display: AbstractButton.IconOnly
+                            icon.source: IconResolver.themed("edit-find", themeManager.darkMode)
+                            icon.color: "transparent"
                             padding: 0
-                            implicitWidth: 18
-                            implicitHeight: 18
+                            implicitWidth: 22
+                            implicitHeight: 22
                             Layout.alignment: Qt.AlignVCenter
-                            contentItem: Text {
-                                text: parent.text
-                                color: themeManager.textMutedColor
-                                font.family: themeManager.monoFontFamily
-                                font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
                             onClicked: root.submitSearchQuery()
+                            ToolTip.text: root.tr("header.searchPlaceholder")
+                            ToolTip.visible: hovered
                         }
 
                         TextField {
@@ -1919,8 +1957,9 @@ Item {
 
                         ToolButton {
                             visible: compactSearchField.text.length > 0
-                            display: AbstractButton.TextOnly
-                            text: "\u2715"
+                            display: AbstractButton.IconOnly
+                            icon.source: IconResolver.themed("edit-clear", themeManager.darkMode)
+                            icon.color: "transparent"
                             implicitWidth: 22
                             implicitHeight: 22
                             onClicked: {
@@ -1936,8 +1975,8 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: trackModel
-                    currentIndex: root.uiActiveIndex()
+                    model: filteredTrackModel
+                    currentIndex: filteredTrackModel.proxyIndexForSource(root.uiActiveIndex())
                     highlightFollowsCurrentItem: true
                     highlightMoveDuration: 100
                     onContentHeightChanged: {
@@ -1968,7 +2007,8 @@ Item {
                             when: !compactPlaylistScrollBar.pressed
                             value: compactPlaylist.contentHeight > 0
                                    ? Math.max(0, Math.min(1.0 - compactPlaylistScrollBar.size,
-                                                          compactPlaylist.contentY / compactPlaylist.contentHeight))
+                                                          (compactPlaylist.contentY - compactPlaylist.originY)
+                                                          / compactPlaylist.contentHeight))
                                    : 0
                         }
 
@@ -1976,8 +2016,13 @@ Item {
                             if (!pressed || compactPlaylist.contentHeight <= compactPlaylist.height) {
                                 return
                             }
-                            const maxY = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
-                            compactPlaylist.contentY = Math.max(0, Math.min(maxY, position * compactPlaylist.contentHeight))
+                            const topY = Number(compactPlaylist.originY || 0)
+                            const maxY = topY + Math.max(0,
+                                                        compactPlaylist.contentHeight - compactPlaylist.height)
+                            compactPlaylist.contentY = Math.max(
+                                        topY,
+                                        Math.min(maxY,
+                                                 topY + position * compactPlaylist.contentHeight))
                         }
 
                         background: Rectangle {
@@ -2005,20 +2050,18 @@ Item {
                     delegate: Rectangle {
                     id: trackDelegate
                     width: ListView.view.width - (appSettings.playlistScrollBarVisible ? 8 : 0)
-                    readonly property bool matchesSearch: root.normalizedSearchQuery.length === 0
-                                                         || root.matchesTrackAt(trackDelegate.index)
-                    visible: matchesSearch
-                    height: matchesSearch ? 24 : 0
+                    height: 24
 
                     required property int index
+                    required property int sourceIndex
                     required property string title
                     required property string artist
                     required property string displayName
                     required property string filePath
                     required property int duration
                     readonly property int transitionStateValue: playbackController.transitionState
-                    readonly property bool activeTrack: trackDelegate.index === playbackController.activeTrackIndex
-                    readonly property bool pendingTrack: trackDelegate.index === playbackController.pendingTrackIndex
+                    readonly property bool activeTrack: trackDelegate.sourceIndex === playbackController.activeTrackIndex
+                    readonly property bool pendingTrack: trackDelegate.sourceIndex === playbackController.pendingTrackIndex
                                                     && (trackDelegate.transitionStateValue === 1
                                                         || trackDelegate.transitionStateValue === 2
                                                         || trackDelegate.transitionStateValue === 4)
@@ -2060,7 +2103,7 @@ Item {
                         spacing: 6
 
                         Label {
-                            text: (trackDelegate.index + 1) + "."
+                            text: (trackDelegate.sourceIndex + 1) + "."
                             color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textMutedColor
                             font.family: themeManager.monoFontFamily
                             font.pixelSize: Math.round(10 * themeManager.fontSizeMultiplier)
@@ -2081,7 +2124,7 @@ Item {
                         Label {
                             Layout.fillWidth: true
                             text: {
-                                const t = root.formatCueTrackTitle(trackDelegate.index,
+                                const t = root.formatCueTrackTitle(trackDelegate.sourceIndex,
                                                                    trackDelegate.title,
                                                                    trackDelegate.displayName)
                                 const a = trackDelegate.artist || ""
@@ -2115,15 +2158,15 @@ Item {
                             if ((mouse.modifiers & Qt.ControlModifier) === 0) {
                                 return
                             }
-                            root.beginCtrlDragSelection(trackDelegate.index)
+                            root.beginCtrlDragSelection(trackDelegate.sourceIndex)
                         }
                         onPositionChanged: function(mouse) {
                             if (!root.ctrlDragSelecting || (mouse.buttons & Qt.LeftButton) === 0) {
                                 return
                             }
                             const pointInList = delegateMouseArea.mapToItem(compactPlaylist.contentItem, mouse.x, mouse.y)
-                            const targetIndex = compactPlaylist.indexAt(8, pointInList.y)
-                            root.updateCtrlDragSelectionAt(targetIndex)
+                            const targetProxyIndex = compactPlaylist.indexAt(8, pointInList.y)
+                            root.updateCtrlDragSelectionAt(filteredTrackModel.sourceIndexAt(targetProxyIndex))
                         }
                         onReleased: function(mouse) {
                             if (mouse.button === Qt.LeftButton) {
@@ -2135,24 +2178,24 @@ Item {
                         onClicked: (mouse) => {
                             if (mouse.button === Qt.LeftButton) {
                                 if (mouse.modifiers & Qt.ShiftModifier) {
-                                    root.selectRangeToIndex(trackDelegate.index)
+                                    root.selectRangeToIndex(trackDelegate.sourceIndex)
                                     return
                                 } else if (mouse.modifiers & Qt.ControlModifier) {
                                     if (root.consumeCtrlDragClick()) {
                                         return
                                     }
-                                    root.toggleIndexSelection(trackDelegate.index)
+                                    root.toggleIndexSelection(trackDelegate.sourceIndex)
                                     return
                                 } else {
-                                    root.selectOnlyIndex(trackDelegate.index)
-                                    trackModel.currentIndex = trackDelegate.index
+                                    root.selectOnlyIndex(trackDelegate.sourceIndex)
+                                    trackModel.currentIndex = trackDelegate.sourceIndex
                                     return
                                 }
                             } else if (mouse.button === Qt.RightButton) {
                                 if (!root.isFileSelected(trackDelegate.filePath)) {
-                                    root.selectOnlyIndex(trackDelegate.index)
+                                    root.selectOnlyIndex(trackDelegate.sourceIndex)
                                 }
-                                trackContextMenu.trackIndex = trackDelegate.index
+                                trackContextMenu.trackIndex = trackDelegate.sourceIndex
                                 trackContextMenu.trackFilePath = trackDelegate.filePath
                                 trackContextMenu.popup()
                             }
@@ -2163,7 +2206,7 @@ Item {
                                     (Qt.application.keyboardModifiers & Qt.ShiftModifier) !== 0) {
                                 return
                             }
-                            playbackController.requestPlayIndex(trackDelegate.index, "compact.double_click")
+                            playbackController.requestPlayIndex(trackDelegate.sourceIndex, "compact.double_click")
                         }
                     }
                 }
@@ -2451,20 +2494,20 @@ Item {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: trashConfirmDialog
         readonly property real messageContentWidth: Math.min(Math.max(220, root.width * 0.72), 360)
         modal: true
         title: root.tr("playlist.confirmTrashTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         contentWidth: messageContentWidth
         contentHeight: compactTrashConfirmText.paintedHeight + 16
         width: leftPadding + rightPadding + contentWidth
         height: Math.min(Math.max(150, contentHeight + 104), Math.max(150, root.height - 12))
         implicitWidth: width
         implicitHeight: height
-        x: Math.max(0, Math.round((root.width - width) * 0.5))
-        y: Math.max(0, Math.round((root.height - height) * 0.5))
+        x: (!trashConfirmDialog.isSeparateWindow) ? Math.max(0, Math.round((root.width - width) * 0.5)) : undefined
+        y: (!trashConfirmDialog.isSeparateWindow) ? Math.max(0, Math.round((root.height - height) * 0.5)) : undefined
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         onAccepted: {
@@ -2486,6 +2529,30 @@ Item {
                 wrapMode: Text.WordWrap
                 color: themeManager.textColor
                 font.family: themeManager.fontFamily
+            }
+        }
+
+        footer: Rectangle {
+            implicitHeight: compactTrashConfirmActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: compactTrashConfirmActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: trashConfirmDialog.reject()
+                }
+                Button {
+                    text: root.tr("playlist.moveToTrash")
+                    accent: true
+                    onClicked: trashConfirmDialog.accept()
+                }
             }
         }
     }

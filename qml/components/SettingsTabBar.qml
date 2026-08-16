@@ -65,6 +65,7 @@ Item {
 
         AccentComboBox {
             id: compactCombo
+            objectName: "compactCombo"
             Layout.fillWidth: true
             Layout.minimumHeight: root.minimumInteractiveHeight
             activeFocusOnTab: true

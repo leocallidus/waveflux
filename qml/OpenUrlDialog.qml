@@ -3,15 +3,18 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
+import "IconResolver.js" as IconResolver
 
-Dialog {
+AppDialog {
     id: root
 
     title: root.tr("openUrl.title")
     modal: true
     focus: true
-    anchors.centerIn: parent
-    width: Math.min(parent ? parent.width - 32 : 540, 540)
+    implicitWidth: 540
+    implicitHeight: 420
+    width: (root.isSeparateWindow && parent) ? parent.width : Math.min(parent ? parent.width - 32 : 540, 540)
+    anchors.centerIn: (!root.isSeparateWindow && parent) ? parent : undefined
     standardButtons: Dialog.NoButton
     padding: 0
 
@@ -55,9 +58,13 @@ Dialog {
             Layout.bottomMargin: 4
             spacing: 8
 
-            Text {
-                text: "\uD83C\uDF10"
-                font.pixelSize: Math.round(18 * themeManager.fontSizeMultiplier)
+            Image {
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                source: IconResolver.themed("network-connect", themeManager.darkMode)
+                sourceSize.width: 22
+                sourceSize.height: 22
+                fillMode: Image.PreserveAspectFit
             }
 
             Label {
@@ -70,27 +77,15 @@ Dialog {
                 elide: Text.ElideRight
             }
 
-            Rectangle {
+            ToolButton {
                 implicitWidth: 28
                 implicitHeight: 28
-                radius: 14
-                color: urlCloseHover.hovered
-                       ? Qt.rgba(themeManager.textColor.r,
-                                 themeManager.textColor.g,
-                                 themeManager.textColor.b,
-                                 themeManager.darkMode ? 0.18 : 0.10)
-                       : "transparent"
-                Behavior on color { ColorAnimation { duration: 100 } }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "\u00d7"
-                    font.pixelSize: Math.round(16 * themeManager.fontSizeMultiplier)
-                    font.bold: true
-                    color: urlCloseHover.hovered ? themeManager.textColor : themeManager.textSecondaryColor
-                }
-                HoverHandler { id: urlCloseHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.reject() }
+                display: AbstractButton.IconOnly
+                icon.source: IconResolver.themed("dialog-close", themeManager.darkMode)
+                icon.color: "transparent"
+                onClicked: root.reject()
+                ToolTip.text: root.tr("settings.close")
+                ToolTip.visible: hovered
             }
         }
 
@@ -158,7 +153,7 @@ Dialog {
                             flat: true
                             width: 24
                             height: 24
-                            icon.source: "edit-clear"
+                            icon.source: IconResolver.themed("edit-clear", themeManager.darkMode)
                             onClicked: {
                                 urlField.clear()
                                 urlField.forceActiveFocus()
@@ -168,7 +163,7 @@ Dialog {
 
                     Button {
                         text: root.tr("openUrl.paste")
-                        icon.source: "edit-paste"
+                        icon.source: IconResolver.themed("edit-paste", themeManager.darkMode)
                         onClicked: {
                             urlField.text = AppSettingsManager.clipboardText()
                             urlField.forceActiveFocus()

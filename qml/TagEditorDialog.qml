@@ -3,8 +3,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
+import "IconResolver.js" as IconResolver
 
-Dialog {
+AppDialog {
     id: root
 
     readonly property int preferredDialogWidth: 560
@@ -26,6 +27,9 @@ Dialog {
     }
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -45,14 +49,17 @@ Dialog {
     padding: 0
     standardButtons: Dialog.NoButton
 
-    width: root.parent
-           ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
-           : preferredDialogWidth
-    height: root.parent
-            ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24)
-            : preferredDialogHeight
+    implicitWidth: preferredDialogWidth
+    implicitHeight: preferredDialogHeight
 
-    anchors.centerIn: parent
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: {
         errorLabel.visible = false
@@ -240,11 +247,15 @@ Dialog {
                                              && tagEditor.coverPreviewSource.length > 0
                                 }
 
-                                Label {
+                                Image {
                                     anchors.centerIn: parent
-                                    text: "\u266A"
-                                    opacity: 0.42
-                                    font.pixelSize: Math.round(28 * themeManager.fontSizeMultiplier)
+                                    width: 34
+                                    height: 34
+                                    source: IconResolver.themed("audio-x-generic", themeManager.darkMode)
+                                    sourceSize.width: width
+                                    sourceSize.height: height
+                                    opacity: 0.55
+                                    fillMode: Image.PreserveAspectFit
                                     visible: !coverPreviewImage.visible
                                 }
                             }
@@ -354,15 +365,15 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: errorDialog
-        parent: Overlay.overlay
+        parent: errorDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         focus: true
         title: root.tr("main.playbackError")
         standardButtons: Dialog.NoButton
-        anchors.centerIn: parent
-        width: Math.min(420, root.width - 24)
+        anchors.centerIn: !errorDialog.isSeparateWindow ? parent : undefined
+        width: errorDialog.isSeparateWindow ? 420 : Math.min(420, root.width - 24)
 
         contentItem: Label {
             id: errorDialogText

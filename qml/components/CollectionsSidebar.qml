@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "." as AppComponents
 import "../IconResolver.js" as IconResolver
 
 Rectangle {
@@ -64,7 +65,10 @@ Rectangle {
         return Math.max(240, root.height)
     }
 
-    function fitPopupSize(preferredSize, minimumPreferred, containerSize) {
+    function fitPopupSize(popup, preferredSize, minimumPreferred, containerSize) {
+        if (popup && popup.isSeparateWindow) {
+            return preferredSize
+        }
         const safeAvailable = Math.max(1, containerSize - popupMarginPx * 2)
         if (safeAvailable <= minimumPreferred) {
             return safeAvailable
@@ -73,11 +77,17 @@ Rectangle {
     }
 
     function popupCenteredX(popup) {
+        if (popup && popup.isSeparateWindow) {
+            return undefined
+        }
         const width = popup ? popup.width : 0
         return Math.max(popupMarginPx, Math.round((popupContainerWidth(popup) - width) * 0.5))
     }
 
     function popupCenteredY(popup) {
+        if (popup && popup.isSeparateWindow) {
+            return undefined
+        }
         const height = popup ? popup.height : 0
         return Math.max(popupMarginPx, Math.round((popupContainerHeight(popup) - height) * 0.5))
     }
@@ -924,11 +934,14 @@ Rectangle {
                         font.pixelSize: 11
                     }
 
-                    Label {
+                    Image {
                         visible: pinned
-                        text: "\u2605"
-                        color: themeManager.primaryColor
-                        font.pixelSize: 10
+                        Layout.preferredWidth: 14
+                        Layout.preferredHeight: 14
+                        source: IconResolver.themed("favorite", themeManager.darkMode)
+                        sourceSize.width: 14
+                        sourceSize.height: 14
+                        fillMode: Image.PreserveAspectFit
                     }
 
                     ToolButton {
@@ -957,15 +970,15 @@ Rectangle {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: savePlaylistDialog
-        parent: Overlay.overlay
+        parent: savePlaylistDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         title: root.tr("playlists.saveCurrent")
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(520, 360, root.popupContainerWidth(savePlaylistDialog))
-        height: root.fitPopupSize(260, 200, root.popupContainerHeight(savePlaylistDialog))
+        width: root.fitPopupSize(savePlaylistDialog, 520, 360, root.popupContainerWidth(savePlaylistDialog))
+        height: root.fitPopupSize(savePlaylistDialog, 260, 200, root.popupContainerHeight(savePlaylistDialog))
         x: root.popupCenteredX(savePlaylistDialog)
         y: root.popupCenteredY(savePlaylistDialog)
 
@@ -989,7 +1002,7 @@ Rectangle {
 
                 Item { Layout.fillWidth: true }
 
-                Button {
+                AppComponents.Button {
                     id: savePlaylistCancelButton
                     text: root.tr("collections.cancel")
                     onClicked: savePlaylistDialog.close()
@@ -1015,7 +1028,7 @@ Rectangle {
                     }
                 }
 
-                Button {
+                AppComponents.Button {
                     id: savePlaylistApplyButton
                     text: root.tr("playlists.save")
                     enabled: savePlaylistNameField.text.trim().length > 0
@@ -1064,58 +1077,105 @@ Rectangle {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: deletePlaylistDialog
         modal: true
         title: root.tr("playlists.deleteConfirmTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(480, 320, root.popupContainerWidth(deletePlaylistDialog))
-        height: root.fitPopupSize(220, 170, root.popupContainerHeight(deletePlaylistDialog))
+        width: root.fitPopupSize(deletePlaylistDialog, 480, 320, root.popupContainerWidth(deletePlaylistDialog))
+        height: root.fitPopupSize(deletePlaylistDialog, 220, 170, root.popupContainerHeight(deletePlaylistDialog))
         x: root.popupCenteredX(deletePlaylistDialog)
         y: root.popupCenteredY(deletePlaylistDialog)
 
-        onAccepted: root.confirmDeletePlaylist()
         onRejected: root.clearDeletePlaylistRequest()
 
-        contentItem: Label {
-            text: root.tr("playlists.deleteConfirmMessage").arg(root.pendingDeletePlaylistName)
-            wrapMode: Text.WordWrap
-            color: themeManager.textColor
-            padding: 8
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: root.tr("playlists.deleteConfirmMessage").arg(root.pendingDeletePlaylistName)
+                wrapMode: Text.WordWrap
+                color: themeManager.textColor
+                padding: 8
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                AppComponents.Button {
+                    text: root.tr("collections.cancel")
+                    onClicked: deletePlaylistDialog.reject()
+                }
+
+                AppComponents.Button {
+                    objectName: "deletePlaylistConfirmButton"
+                    text: root.tr("playlists.delete")
+                    accent: true
+                    onClicked: {
+                        root.confirmDeletePlaylist()
+                        deletePlaylistDialog.close()
+                    }
+                }
+            }
         }
     }
 
-    Dialog {
+    AppDialog {
         id: deleteAllPlaylistsDialog
         modal: true
         title: root.tr("playlists.deleteAllConfirmTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(480, 320, root.popupContainerWidth(deleteAllPlaylistsDialog))
-        height: root.fitPopupSize(220, 170, root.popupContainerHeight(deleteAllPlaylistsDialog))
+        width: root.fitPopupSize(deleteAllPlaylistsDialog, 480, 320, root.popupContainerWidth(deleteAllPlaylistsDialog))
+        height: root.fitPopupSize(deleteAllPlaylistsDialog, 220, 170, root.popupContainerHeight(deleteAllPlaylistsDialog))
         x: root.popupCenteredX(deleteAllPlaylistsDialog)
         y: root.popupCenteredY(deleteAllPlaylistsDialog)
 
-        onAccepted: root.confirmDeleteAllPlaylists()
+        contentItem: ColumnLayout {
+            spacing: 12
 
-        contentItem: Label {
-            text: root.tr("playlists.deleteAllConfirmMessage").arg(playlistsModel.count)
-            wrapMode: Text.WordWrap
-            color: themeManager.textColor
-            padding: 8
+            Label {
+                Layout.fillWidth: true
+                text: root.tr("playlists.deleteAllConfirmMessage").arg(playlistsModel.count)
+                wrapMode: Text.WordWrap
+                color: themeManager.textColor
+                padding: 8
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                AppComponents.Button {
+                    text: root.tr("collections.cancel")
+                    onClicked: deleteAllPlaylistsDialog.reject()
+                }
+
+                AppComponents.Button {
+                    objectName: "deleteAllPlaylistsConfirmButton"
+                    text: root.tr("playlists.deleteAll")
+                    accent: true
+                    onClicked: {
+                        root.confirmDeleteAllPlaylists()
+                        deleteAllPlaylistsDialog.close()
+                    }
+                }
+            }
         }
     }
 
-    Dialog {
+    AppDialog {
         id: editPlaylistDialog
-        parent: Overlay.overlay
+        parent: editPlaylistDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
         title: root.tr("playlists.editTitle")
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(920, 640, root.popupContainerWidth(editPlaylistDialog))
-        height: root.fitPopupSize(640, 420, root.popupContainerHeight(editPlaylistDialog))
+        width: root.fitPopupSize(editPlaylistDialog, 920, 640, root.popupContainerWidth(editPlaylistDialog))
+        height: root.fitPopupSize(editPlaylistDialog, 640, 420, root.popupContainerHeight(editPlaylistDialog))
         x: root.popupCenteredX(editPlaylistDialog)
         y: root.popupCenteredY(editPlaylistDialog)
 
@@ -1287,7 +1347,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
 
-                Button {
+                AppComponents.Button {
                     id: editPlaylistCancelButton
                     text: root.tr("collections.cancel")
                     onClicked: {
@@ -1316,7 +1376,7 @@ Rectangle {
                     }
                 }
 
-                Button {
+                AppComponents.Button {
                     id: editPlaylistApplyButton
                     text: root.tr("playlists.saveChanges")
                     enabled: editPlaylistNameField.text.trim().length > 0
@@ -1365,46 +1425,93 @@ Rectangle {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: deleteCollectionDialog
         modal: true
         title: root.tr("collections.deleteConfirmTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(480, 320, root.popupContainerWidth(deleteCollectionDialog))
-        height: root.fitPopupSize(220, 170, root.popupContainerHeight(deleteCollectionDialog))
+        width: root.fitPopupSize(deleteCollectionDialog, 480, 320, root.popupContainerWidth(deleteCollectionDialog))
+        height: root.fitPopupSize(deleteCollectionDialog, 220, 170, root.popupContainerHeight(deleteCollectionDialog))
         x: root.popupCenteredX(deleteCollectionDialog)
         y: root.popupCenteredY(deleteCollectionDialog)
 
-        onAccepted: root.confirmDeleteCollection()
         onRejected: root.clearDeleteCollectionRequest()
 
-        contentItem: Label {
-            text: root.tr("collections.deleteConfirmMessage").arg(root.pendingDeleteCollectionName)
-            wrapMode: Text.WordWrap
-            color: themeManager.textColor
-            padding: 8
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: root.tr("collections.deleteConfirmMessage").arg(root.pendingDeleteCollectionName)
+                wrapMode: Text.WordWrap
+                color: themeManager.textColor
+                padding: 8
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                AppComponents.Button {
+                    text: root.tr("collections.cancel")
+                    onClicked: deleteCollectionDialog.reject()
+                }
+
+                AppComponents.Button {
+                    objectName: "deleteCollectionConfirmButton"
+                    text: root.tr("collections.delete")
+                    accent: true
+                    onClicked: {
+                        root.confirmDeleteCollection()
+                        deleteCollectionDialog.close()
+                    }
+                }
+            }
         }
     }
 
-    Dialog {
+    AppDialog {
         id: deleteAllCollectionsDialog
         modal: true
         title: root.tr("collections.deleteAllConfirmTitle")
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: root.fitPopupSize(480, 320, root.popupContainerWidth(deleteAllCollectionsDialog))
-        height: root.fitPopupSize(220, 170, root.popupContainerHeight(deleteAllCollectionsDialog))
+        width: root.fitPopupSize(deleteAllCollectionsDialog, 480, 320, root.popupContainerWidth(deleteAllCollectionsDialog))
+        height: root.fitPopupSize(deleteAllCollectionsDialog, 220, 170, root.popupContainerHeight(deleteAllCollectionsDialog))
         x: root.popupCenteredX(deleteAllCollectionsDialog)
         y: root.popupCenteredY(deleteAllCollectionsDialog)
 
-        onAccepted: root.confirmDeleteAllCollections()
+        contentItem: ColumnLayout {
+            spacing: 12
 
-        contentItem: Label {
-            text: root.tr("collections.deleteAllConfirmMessage").arg(collectionsModel.count)
-            wrapMode: Text.WordWrap
-            color: themeManager.textColor
-            padding: 8
+            Label {
+                Layout.fillWidth: true
+                text: root.tr("collections.deleteAllConfirmMessage").arg(collectionsModel.count)
+                wrapMode: Text.WordWrap
+                color: themeManager.textColor
+                padding: 8
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                AppComponents.Button {
+                    text: root.tr("collections.cancel")
+                    onClicked: deleteAllCollectionsDialog.reject()
+                }
+
+                AppComponents.Button {
+                    objectName: "deleteAllCollectionsConfirmButton"
+                    text: root.tr("collections.deleteAll")
+                    accent: true
+                    onClicked: {
+                        root.confirmDeleteAllCollections()
+                        deleteAllCollectionsDialog.close()
+                    }
+                }
+            }
         }
     }
 }

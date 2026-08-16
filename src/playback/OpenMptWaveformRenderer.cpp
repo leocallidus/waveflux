@@ -34,12 +34,12 @@ QString localPathFromSource(const QString &source)
     return localPath;
 }
 
-qint64 secondsToMs(double seconds)
+static qint64 secondsToMs(double seconds)
 {
     return std::max<qint64>(0, qRound64(seconds * 1000.0));
 }
 
-QVector<float> resampleMax(const QVector<float> &input, int targetSamples)
+static QVector<float> resampleMax(const QVector<float> &input, int targetSamples)
 {
     if (input.isEmpty() || targetSamples <= 0) {
         return {};
@@ -64,7 +64,7 @@ QVector<float> resampleMax(const QVector<float> &input, int targetSamples)
     return output;
 }
 
-void normalizePeaks(QVector<float> &peaks)
+static void normalizePeaks(QVector<float> &peaks)
 {
     if (peaks.isEmpty()) {
         return;
@@ -80,7 +80,7 @@ void normalizePeaks(QVector<float> &peaks)
     }
 }
 
-bool sanitizePeaks(QVector<float> &peaks)
+static bool sanitizePeaks(QVector<float> &peaks)
 {
     if (peaks.isEmpty()) {
         return false;
@@ -95,7 +95,7 @@ bool sanitizePeaks(QVector<float> &peaks)
     return true;
 }
 
-int chooseWindowFrames(qint64 durationMs, int targetSamples)
+static int chooseWindowFrames(qint64 durationMs, int targetSamples)
 {
     if (durationMs <= 0 || targetSamples <= 0) {
         return WaveFlux::OpenMptWaveformRenderer::kDefaultWindowFrames;
@@ -114,7 +114,7 @@ int chooseWindowFrames(qint64 durationMs, int targetSamples)
                       kMaxWindowFrames);
 }
 
-void compactRawPeaksIfNeeded(QVector<float> &rawPeaks, int targetSamples)
+static void compactRawPeaksIfNeeded(QVector<float> &rawPeaks, int targetSamples)
 {
     if (targetSamples <= 0 || rawPeaks.isEmpty()) {
         return;

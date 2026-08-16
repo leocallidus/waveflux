@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import WaveFlux 1.2
 import "components"
+import "IconResolver.js" as IconResolver
 
 Item {
     id: root
@@ -33,7 +34,49 @@ Item {
     readonly property real safeProgress: audioEngine.duration > 0
                                         ? audioEngine.position / audioEngine.duration
                                         : 0
-    readonly property real needleX: Math.max(0, Math.min(root.width, waveformItem.trackToView(root.safeProgress) * root.width))
+
+    // Coordinate conversion functions that react dynamically to zoom and viewCenter changes
+    function trackToViewX(trackPos) {
+        const _z = waveformItem.zoom
+        const _vc = waveformItem.viewCenter
+        const _w = root.width
+        if (_w <= 0) return 0
+        return waveformItem.trackToView(trackPos) * _w
+    }
+
+    function viewToTrackX(viewPixelX) {
+        const _z = waveformItem.zoom
+        const _vc = waveformItem.viewCenter
+        const _w = Math.max(1, root.width)
+        return waveformItem.viewToTrack(viewPixelX / _w)
+    }
+
+    readonly property real needleX: {
+        const _z = waveformItem.zoom
+        const _vc = waveformItem.viewCenter
+        const _w = root.width
+        return Math.max(0, Math.min(_w, waveformItem.trackToView(root.safeProgress) * _w))
+    }
+
+    // Fragment loop properties
+    readonly property real fragmentStartMs: playbackController ? playbackController.fragmentStartMs : -1
+    readonly property real fragmentEndMs: playbackController ? playbackController.fragmentEndMs : -1
+    readonly property bool hasFragmentStart: fragmentStartMs >= 0 && audioEngine.duration > 0
+    readonly property bool hasFragmentEnd: fragmentEndMs >= 0 && audioEngine.duration > 0
+    readonly property bool hasFragmentLoop: hasFragmentStart && hasFragmentEnd && fragmentEndMs > fragmentStartMs
+
+    readonly property real fragmentStartX: {
+        if (!hasFragmentStart || audioEngine.duration <= 0) return 0
+        return root.trackToViewX(fragmentStartMs / audioEngine.duration)
+    }
+
+    readonly property real fragmentEndX: {
+        if (!hasFragmentEnd || audioEngine.duration <= 0) return 0
+        return root.trackToViewX(fragmentEndMs / audioEngine.duration)
+    }
+
+    property string hoveredFragmentHandle: "none" // "none", "A", "B", "region"
+
     readonly property int activeCueSegmentModelIndex: {
         if (!root.cueOverlayVisible) {
             return -1
@@ -84,7 +127,43 @@ Item {
         return appSettings.translate(key)
     }
 
+    function formatTime(ms) {
+        if (ms === undefined || ms === null || ms < 0) {
+            return "00:00"
+        }
+        const totalSeconds = Math.floor(ms / 1000)
+        const minutes = Math.floor(totalSeconds / 60)
+        const seconds = totalSeconds % 60
+        const mStr = minutes < 10 ? "0" + minutes : "" + minutes
+        const sStr = seconds < 10 ? "0" + seconds : "" + seconds
+        return mStr + ":" + sStr
+    }
+
+    function formatTimeExact(ms) {
+        if (ms === undefined || ms === null || ms < 0) {
+            return "--:--.---"
+        }
+        const totalSeconds = Math.floor(ms / 1000)
+        const milliseconds = Math.floor(ms % 1000)
+        const minutes = Math.floor(totalSeconds / 60)
+        const seconds = totalSeconds % 60
+        const mStr = minutes < 10 ? "0" + minutes : "" + minutes
+        const sStr = seconds < 10 ? "0" + seconds : "" + seconds
+        const msStr = milliseconds < 10 ? "00" + milliseconds : (milliseconds < 100 ? "0" + milliseconds : "" + milliseconds)
+        return mStr + ":" + sStr + "." + msStr
+    }
+
     function waveformPlaceholderText() {
+        const _translationRevision = appSettings.translationRevision
+        if (!trackModel || trackModel.count === 0 || !audioEngine || !audioEngine.currentFile) {
+            return root.tr("waveform.emptyPlaceholder")
+        }
+        if (appSettings.waveformGenerationBackend === "external_cache_only") {
+            return root.tr("waveform.externalCachePlaceholder")
+        }
+        if (!appSettings.waveformGenerationEnabled) {
+            return root.tr("waveform.generationDisabledPlaceholder")
+        }
         const state = String(waveformProvider ? waveformProvider.placeholderState || "" : "")
         if (state === "unsupported") {
             return root.tr("waveform.unsupportedPlaceholder")
@@ -98,11 +177,12 @@ Item {
         return root.tr("waveform.emptyPlaceholder")
     }
 
+    // Cue Segments Overlay
     Item {
         id: cueSegmentsOverlay
         anchors.fill: parent
         visible: root.cueOverlayVisible
-        z: 2
+        z: 2.0
 
         Repeater {
             model: root.cueOverlayVisible ? root.cueSegments.length : 0
@@ -117,8 +197,8 @@ Item {
                 readonly property real endMs: rawEndMs > startMs ? rawEndMs : fullDurationMs
                 readonly property real startTrackPos: Math.max(0, Math.min(1, startMs / fullDurationMs))
                 readonly property real endTrackPos: Math.max(startTrackPos, Math.min(1, endMs / fullDurationMs))
-                readonly property real startX: waveformItem.trackToView(startTrackPos) * root.width
-                readonly property real endX: waveformItem.trackToView(endTrackPos) * root.width
+                readonly property real startX: root.trackToViewX(startTrackPos)
+                readonly property real endX: root.trackToViewX(endTrackPos)
                 readonly property real leftX: Math.max(0, Math.min(startX, endX))
                 readonly property real rightX: Math.min(root.width, Math.max(startX, endX))
                 readonly property real rawWidth: Math.max(0, rightX - leftX)
@@ -165,6 +245,300 @@ Item {
         }
     }
 
+    // Fragment Repeat Loop Region Highlight
+    Rectangle {
+        id: fragmentLoopRegion
+        readonly property real rawLeft: Math.min(root.fragmentStartX, root.fragmentEndX)
+        readonly property real rawRight: Math.max(root.fragmentStartX, root.fragmentEndX)
+        readonly property real clippedLeft: Math.max(0, Math.min(root.width, rawLeft))
+        readonly property real clippedRight: Math.max(0, Math.min(root.width, rawRight))
+        readonly property real regionWidth: Math.max(0, clippedRight - clippedLeft)
+
+        visible: root.hasFragmentLoop && regionWidth > 0 && audioEngine.duration > 0
+        z: 2.3
+        x: clippedLeft
+        width: regionWidth
+        height: parent.height
+        color: (playbackController && playbackController.fragmentRepeatActive)
+               ? Qt.rgba(themeManager.accentColor.r, themeManager.accentColor.g, themeManager.accentColor.b, 0.18)
+               : Qt.rgba(themeManager.accentColor.r, themeManager.accentColor.g, themeManager.accentColor.b, 0.08)
+        border.width: 1
+        border.color: Qt.rgba(themeManager.accentColor.r, themeManager.accentColor.g, themeManager.accentColor.b, 0.4)
+
+        HoverHandler {
+            onHoveredChanged: {
+                if (hovered) {
+                    if (root.hoveredFragmentHandle === "none") {
+                        root.hoveredFragmentHandle = "region"
+                    }
+                } else if (root.hoveredFragmentHandle === "region") {
+                    root.hoveredFragmentHandle = "none"
+                }
+            }
+        }
+
+        // Loop label tag if wide enough
+        Rectangle {
+            visible: parent.width >= 70 && !root.tinyMode
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.denseMode ? 2 : 4
+            implicitWidth: loopRegionLabel.implicitWidth + 8
+            implicitHeight: loopRegionLabel.implicitHeight + 4
+            radius: 3
+            color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.85)
+            border.width: 1
+            border.color: Qt.rgba(themeManager.accentColor.r, themeManager.accentColor.g, themeManager.accentColor.b, 0.5)
+
+            Label {
+                id: loopRegionLabel
+                anchors.centerIn: parent
+                text: "A-B (" + root.formatTime(Math.max(0, root.fragmentEndMs - root.fragmentStartMs)) + ")"
+                font.pixelSize: root.denseMode ? 8 : 9
+                font.family: themeManager.monoFontFamily
+                font.bold: true
+                color: (playbackController && playbackController.fragmentRepeatActive)
+                       ? themeManager.accentColor
+                       : themeManager.textSecondaryColor
+            }
+        }
+    }
+
+    // Fragment Boundary Bar A
+    Item {
+        id: fragmentBarA
+        visible: root.hasFragmentStart && root.fragmentStartX >= -15 && root.fragmentStartX <= root.width + 15
+        z: 5.5
+        width: 20
+        height: parent.height
+
+        Binding on x {
+            when: !barATopDrag.drag.active && !barABottomDrag.drag.active
+            value: Math.round(root.fragmentStartX - 10)
+        }
+
+        // Vertical Line
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: (barAHover.hovered || barATopDrag.drag.active || barABottomDrag.drag.active) ? 3 : 2
+            height: parent.height
+            color: (barAHover.hovered || barATopDrag.drag.active || barABottomDrag.drag.active) ? "#ffffff" : themeManager.accentColor
+            Behavior on width { NumberAnimation { duration: 80 } }
+        }
+
+        // Top Drag Handle Badge
+        Rectangle {
+            id: barATopBadge
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: root.denseMode ? 1 : 2
+            implicitWidth: 18
+            implicitHeight: 16
+            radius: 3
+            color: (barAHover.hovered || barATopDrag.drag.active || barABottomDrag.drag.active) ? "#ffffff" : themeManager.accentColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            Text {
+                anchors.centerIn: parent
+                text: "A"
+                font.bold: true
+                font.pixelSize: 9
+                font.family: themeManager.fontFamily
+                color: (barAHover.hovered || barATopDrag.drag.active || barABottomDrag.drag.active) ? "#000000" : "#ffffff"
+            }
+
+            MouseArea {
+                id: barATopDrag
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.SizeHorCursor
+                drag.target: fragmentBarA
+                drag.axis: Drag.XAxis
+                drag.minimumX: -10
+                drag.maximumX: root.width - 10
+
+                onPositionChanged: (mouse) => {
+                    if (drag.active && audioEngine.duration > 0) {
+                        const trackPos = root.viewToTrackX(fragmentBarA.x + 10)
+                        const newMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                        if (playbackController) {
+                            playbackController.setFragmentStartMs(newMs)
+                        }
+                    }
+                }
+
+                ToolTip.visible: barAHover.hovered || drag.active
+                ToolTip.text: "A: " + root.formatTimeExact(root.fragmentStartMs) + " (Del to remove)"
+                ToolTip.delay: 300
+            }
+        }
+
+        // Bottom Drag Handle Marker
+        Rectangle {
+            id: barABottomMarker
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 1
+            implicitWidth: 8
+            implicitHeight: 8
+            radius: 1
+            rotation: 45
+            color: (barAHover.hovered || barATopDrag.drag.active || barABottomDrag.drag.active) ? "#ffffff" : themeManager.accentColor
+
+            MouseArea {
+                id: barABottomDrag
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.SizeHorCursor
+                drag.target: fragmentBarA
+                drag.axis: Drag.XAxis
+                drag.minimumX: -10
+                drag.maximumX: root.width - 10
+
+                onPositionChanged: (mouse) => {
+                    if (drag.active && audioEngine.duration > 0) {
+                        const trackPos = root.viewToTrackX(fragmentBarA.x + 10)
+                        const newMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                        if (playbackController) {
+                            playbackController.setFragmentStartMs(newMs)
+                        }
+                    }
+                }
+            }
+        }
+
+        HoverHandler {
+            id: barAHover
+            cursorShape: Qt.SizeHorCursor
+            onHoveredChanged: {
+                if (hovered) {
+                    root.hoveredFragmentHandle = "A"
+                } else if (root.hoveredFragmentHandle === "A") {
+                    root.hoveredFragmentHandle = "none"
+                }
+            }
+        }
+    }
+
+    // Fragment Boundary Bar B
+    Item {
+        id: fragmentBarB
+        visible: root.hasFragmentEnd && root.fragmentEndX >= -15 && root.fragmentEndX <= root.width + 15
+        z: 5.5
+        width: 20
+        height: parent.height
+
+        Binding on x {
+            when: !barBTopDrag.drag.active && !barBBottomDrag.drag.active
+            value: Math.round(root.fragmentEndX - 10)
+        }
+
+        // Vertical Line
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: (barBHover.hovered || barBTopDrag.drag.active || barBBottomDrag.drag.active) ? 3 : 2
+            height: parent.height
+            color: (barBHover.hovered || barBTopDrag.drag.active || barBBottomDrag.drag.active) ? "#ffffff" : themeManager.accentColor
+            Behavior on width { NumberAnimation { duration: 80 } }
+        }
+
+        // Top Drag Handle Badge
+        Rectangle {
+            id: barBTopBadge
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: root.denseMode ? 1 : 2
+            implicitWidth: 18
+            implicitHeight: 16
+            radius: 3
+            color: (barBHover.hovered || barBTopDrag.drag.active || barBBottomDrag.drag.active) ? "#ffffff" : themeManager.accentColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            Text {
+                anchors.centerIn: parent
+                text: "B"
+                font.bold: true
+                font.pixelSize: 9
+                font.family: themeManager.fontFamily
+                color: (barBHover.hovered || barBTopDrag.drag.active || barBBottomDrag.drag.active) ? "#000000" : "#ffffff"
+            }
+
+            MouseArea {
+                id: barBTopDrag
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.SizeHorCursor
+                drag.target: fragmentBarB
+                drag.axis: Drag.XAxis
+                drag.minimumX: -10
+                drag.maximumX: root.width - 10
+
+                onPositionChanged: (mouse) => {
+                    if (drag.active && audioEngine.duration > 0) {
+                        const trackPos = root.viewToTrackX(fragmentBarB.x + 10)
+                        const newMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                        if (playbackController) {
+                            playbackController.setFragmentEndMs(newMs)
+                        }
+                    }
+                }
+
+                ToolTip.visible: barBHover.hovered || drag.active
+                ToolTip.text: "B: " + root.formatTimeExact(root.fragmentEndMs) + " (Del to remove)"
+                ToolTip.delay: 300
+            }
+        }
+
+        // Bottom Drag Handle Marker
+        Rectangle {
+            id: barBBottomMarker
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 1
+            implicitWidth: 8
+            implicitHeight: 8
+            radius: 1
+            rotation: 45
+            color: (barBHover.hovered || barBTopDrag.drag.active || barBBottomDrag.drag.active) ? "#ffffff" : themeManager.accentColor
+
+            MouseArea {
+                id: barBBottomDrag
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.SizeHorCursor
+                drag.target: fragmentBarB
+                drag.axis: Drag.XAxis
+                drag.minimumX: -10
+                drag.maximumX: root.width - 10
+
+                onPositionChanged: (mouse) => {
+                    if (drag.active && audioEngine.duration > 0) {
+                        const trackPos = root.viewToTrackX(fragmentBarB.x + 10)
+                        const newMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                        if (playbackController) {
+                            playbackController.setFragmentEndMs(newMs)
+                        }
+                    }
+                }
+            }
+        }
+
+        HoverHandler {
+            id: barBHover
+            cursorShape: Qt.SizeHorCursor
+            onHoveredChanged: {
+                if (hovered) {
+                    root.hoveredFragmentHandle = "B"
+                } else if (root.hoveredFragmentHandle === "B") {
+                    root.hoveredFragmentHandle = "none"
+                }
+            }
+        }
+    }
+
+    // Playback Needle
     Rectangle {
         id: needleLine
         visible: audioEngine.duration > 0
@@ -205,6 +579,176 @@ Item {
         compactVisualMode: root.compactVisualMode
         denseMode: root.denseMode
         z: 6
+    }
+
+    // Right-Click Context Menu Area (top layer at z: 20)
+    MouseArea {
+        id: rightClickArea
+        anchors.fill: parent
+        z: 20
+        acceptedButtons: Qt.RightButton
+        hoverEnabled: false
+
+        property real pressX: 0
+        property real pressY: 0
+        property bool isDragging: false
+
+        onPressed: (mouse) => {
+            pressX = mouse.x
+            pressY = mouse.y
+            isDragging = false
+        }
+
+        onPositionChanged: (mouse) => {
+            const dx = mouse.x - pressX
+            const dy = mouse.y - pressY
+            if (!isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+                isDragging = true
+            }
+            if (isDragging && waveformItem.zoom > 1.0) {
+                const span = 1.0 / waveformItem.zoom
+                const widthPx = Math.max(1.0, root.width)
+                const deltaCenter = -(dx / widthPx) * span
+                pressX = mouse.x
+                pressY = mouse.y
+                waveformItem.viewCenter = Math.max(0.0, Math.min(1.0, waveformItem.viewCenter + deltaCenter))
+            }
+        }
+
+        onReleased: (mouse) => {
+            if (!isDragging && audioEngine.duration > 0) {
+                const trackPos = root.viewToTrackX(mouse.x)
+                const clickMs = Math.max(0, Math.min(audioEngine.duration, trackPos * audioEngine.duration))
+                waveformContextMenu.clickMs = clickMs
+                waveformContextMenu.popup(mouse.x, mouse.y)
+            }
+            isDragging = false
+        }
+    }
+
+    // Waveform Context Menu
+    AccentMenu {
+        id: waveformContextMenu
+        property real clickMs: 0
+
+        AccentMenuItem {
+            text: root.tr("waveform.setFragmentStart").arg(root.formatTime(waveformContextMenu.clickMs))
+            icon.source: IconResolver.themed("crosshairs", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.setFragmentStartMs(waveformContextMenu.clickMs)
+                }
+            }
+        }
+
+        AccentMenuItem {
+            text: root.tr("waveform.setFragmentEnd").arg(root.formatTime(waveformContextMenu.clickMs))
+            icon.source: IconResolver.themed("crosshairs", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.setFragmentEndMs(waveformContextMenu.clickMs)
+                }
+            }
+        }
+
+        AccentMenuSeparator {
+            visible: root.hasFragmentStart || root.hasFragmentEnd
+        }
+
+        AccentMenuItem {
+            visible: root.hasFragmentStart
+            text: root.tr("waveform.clearFragmentStart")
+            icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.clearFragmentStart()
+                }
+            }
+        }
+
+        AccentMenuItem {
+            visible: root.hasFragmentEnd
+            text: root.tr("waveform.clearFragmentEnd")
+            icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.clearFragmentEnd()
+                }
+            }
+        }
+
+        AccentMenuItem {
+            visible: root.hasFragmentStart && root.hasFragmentEnd
+            text: root.tr("waveform.clearFragmentBoundaries")
+            icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.clearFragmentBoundaries()
+                }
+            }
+        }
+
+        AccentMenuSeparator {}
+
+        AccentMenuItem {
+            text: root.tr("waveform.fragmentRepeatToggle")
+            icon.source: IconResolver.themed("repeat", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            checkable: true
+            checked: playbackController ? playbackController.fragmentRepeatEnabled : false
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.toggleFragmentRepeat()
+                }
+            }
+        }
+
+        AccentMenuItem {
+            text: root.tr("waveform.editFragmentBoundaries")
+            icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (typeof fragmentRepeatDialog !== "undefined" && fragmentRepeatDialog) {
+                    fragmentRepeatDialog.open()
+                }
+            }
+        }
+    }
+
+    // Delete Shortcut when hovering fragment bars
+    Shortcut {
+        sequence: "Delete"
+        enabled: root.hoveredFragmentHandle !== "none"
+        onActivated: {
+            if (playbackController) {
+                if (root.hoveredFragmentHandle === "A") {
+                    playbackController.clearFragmentStart()
+                } else if (root.hoveredFragmentHandle === "B") {
+                    playbackController.clearFragmentEnd()
+                } else if (root.hoveredFragmentHandle === "region") {
+                    playbackController.clearFragmentBoundaries()
+                }
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: "Backspace"
+        enabled: root.hoveredFragmentHandle === "A" || root.hoveredFragmentHandle === "B"
+        onActivated: {
+            if (playbackController) {
+                if (root.hoveredFragmentHandle === "A") {
+                    playbackController.clearFragmentStart()
+                } else if (root.hoveredFragmentHandle === "B") {
+                    playbackController.clearFragmentEnd()
+                }
+            }
+        }
     }
 
     Rectangle {

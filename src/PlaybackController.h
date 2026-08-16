@@ -11,6 +11,8 @@
 #include "AudioEngine.h"
 #include "TrackModel.h"
 
+class AppSettingsManager;
+
 class PlaybackController : public QObject
 {
     Q_OBJECT
@@ -37,6 +39,12 @@ class PlaybackController : public QObject
     Q_PROPERTY(int activeTrackIndex READ activeTrackIndex NOTIFY activeTrackIndexChanged)
     Q_PROPERTY(int pendingTrackIndex READ pendingTrackIndex NOTIFY pendingTrackIndexChanged)
     Q_PROPERTY(TransitionState transitionState READ transitionState NOTIFY transitionStateChanged)
+    Q_PROPERTY(bool fragmentRepeatEnabled READ fragmentRepeatEnabled WRITE setFragmentRepeatEnabled NOTIFY fragmentRepeatStateChanged)
+    Q_PROPERTY(bool persistFragmentLoopPerTrack READ persistFragmentLoopPerTrack WRITE setPersistFragmentLoopPerTrack NOTIFY persistFragmentLoopPerTrackChanged)
+    Q_PROPERTY(qint64 fragmentStartMs READ fragmentStartMs WRITE setFragmentStartMs NOTIFY fragmentRepeatStateChanged)
+    Q_PROPERTY(qint64 fragmentEndMs READ fragmentEndMs WRITE setFragmentEndMs NOTIFY fragmentRepeatStateChanged)
+    Q_PROPERTY(bool fragmentRepeatActive READ fragmentRepeatActive NOTIFY fragmentRepeatStateChanged)
+    Q_PROPERTY(bool hasValidFragmentBoundaries READ hasValidFragmentBoundaries NOTIFY fragmentRepeatStateChanged)
     Q_PROPERTY(bool detailedDiagnosticsEnabled READ detailedDiagnosticsEnabled WRITE setDetailedDiagnosticsEnabled NOTIFY detailedDiagnosticsEnabledChanged)
 
 public:
@@ -106,6 +114,27 @@ public slots:
     void setSearchPlaybackFieldMask(int fieldMask);
     void setSearchPlaybackQuickFilterMask(int quickFilterMask);
     void setDetailedDiagnosticsEnabled(bool enabled);
+
+    bool fragmentRepeatEnabled() const { return m_fragmentRepeatEnabled; }
+    bool persistFragmentLoopPerTrack() const { return m_persistFragmentLoopPerTrack; }
+    qint64 fragmentStartMs() const { return m_fragmentStartMs; }
+    qint64 fragmentEndMs() const { return m_fragmentEndMs; }
+    bool fragmentRepeatActive() const;
+    bool hasValidFragmentBoundaries() const;
+
+    void setAppSettingsManager(AppSettingsManager *settingsManager);
+    void setFragmentRepeatEnabled(bool enabled);
+    void setPersistFragmentLoopPerTrack(bool enabled);
+    void setFragmentStartMs(qint64 startMs);
+    void setFragmentEndMs(qint64 endMs);
+    Q_INVOKABLE void setFragmentBoundaries(qint64 startMs, qint64 endMs);
+    Q_INVOKABLE void setFragmentStartToCurrentPosition();
+    Q_INVOKABLE void setFragmentEndToCurrentPosition();
+    Q_INVOKABLE void clearFragmentStart();
+    Q_INVOKABLE void clearFragmentEnd();
+    Q_INVOKABLE void clearFragmentBoundaries();
+    Q_INVOKABLE void toggleFragmentRepeat();
+    void saveFragmentBoundariesForCurrentTrack();
     Q_INVOKABLE void seekRelative(qint64 deltaMs);
     Q_INVOKABLE void requestPlayIndex(int index, const QString &reason = QString());
     Q_INVOKABLE void addToQueue(int index);
@@ -137,6 +166,8 @@ signals:
     void transitionStateChanged();
     void detailedDiagnosticsEnabledChanged();
     void playbackSequenceFinished();
+    void fragmentRepeatStateChanged();
+    void persistFragmentLoopPerTrackChanged();
 
 private:
     enum class SessionEndReason {
@@ -278,6 +309,12 @@ private:
     QString m_pendingCueSeekFilePath;
     qint64 m_pendingCueSeekMs = -1;
     int m_lastCueBoundaryTrackIndex = -1;
+
+    AppSettingsManager *m_appSettingsManager = nullptr;
+    bool m_fragmentRepeatEnabled = false;
+    bool m_persistFragmentLoopPerTrack = false;
+    qint64 m_fragmentStartMs = -1;
+    qint64 m_fragmentEndMs = -1;
 
     static constexpr qint64 kGaplessTrailingEosGuardWindowMs = 2200;
     static constexpr qint64 kGaplessTrailingEosMaxPositionMs = 2200;

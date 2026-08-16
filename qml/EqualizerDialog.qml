@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     signal presetImportRequested(string mergePolicy)
@@ -67,6 +67,9 @@ Dialog {
     }
 
     function fitDialogSize(preferredSize, minimumPreferred, availableSize) {
+        if (root.isSeparateWindow) {
+            return preferredSize
+        }
         const safeAvailable = Math.max(1, availableSize - dialogMargin * 2)
         if (safeAvailable <= minimumPreferred) {
             return safeAvailable
@@ -549,12 +552,14 @@ Dialog {
     title: root.tr("equalizer.title")
     modal: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    standardButtons: Dialog.NoButton
-    x: parent ? Math.max(dialogMargin, Math.round((availableDialogWidth - width) * 0.5)) : 0
-    y: parent ? Math.max(dialogMargin, Math.round((availableDialogHeight - height) * 0.5)) : 0
+    implicitWidth: 980
+    implicitHeight: 640
 
-    width: fitDialogSize(980, 560, availableDialogWidth)
-    height: fitDialogSize(640, 420, availableDialogHeight)
+    x: (!root.isSeparateWindow && parent) ? Math.max(dialogMargin, Math.round((availableDialogWidth - width) * 0.5)) : 0
+    y: (!root.isSeparateWindow && parent) ? Math.max(dialogMargin, Math.round((availableDialogHeight - height) * 0.5)) : 0
+
+    width: (root.isSeparateWindow && parent) ? parent.width : fitDialogSize(980, 560, availableDialogWidth)
+    height: (root.isSeparateWindow && parent) ? parent.height : fitDialogSize(640, 420, availableDialogHeight)
 
     onOpened: ensureSelection()
 
@@ -1080,12 +1085,12 @@ Dialog {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: deleteConfirmDialog
         readonly property real messageContentWidth: Math.min(Math.max(260, root.width * 0.48), 460)
         title: root.tr("equalizer.deleteConfirmTitle")
         modal: true
-        standardButtons: Dialog.Yes | Dialog.No
+        standardButtons: Dialog.NoButton
         contentWidth: messageContentWidth
         contentHeight: deleteConfirmText.paintedHeight + 16
         width: leftPadding + rightPadding + contentWidth
@@ -1107,14 +1112,38 @@ Dialog {
             }
         }
 
+        footer: Rectangle {
+            implicitHeight: deleteConfirmActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: deleteConfirmActions
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: deleteConfirmDialog.reject()
+                }
+                Button {
+                    text: root.tr("equalizer.delete")
+                    accent: true
+                    onClicked: deleteConfirmDialog.accept()
+                }
+            }
+        }
+
         onAccepted: root.confirmDeleteSelectedPreset()
     }
 
-    Dialog {
+    AppDialog {
         id: statusDialog
         title: root.statusDialogTitle
         modal: true
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.NoButton
 
         contentItem: ScrollView {
             id: statusScroll
@@ -1257,6 +1286,25 @@ Dialog {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        footer: Rectangle {
+            implicitHeight: statusDialogActions.implicitHeight + 16
+            color: themeManager.surfaceColor
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: statusDialogActions
+                anchors.fill: parent
+                anchors.margins: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.tr("settings.close")
+                    accent: true
+                    onClicked: statusDialog.close()
                 }
             }
         }

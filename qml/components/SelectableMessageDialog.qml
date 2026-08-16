@@ -1,75 +1,69 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
+import "../IconResolver.js" as IconResolver
 
-Controls.Dialog {
+AppDialog {
     id: root
-    
+
     property alias text: messageTextArea.text
     property alias label: messageTextArea
-    
+    property string iconName: "dialog-error"
+    property bool playWarningSound: true
+
     modal: true
     focus: true
-    anchors.centerIn: parent
-    width: Math.min(root.parent ? root.parent.width - 24 : 480, 480)
-    
-    // Play system warning sound on open
-    onOpened: {
-        appSettings.playSystemWarningSound()
+    implicitWidth: 500
+    implicitHeight: 330
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : Math.min(root.parent ? root.parent.width - 24 : implicitWidth, implicitWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : Math.min(root.parent ? root.parent.height - 24 : implicitHeight, implicitHeight)
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
+    standardButtons: Controls.Dialog.NoButton
+    padding: 0
+
+    function tr(key) {
+        const _translationRevision = appSettings.translationRevision
+        return appSettings.translate(key)
     }
-    
-    // Beautiful premium background
-    background: Rectangle {
-        color: themeManager.darkMode ? "#141d26" : "#ffffff"
-        border.color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.45)
-        border.width: 1.5
-        radius: themeManager.borderRadiusLarge
-        
-        // Add glowing shadow or border accent
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1.5
-            color: "transparent"
-            border.color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.15)
-            border.width: 1
-            radius: themeManager.borderRadiusLarge - 1.5
+
+    onOpened: {
+        if (root.playWarningSound) {
+            appSettings.playSystemWarningSound()
         }
     }
-    
-    // Custom premium Header
-    header: Rectangle {
-        implicitHeight: 64
-        color: "transparent"
-        
+
+    background: Rectangle {
+        color: themeManager.surfaceColor
+        border.color: themeManager.borderColor
+        border.width: 1
+        radius: themeManager.borderRadiusLarge
+    }
+
+    contentItem: ColumnLayout {
+        spacing: 0
+
         RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 20
-            anchors.rightMargin: 20
-            anchors.topMargin: 12
+            Layout.fillWidth: true
+            Layout.leftMargin: 18
+            Layout.rightMargin: 12
+            Layout.topMargin: 14
+            Layout.bottomMargin: 12
             spacing: 12
-            
-            // Styled warning icon (red glowing circle with an exclamation mark)
-            Rectangle {
-                width: 38
-                height: 38
-                radius: 19
-                color: themeManager.darkMode ? Qt.rgba(240/255, 68/255, 68/255, 0.18) : Qt.rgba(240/255, 68/255, 68/255, 0.12)
-                border.color: Qt.rgba(240/255, 68/255, 68/255, 0.6)
-                border.width: 1.5
-                Layout.alignment: Qt.AlignVCenter
-                
-                Text {
-                    anchors.centerIn: parent
-                    text: "!"
-                    color: Qt.rgba(240/255, 68/255, 68/255, 1.0)
-                    font.bold: true
-                    font.pixelSize: 20
-                    font.family: themeManager.fontFamily
-                }
+
+            Image {
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                source: IconResolver.themed(root.iconName, themeManager.darkMode)
+                sourceSize.width: 32
+                sourceSize.height: 32
+                fillMode: Image.PreserveAspectFit
             }
-            
-            Text {
+
+            Controls.Label {
                 Layout.fillWidth: true
                 text: root.title
                 color: themeManager.textColor
@@ -77,117 +71,120 @@ Controls.Dialog {
                 font.pixelSize: Math.round(15 * themeManager.fontSizeMultiplier)
                 font.bold: true
                 elide: Text.ElideRight
-                Layout.alignment: Qt.AlignVCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Controls.ToolButton {
+                display: Controls.AbstractButton.IconOnly
+                icon.source: IconResolver.themed("dialog-close", themeManager.darkMode)
+                icon.color: "transparent"
+                onClicked: root.reject()
+                Controls.ToolTip.text: root.tr("settings.close")
+                Controls.ToolTip.visible: hovered
             }
         }
-    }
-    
-    // Custom premium Content
-    contentItem: ColumnLayout {
-        spacing: 16
-        
-        // Scrollable TextArea instead of standard text labels
-        Controls.ScrollView {
+
+        Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(180, messageTextArea.implicitHeight + 16)
-            clip: true
-            
-            background: Rectangle {
-                color: themeManager.darkMode ? "#0e151c" : "#f7f9fa"
-                radius: themeManager.borderRadius
-                border.color: themeManager.borderColor
-                border.width: 1
-            }
-            
-            Controls.TextArea {
-                id: messageTextArea
-                padding: 12
-                readOnly: true
-                selectByMouse: true
-                wrapMode: TextEdit.WordWrap
-                color: themeManager.textColor
-                font.family: themeManager.fontFamily
-                font.pixelSize: Math.round(13 * themeManager.fontSizeMultiplier)
-                background: null // Transparent inside scrollview
-                
-                // Override default context menu with custom beautiful one
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: (mouse) => {
-                        if (mouse.button === Qt.RightButton) {
-                            customContextMenu.popup()
-                        }
+            Layout.fillHeight: true
+            Layout.leftMargin: 18
+            Layout.rightMargin: 18
+            radius: themeManager.borderRadius
+            color: Qt.rgba(themeManager.backgroundColor.r,
+                           themeManager.backgroundColor.g,
+                           themeManager.backgroundColor.b,
+                           themeManager.darkMode ? 0.72 : 0.88)
+            border.color: themeManager.borderColor
+            border.width: 1
+
+            Controls.ScrollView {
+                anchors.fill: parent
+                anchors.margins: 1
+                clip: true
+                contentWidth: availableWidth
+                Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+                Controls.ScrollBar.vertical.policy: Controls.ScrollBar.AsNeeded
+
+                Controls.TextArea {
+                    id: messageTextArea
+                    width: parent.width
+                    padding: 12
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: TextEdit.Wrap
+                    color: themeManager.textColor
+                    selectionColor: themeManager.primaryColor
+                    selectedTextColor: themeManager.darkMode ? "#0a1520" : "#ffffff"
+                    font.family: themeManager.fontFamily
+                    font.pixelSize: Math.round(12 * themeManager.fontSizeMultiplier)
+                    background: null
+
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: customContextMenu.popup()
                     }
                 }
             }
         }
-    }
-    
-    // Custom premium Footer
-    footer: Rectangle {
-        implicitHeight: 60
-        color: "transparent"
-        
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 20
-            anchors.rightMargin: 20
-            anchors.bottomMargin: 16
-            spacing: 12
-            
-            // "Copy Error" button
-            Button {
-                text: appSettings.effectiveLanguage === "ru" ? "Копировать ошибку" : "Copy Error"
-                Layout.preferredWidth: 160
-                onClicked: {
-                    messageTextArea.selectAll()
-                    messageTextArea.copy()
-                    messageTextArea.deselect()
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: footerRow.implicitHeight + 24
+            color: "transparent"
+
+            RowLayout {
+                id: footerRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                spacing: 10
+
+                Button {
+                    text: root.tr("settings.copyError")
+                    icon.source: IconResolver.themed("edit-copy", themeManager.darkMode)
+                    onClicked: {
+                        messageTextArea.selectAll()
+                        messageTextArea.copy()
+                        messageTextArea.deselect()
+                    }
                 }
-            }
-            
-            Item {
-                Layout.fillWidth: true
-            }
-            
-            // "OK" button
-            Button {
-                text: appSettings.effectiveLanguage === "ru" ? "ОК" : "OK"
-                accent: true
-                Layout.preferredWidth: 90
-                onClicked: {
-                    root.accept()
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("settings.close")
+                    icon.source: IconResolver.themed("dialog-ok-apply", themeManager.darkMode)
+                    accent: true
+                    onClicked: root.accept()
                 }
             }
         }
     }
-    
-    // Styled Context Menu
+
     Controls.Menu {
         id: customContextMenu
-        
+
         background: Rectangle {
-            color: themeManager.darkMode ? "#18222d" : "#ffffff"
+            color: themeManager.surfaceColor
             border.color: themeManager.borderColor
             border.width: 1
             radius: themeManager.borderRadius
         }
-        
+
         AccentMenuItem {
-            text: appSettings.effectiveLanguage === "ru" ? "Копировать" : "Copy"
-            icon.source: "qrc:/icons/edit-copy.svg"
-            onTriggered: {
-                messageTextArea.copy()
-            }
+            text: root.tr("settings.copyError")
+            icon.source: IconResolver.themed("edit-copy", themeManager.darkMode)
+            icon.color: "transparent"
+            onTriggered: messageTextArea.copy()
         }
-        
+
         AccentMenuItem {
-            text: appSettings.effectiveLanguage === "ru" ? "Выделить всё" : "Select All"
-            icon.source: "qrc:/icons/edit-select-all.svg"
-            onTriggered: {
-                messageTextArea.selectAll()
-            }
+            text: root.tr("menu.selectAll")
+            icon.source: IconResolver.themed("edit-select-all", themeManager.darkMode)
+            icon.color: "transparent"
+            onTriggered: messageTextArea.selectAll()
         }
     }
 }

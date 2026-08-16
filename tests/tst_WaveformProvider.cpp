@@ -1,11 +1,14 @@
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
+#include <QPainter>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include "PeaksCacheManager.h"
+#include "WaveformItem.h"
 #include "WaveformProvider.h"
 
 namespace {
@@ -35,6 +38,7 @@ private slots:
     void trackerRenderStoresCacheAndCacheHitIsSynchronous();
     void cancelStopsInFlightTrackerRender();
     void placeholderStatesDifferentiateUnsupportedFailedAndSilent();
+    void loadingPlaceholderAnimationAdvancesSmoothly();
 };
 
 void WaveformProviderTest::initTestCase()
@@ -122,6 +126,54 @@ void WaveformProviderTest::placeholderStatesDifferentiateUnsupportedFailedAndSil
     QCOMPARE(provider.sampleCount(), 0);
     QCOMPARE(provider.placeholderState(), QStringLiteral("empty"));
     QCOMPARE(errorSpy.count(), 1);
+}
+
+void WaveformProviderTest::loadingPlaceholderAnimationAdvancesSmoothly()
+{
+    WaveformItem item;
+    item.setWidth(480);
+    item.setHeight(120);
+    item.setBackgroundColor(QColor(QStringLiteral("#101820")));
+    item.setWaveformColor(QColor(QStringLiteral("#7aa7c7")));
+    item.setProgressColor(QColor(QStringLiteral("#3daee9")));
+
+    QCOMPARE(item.loadingAnimationRunning(), false);
+    item.setLoading(true);
+    QCOMPARE(item.loadingAnimationRunning(), true);
+    QCOMPARE(item.displayedGenerationProgress(), 0.0);
+
+    item.setGenerationProgress(0.75);
+    QTRY_VERIFY_WITH_TIMEOUT(item.displayedGenerationProgress() > 0.0, 250);
+    QVERIFY(item.displayedGenerationProgress() < item.generationProgress());
+
+    QImage firstFrame(480, 120, QImage::Format_ARGB32_Premultiplied);
+    firstFrame.fill(Qt::transparent);
+    {
+        QPainter painter(&firstFrame);
+        item.paint(&painter);
+    }
+
+    QTest::qWait(80);
+    QVERIFY(item.displayedGenerationProgress() <= item.generationProgress());
+
+    QImage secondFrame(480, 120, QImage::Format_ARGB32_Premultiplied);
+    secondFrame.fill(Qt::transparent);
+    {
+        QPainter painter(&secondFrame);
+        item.paint(&painter);
+    }
+    QVERIFY(firstFrame != secondFrame);
+
+    // Replacing a request with a fresh zero-progress job must not leave the
+    // preceding track's progress visible while it eases backwards.
+    item.setGenerationProgress(0.0);
+    QCOMPARE(item.displayedGenerationProgress(), 0.0);
+
+    item.setGenerationProgress(0.4);
+    QTRY_VERIFY_WITH_TIMEOUT(item.displayedGenerationProgress() > 0.0, 250);
+    item.setLoading(false);
+    QCOMPARE(item.loadingAnimationRunning(), false);
+    QCOMPARE(item.displayedGenerationProgress(), item.generationProgress());
 }
 
 QTEST_MAIN(WaveformProviderTest)

@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     modal: true
@@ -31,6 +31,9 @@ Dialog {
     }
 
     function boundedDialogSize(preferred, minimum, available) {
+        if (root.isSeparateWindow) {
+            return preferred
+        }
         const safeAvailable = Math.max(0, Number(available) || 0)
         return Math.max(Math.min(preferred, safeAvailable), Math.min(minimum, safeAvailable))
     }
@@ -48,13 +51,16 @@ Dialog {
         return notes.length > 0 ? notes : root.tr("updates.noReleaseNotes")
     }
 
-    width: root.parent
-           ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24)
-           : preferredDialogWidth
-    height: root.parent
-            ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24)
-            : preferredDialogHeight
-    anchors.centerIn: parent
+    implicitWidth: preferredDialogWidth
+    implicitHeight: preferredDialogHeight
+
+    width: (root.isSeparateWindow && root.parent)
+           ? root.parent.width
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+    height: (root.isSeparateWindow && root.parent)
+            ? root.parent.height
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+    anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     background: Rectangle {
         radius: themeManager.borderRadiusLarge

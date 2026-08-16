@@ -157,6 +157,7 @@ private slots:
     void completesWavConversionForValidInput();
     void completesTrimmedWavConversion();
     void completesMp3ConversionForValidInput();
+    void completesOggVorbisConversionForValidInput();
     void completesReverbedMonoWavConversion();
     void completesWebmConversionForValidInput();
     void completesMp3ToMp3ConversionForValidInput();
@@ -203,7 +204,7 @@ void AudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(service.lastError(), QString());
 
     const QVariantList profiles = service.formatProfiles();
-    QCOMPARE(profiles.size(), 5);
+    QCOMPARE(profiles.size(), 6);
     QCOMPARE(profiles.at(0).toMap().value(QStringLiteral("id")).toString(), QStringLiteral("mp3"));
     QCOMPARE(service.currentFormatProfile().value(QStringLiteral("id")).toString(), QStringLiteral("mp3"));
 }
@@ -281,6 +282,12 @@ void AudioConverterServiceTest::normalizesMutableProperties()
     service.setSampleRate(22050);
     QCOMPARE(service.bitrate(), 96);
     QCOMPARE(service.sampleRate(), 48000);
+
+    service.setFormat(QStringLiteral("ogg"));
+    service.setBitrate(250);
+    service.setSampleRate(47999);
+    QCOMPARE(service.bitrate(), 224);
+    QCOMPARE(service.sampleRate(), 48000);
 }
 
 void AudioConverterServiceTest::normalizesSlashPrefixedWindowsOutputPath()
@@ -302,7 +309,7 @@ void AudioConverterServiceTest::exposesFormatCapabilityMatrix()
     AudioConverterService service;
 
     const QVariantList profiles = service.formatProfiles();
-    QCOMPARE(profiles.size(), 5);
+    QCOMPARE(profiles.size(), 6);
 
     const QVariantMap mp3 = profiles.at(0).toMap();
     QCOMPARE(mp3.value(QStringLiteral("containerLabel")).toString(), QStringLiteral("MPEG Audio"));
@@ -319,6 +326,18 @@ void AudioConverterServiceTest::exposesFormatCapabilityMatrix()
     const bool mp3Available = mp3.value(QStringLiteral("available")).toBool();
     const bool mp3MissingAny = !mp3.value(QStringLiteral("missingGStreamerElements")).toList().isEmpty();
     QCOMPARE(mp3Available, !mp3MissingAny);
+
+    service.setFormat(QStringLiteral("ogg"));
+    const QVariantMap ogg = service.currentFormatProfile();
+    QCOMPARE(ogg.value(QStringLiteral("extension")).toString(), QStringLiteral("ogg"));
+    QCOMPARE(ogg.value(QStringLiteral("containerLabel")).toString(), QStringLiteral("Ogg"));
+    QCOMPARE(ogg.value(QStringLiteral("codecLabel")).toString(), QStringLiteral("Vorbis"));
+    QCOMPARE(ogg.value(QStringLiteral("gstreamerMuxer")).toString(), QStringLiteral("oggmux"));
+    QCOMPARE(ogg.value(QStringLiteral("gstreamerEncoder")).toString(), QStringLiteral("vorbisenc"));
+    const QVariantList expectedOggBitrates{64, 96, 128, 160, 192, 224};
+    QCOMPARE(ogg.value(QStringLiteral("bitrateValues")).toList(), expectedOggBitrates);
+    QVERIFY(ogg.value(QStringLiteral("requiredGStreamerElements")).toList().contains(QStringLiteral("oggmux")));
+    QVERIFY(ogg.value(QStringLiteral("requiredGStreamerElements")).toList().contains(QStringLiteral("vorbisenc")));
 
     service.setFormat(QStringLiteral("opus"));
     const QVariantMap opus = service.currentFormatProfile();
@@ -444,6 +463,10 @@ void AudioConverterServiceTest::suggestsOutputPathAndSyncsExtension()
     service.setFormat(QStringLiteral("webm"));
     QVERIFY(service.outputFile().endsWith(QStringLiteral("custom_name.webm"))
             || service.outputFile().endsWith(QStringLiteral("custom_name.webm").replace('/', QDir::separator())));
+
+    service.setFormat(QStringLiteral("ogg"));
+    QVERIFY(service.outputFile().endsWith(QStringLiteral("custom_name.ogg"))
+            || service.outputFile().endsWith(QStringLiteral("custom_name.ogg").replace('/', QDir::separator())));
 }
 
 void AudioConverterServiceTest::rejectsInvalidStartRequests()
@@ -640,6 +663,46 @@ void AudioConverterServiceTest::completesMp3ConversionForValidInput()
     QCOMPARE(failedSpy.count(), 0);
     QCOMPARE(service.isRunning(), false);
     QVERIFY(QFileInfo::exists(service.outputFile()));
+    QCOMPARE(service.lastConversionMetrics().value(QStringLiteral("terminationKey")).toString(),
+             QStringLiteral("succeeded"));
+    QVERIFY(temporaryConverterArtifacts(tempDir.path()).isEmpty());
+}
+
+void AudioConverterServiceTest::completesOggVorbisConversionForValidInput()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("vorbisenc")
+        || !hasFactory("oggmux")
+        || !hasFactory("filesink")) {
+        QSKIP("Required GStreamer Ogg Vorbis conversion elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("song.wav"));
+    writeSilentWavFile(sourcePath, 44100, 2, 500);
+
+    AudioConverterService service;
+    QSignalSpy finishedSpy(&service, &AudioConverterService::conversionFinished);
+    QSignalSpy failedSpy(&service, &AudioConverterService::conversionFailed);
+
+    const QString outputPath = tempDir.filePath(QStringLiteral("song.ogg"));
+    service.setSourceFile(sourcePath);
+    service.setFormat(QStringLiteral("ogg"));
+    service.setBitrate(192);
+    service.setOutputFile(outputPath);
+
+    QVERIFY(service.startConversion());
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(failedSpy.count(), 0);
+    QCOMPARE(service.isRunning(), false);
+    QVERIFY(QFileInfo::exists(outputPath));
+    QVERIFY(QFileInfo(outputPath).size() > 0);
     QCOMPARE(service.lastConversionMetrics().value(QStringLiteral("terminationKey")).toString(),
              QStringLiteral("succeeded"));
     QVERIFY(temporaryConverterArtifacts(tempDir.path()).isEmpty());

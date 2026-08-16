@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
 
-Dialog {
+AppDialog {
     id: root
 
     property var filePaths: []
@@ -45,6 +45,9 @@ Dialog {
     }
 
     function fitDialogSize(preferredSize, minimumPreferred, availableSize) {
+        if (root.isSeparateWindow) {
+            return preferredSize
+        }
         const safeAvailable = Math.max(1, availableSize - dialogMargin * 2)
         if (safeAvailable <= minimumPreferred) {
             return safeAvailable
@@ -57,10 +60,13 @@ Dialog {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     standardButtons: Dialog.NoButton
 
-    width: fitDialogSize(520, 360, availableDialogWidth)
-    height: fitDialogSize(460, 280, availableDialogHeight)
-    x: parent ? Math.max(dialogMargin, Math.round((availableDialogWidth - width) * 0.5)) : 0
-    y: parent ? Math.max(dialogMargin, Math.round((availableDialogHeight - height) * 0.5)) : 0
+    implicitWidth: 520
+    implicitHeight: 460
+
+    width: (root.isSeparateWindow && parent) ? parent.width : fitDialogSize(520, 360, availableDialogWidth)
+    height: (root.isSeparateWindow && parent) ? parent.height : fitDialogSize(460, 280, availableDialogHeight)
+    x: (!root.isSeparateWindow && parent) ? Math.max(dialogMargin, Math.round((availableDialogWidth - width) * 0.5)) : 0
+    y: (!root.isSeparateWindow && parent) ? Math.max(dialogMargin, Math.round((availableDialogHeight - height) * 0.5)) : 0
 
     onOpened: {
         errorLabel.visible = false

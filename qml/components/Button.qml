@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls as Controls
+import QtQuick.Layouts
 
 Controls.Button {
     id: control
@@ -8,6 +9,16 @@ Controls.Button {
     property bool accent: false
 
     hoverEnabled: true
+    readonly property bool showsIcon: display !== Controls.AbstractButton.TextOnly
+                                      && String(icon.source || "").length > 0
+    readonly property bool showsText: display !== Controls.AbstractButton.IconOnly
+                                      && text.length > 0
+
+    implicitWidth: Math.max(64,
+                            leftPadding + rightPadding
+                            + (showsIcon ? buttonIcon.sourceSize.width : 0)
+                            + (showsIcon && showsText ? buttonContent.spacing : 0)
+                            + (showsText ? buttonText.implicitWidth : 0))
     implicitHeight: Math.max(36, contentItem.implicitHeight + topPadding + bottomPadding)
     leftPadding: 14
     rightPadding: 14
@@ -17,19 +28,40 @@ Controls.Button {
     Controls.ToolTip.text: tooltipText
     Controls.ToolTip.delay: 450
 
-    contentItem: Text {
-        id: buttonText
+    contentItem: RowLayout {
+        id: buttonContent
+        spacing: buttonIcon.visible && buttonText.visible ? 7 : 0
 
-        text: control.text
-        font: control.font
-        color: !control.enabled
-               ? themeManager.textMutedColor
-               : (control.accent || control.highlighted || control.checked || control.down)
-                 ? (themeManager.darkMode ? "#0a1520" : "#ffffff")
-                 : themeManager.textColor
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+        Image {
+            id: buttonIcon
+            visible: control.showsIcon
+            source: control.icon.source
+            sourceSize.width: Math.max(1, control.icon.width > 0 ? control.icon.width : 16)
+            sourceSize.height: Math.max(1, control.icon.height > 0 ? control.icon.height : 16)
+            Layout.preferredWidth: sourceSize.width
+            Layout.preferredHeight: sourceSize.height
+            Layout.alignment: Qt.AlignVCenter
+            opacity: control.enabled ? 1.0 : 0.5
+            fillMode: Image.PreserveAspectFit
+        }
+
+        Text {
+            id: buttonText
+            objectName: "buttonText"
+            visible: control.showsText
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            text: control.text
+            font: control.font
+            color: !control.enabled
+                   ? themeManager.textMutedColor
+                   : (control.accent || control.highlighted || control.checked || control.down)
+                     ? (themeManager.darkMode ? "#0a1520" : "#ffffff")
+                     : themeManager.textColor
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
     }
 
     background: Rectangle {

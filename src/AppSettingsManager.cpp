@@ -660,6 +660,8 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("waveform.zoomBadgePanHint"), QStringLiteral("RMB-drag: pan (inertia)")},
         {QStringLiteral("waveform.loadingPlaceholder"), QStringLiteral("Waveform %1%")},
         {QStringLiteral("waveform.emptyPlaceholder"), QStringLiteral("Drop audio file here")},
+        {QStringLiteral("waveform.generationDisabledPlaceholder"), QStringLiteral("Waveform generation is disabled")},
+        {QStringLiteral("waveform.externalCachePlaceholder"), QStringLiteral("External waveform cache only")},
         {QStringLiteral("waveform.unsupportedPlaceholder"), QStringLiteral("Waveform preview is unavailable for this source")},
         {QStringLiteral("waveform.failedPlaceholder"), QStringLiteral("Waveform could not be generated")},
         {QStringLiteral("waveform.silentPlaceholder"), QStringLiteral("Waveform is empty or silent")},
@@ -713,6 +715,9 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.confirmTrashDeletion"), QStringLiteral("Confirm before moving tracks to Trash")},
         {QStringLiteral("settings.confirmTrashDeletionDescription"),
          QStringLiteral("Show a warning dialog before moving a file to Trash from the playlist")},
+        {QStringLiteral("settings.separateWindowDialogs"), QStringLiteral("Open dialogs in separate top-level windows")},
+        {QStringLiteral("settings.separateWindowDialogsDescription"),
+         QStringLiteral("Open application modal dialogs as separate top-level windows instead of inline overlay popups")},
         {QStringLiteral("settings.automaticPlaylistSearch"), QStringLiteral("Automatic playlist search")},
         {QStringLiteral("settings.automaticPlaylistSearchDescription"),
          QStringLiteral("When disabled, playlist search starts only after pressing Enter or clicking the magnifier. When enabled, search updates while typing.")},
@@ -1514,6 +1519,50 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.resetSpeed"), QStringLiteral("Reset speed")},
         {QStringLiteral("settings.showSpeedPitch"), QStringLiteral("Show Speed/Pitch controls")},
         {QStringLiteral("settings.showSpeedPitchDescription"), QStringLiteral("Display speed and pitch sliders in the control bar")},
+        {QStringLiteral("settings.fragmentRepeatEnabled"), QStringLiteral("Track fragment repeat mode (A-B loop)")},
+        {QStringLiteral("settings.fragmentRepeatDescription"), QStringLiteral("Enable looped playback of a user-defined section between boundary A and boundary B")},
+        {QStringLiteral("settings.persistFragmentLoopPerTrack"), QStringLiteral("Save fragment loop boundaries per track")},
+        {QStringLiteral("settings.persistFragmentLoopPerTrackDescription"), QStringLiteral("Keep loop boundaries when switching tracks instead of resetting them")},
+        {QStringLiteral("waveform.fragmentRepeat"), QStringLiteral("Fragment Repeat (A-B)")},
+        {QStringLiteral("waveform.setFragmentStart"), QStringLiteral("Set Fragment Start [A] here (%1)")},
+        {QStringLiteral("waveform.setFragmentEnd"), QStringLiteral("Set Fragment End [B] here (%1)")},
+        {QStringLiteral("waveform.clearFragmentStart"), QStringLiteral("Clear Start Boundary [A]")},
+        {QStringLiteral("waveform.clearFragmentEnd"), QStringLiteral("Clear End Boundary [B]")},
+        {QStringLiteral("waveform.clearFragmentBoundaries"), QStringLiteral("Clear Fragment Boundaries")},
+        {QStringLiteral("waveform.editFragmentBoundaries"), QStringLiteral("Fragment Repeat Boundaries...")},
+        {QStringLiteral("waveform.fragmentRepeatToggle"), QStringLiteral("Track Fragment Repeat Mode")},
+        {QStringLiteral("fragmentRepeat.title"), QStringLiteral("Track Fragment Repeat (A-B Loop)")},
+        {QStringLiteral("fragmentRepeat.description"), QStringLiteral("Configure start and end boundaries for looping a section of the current track.")},
+        {QStringLiteral("fragmentRepeat.startBoundary"), QStringLiteral("Start Boundary (A)")},
+        {QStringLiteral("fragmentRepeat.endBoundary"), QStringLiteral("End Boundary (B)")},
+        {QStringLiteral("fragmentRepeat.duration"), QStringLiteral("Fragment Duration")},
+        {QStringLiteral("fragmentRepeat.currentPosition"), QStringLiteral("Current Position")},
+        {QStringLiteral("fragmentRepeat.setToCurrent"), QStringLiteral("Set to Current (%1)")},
+        {QStringLiteral("fragmentRepeat.clearStart"), QStringLiteral("Clear A")},
+        {QStringLiteral("fragmentRepeat.clearEnd"), QStringLiteral("Clear B")},
+        {QStringLiteral("fragmentRepeat.clearAll"), QStringLiteral("Clear All")},
+        {QStringLiteral("fragmentRepeat.enableMode"), QStringLiteral("Enable Fragment Repeat")},
+        {QStringLiteral("fragmentRepeat.persistForTrack"), QStringLiteral("Save boundary for this track")},
+        {QStringLiteral("fragmentRepeat.applyAndPlay"), QStringLiteral("Apply & Play Fragment")},
+        {QStringLiteral("fragmentRepeat.apply"), QStringLiteral("Apply")},
+        {QStringLiteral("fragmentRepeat.cancel"), QStringLiteral("Cancel")},
+        {QStringLiteral("fragmentRepeat.close"), QStringLiteral("Close")},
+        {QStringLiteral("fragmentRepeat.notSet"), QStringLiteral("Not Set")},
+        {QStringLiteral("fragmentRepeat.invalidRange"), QStringLiteral("End boundary must be after start boundary")},
+        {QStringLiteral("fragmentRepeat.statusActive"), QStringLiteral("Loop Active")},
+        {QStringLiteral("fragmentRepeat.statusInactive"), QStringLiteral("Loop Inactive")},
+        {QStringLiteral("fragmentRepeat.rewind5s"), QStringLiteral("Rewind 5s")},
+        {QStringLiteral("fragmentRepeat.forward5s"), QStringLiteral("Forward 5s")},
+        {QStringLiteral("fragmentRepeat.playPause"), QStringLiteral("Play / Pause")},
+        {QStringLiteral("fragmentRepeat.previewLoop"), QStringLiteral("Play Fragment")},
+        {QStringLiteral("fragmentRepeat.jumpToA"), QStringLiteral("Go to A")},
+        {QStringLiteral("fragmentRepeat.jumpToB"), QStringLiteral("Go to B")},
+        {QStringLiteral("fragmentRepeat.seekTrack"), QStringLiteral("Seek Track")},
+        {QStringLiteral("shortcut.setFragmentStart"), QStringLiteral("Set Fragment Start (A)")},
+        {QStringLiteral("shortcut.setFragmentEnd"), QStringLiteral("Set Fragment End (B)")},
+        {QStringLiteral("shortcut.toggleFragmentRepeat"), QStringLiteral("Toggle Fragment Repeat")},
+        {QStringLiteral("shortcut.clearFragmentBoundaries"), QStringLiteral("Clear Fragment Boundaries")},
+        {QStringLiteral("shortcut.openFragmentDialog"), QStringLiteral("Open Fragment Repeat Dialog")},
         {QStringLiteral("settings.reversePlayback"), QStringLiteral("Reverse track playback")},
         {QStringLiteral("settings.reversePlaybackDescription"),
          QStringLiteral("Play each track from end to start while preserving current speed")},
@@ -2047,6 +2096,8 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("waveform.zoomBadgePanHint"), QStringLiteral("ПКМ-перетаскивание: панорама (инерция)")},
         {QStringLiteral("waveform.loadingPlaceholder"), QStringLiteral("Волна %1%")},
         {QStringLiteral("waveform.emptyPlaceholder"), QStringLiteral("Перетащите сюда аудиофайл")},
+        {QStringLiteral("waveform.generationDisabledPlaceholder"), QStringLiteral("Генерация волны отключена")},
+        {QStringLiteral("waveform.externalCachePlaceholder"), QStringLiteral("Только внешний кэш волны")},
         {QStringLiteral("waveform.unsupportedPlaceholder"), QStringLiteral("Предпросмотр волны недоступен для этого источника")},
         {QStringLiteral("waveform.failedPlaceholder"), QStringLiteral("Не удалось построить волну")},
         {QStringLiteral("waveform.silentPlaceholder"), QStringLiteral("Волна пустая или беззвучная")},
@@ -2100,6 +2151,9 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.confirmTrashDeletion"), QStringLiteral("Подтверждать удаление треков в корзину")},
         {QStringLiteral("settings.confirmTrashDeletionDescription"),
          QStringLiteral("Показывать предупреждение перед перемещением файла в корзину из плейлиста")},
+        {QStringLiteral("settings.separateWindowDialogs"), QStringLiteral("Открывать диалоги в отдельных окнах")},
+        {QStringLiteral("settings.separateWindowDialogsDescription"),
+         QStringLiteral("Открывать модальные диалоги приложения в виде отдельных независимых окн вместо вложенных оверлеев")},
         {QStringLiteral("settings.automaticPlaylistSearch"), QStringLiteral("Автоматический поиск")},
         {QStringLiteral("settings.automaticPlaylistSearchDescription"),
          QStringLiteral("Если выключено, поиск по плейлисту запускается только по Enter или по кнопке лупы. Если включено, поиск обновляется во время ввода.")},
@@ -2905,6 +2959,50 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.resetSpeed"), QStringLiteral("Сбросить скорость")},
         {QStringLiteral("settings.showSpeedPitch"), QStringLiteral("Показывать Скорость/Тон")},
         {QStringLiteral("settings.showSpeedPitchDescription"), QStringLiteral("Отображать слайдеры скорости и тона в панели управления")},
+        {QStringLiteral("settings.fragmentRepeatEnabled"), QStringLiteral("Режим повтора фрагмента трека (A-B loop)")},
+        {QStringLiteral("settings.fragmentRepeatDescription"), QStringLiteral("Включить циклическое воспроизведение выбранного участка трека между границами A и B")},
+        {QStringLiteral("settings.persistFragmentLoopPerTrack"), QStringLiteral("Сохранять границы фрагментов для каждого трека")},
+        {QStringLiteral("settings.persistFragmentLoopPerTrackDescription"), QStringLiteral("Сохранять границы цикла при переключении треков вместо их сброса")},
+        {QStringLiteral("waveform.fragmentRepeat"), QStringLiteral("Повтор фрагмента (A-B)")},
+        {QStringLiteral("waveform.setFragmentStart"), QStringLiteral("Установить начало [A] здесь (%1)")},
+        {QStringLiteral("waveform.setFragmentEnd"), QStringLiteral("Установить конец [B] здесь (%1)")},
+        {QStringLiteral("waveform.clearFragmentStart"), QStringLiteral("Удалить начало [A]")},
+        {QStringLiteral("waveform.clearFragmentEnd"), QStringLiteral("Удалить конец [B]")},
+        {QStringLiteral("waveform.clearFragmentBoundaries"), QStringLiteral("Сбросить границы фрагмента")},
+        {QStringLiteral("waveform.editFragmentBoundaries"), QStringLiteral("Границы повтора фрагмента...")},
+        {QStringLiteral("waveform.fragmentRepeatToggle"), QStringLiteral("Режим повтора фрагмента трека")},
+        {QStringLiteral("fragmentRepeat.title"), QStringLiteral("Повтор фрагмента трека (A-B Loop)")},
+        {QStringLiteral("fragmentRepeat.description"), QStringLiteral("Настройка начальной и конечной границ для циклического воспроизведения фрагмента текущего трека.")},
+        {QStringLiteral("fragmentRepeat.startBoundary"), QStringLiteral("Начальная граница (A)")},
+        {QStringLiteral("fragmentRepeat.endBoundary"), QStringLiteral("Конечная граница (B)")},
+        {QStringLiteral("fragmentRepeat.duration"), QStringLiteral("Длительность фрагмента")},
+        {QStringLiteral("fragmentRepeat.currentPosition"), QStringLiteral("Текущая позиция")},
+        {QStringLiteral("fragmentRepeat.setToCurrent"), QStringLiteral("Установить текущую (%1)")},
+        {QStringLiteral("fragmentRepeat.clearStart"), QStringLiteral("Сбросить A")},
+        {QStringLiteral("fragmentRepeat.clearEnd"), QStringLiteral("Сбросить B")},
+        {QStringLiteral("fragmentRepeat.clearAll"), QStringLiteral("Очистить все")},
+        {QStringLiteral("fragmentRepeat.enableMode"), QStringLiteral("Включить повтор фрагмента")},
+        {QStringLiteral("fragmentRepeat.persistForTrack"), QStringLiteral("Сохранять границы для этого трека")},
+        {QStringLiteral("fragmentRepeat.applyAndPlay"), QStringLiteral("Применить и воспроизвести")},
+        {QStringLiteral("fragmentRepeat.apply"), QStringLiteral("Применить")},
+        {QStringLiteral("fragmentRepeat.cancel"), QStringLiteral("Отмена")},
+        {QStringLiteral("fragmentRepeat.close"), QStringLiteral("Закрыть")},
+        {QStringLiteral("fragmentRepeat.notSet"), QStringLiteral("Не задана")},
+        {QStringLiteral("fragmentRepeat.invalidRange"), QStringLiteral("Конечная граница должна быть позже начальной")},
+        {QStringLiteral("fragmentRepeat.statusActive"), QStringLiteral("Повтор активен")},
+        {QStringLiteral("fragmentRepeat.statusInactive"), QStringLiteral("Повтор выключен")},
+        {QStringLiteral("fragmentRepeat.rewind5s"), QStringLiteral("Назад 5 с")},
+        {QStringLiteral("fragmentRepeat.forward5s"), QStringLiteral("Вперед 5 с")},
+        {QStringLiteral("fragmentRepeat.playPause"), QStringLiteral("Воспр. / Пауза")},
+        {QStringLiteral("fragmentRepeat.previewLoop"), QStringLiteral("Проиграть фрагмент")},
+        {QStringLiteral("fragmentRepeat.jumpToA"), QStringLiteral("К началу (A)")},
+        {QStringLiteral("fragmentRepeat.jumpToB"), QStringLiteral("К концу (B)")},
+        {QStringLiteral("fragmentRepeat.seekTrack"), QStringLiteral("Перемотка трека")},
+        {QStringLiteral("shortcut.setFragmentStart"), QStringLiteral("Установить начало фрагмента (A)")},
+        {QStringLiteral("shortcut.setFragmentEnd"), QStringLiteral("Установить конец фрагмента (B)")},
+        {QStringLiteral("shortcut.toggleFragmentRepeat"), QStringLiteral("Переключить повтор фрагмента")},
+        {QStringLiteral("shortcut.clearFragmentBoundaries"), QStringLiteral("Сбросить границы фрагмента")},
+        {QStringLiteral("shortcut.openFragmentDialog"), QStringLiteral("Окно повтора фрагмента")},
         {QStringLiteral("settings.reversePlayback"), QStringLiteral("Обратное проигрывание трека")},
         {QStringLiteral("settings.reversePlaybackDescription"),
          QStringLiteral("Проигрывать трек с конца к началу, сохраняя текущую скорость")},
@@ -3879,6 +3977,72 @@ void AppSettingsManager::setShowSpeedPitchControls(bool show)
     scheduleSaveSettings();
 }
 
+void AppSettingsManager::setFragmentRepeatEnabled(bool enabled)
+{
+    if (m_fragmentRepeatEnabled == enabled) {
+        return;
+    }
+
+    m_fragmentRepeatEnabled = enabled;
+    emit fragmentRepeatEnabledChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setPersistFragmentLoopPerTrack(bool enabled)
+{
+    if (m_persistFragmentLoopPerTrack == enabled) {
+        return;
+    }
+
+    m_persistFragmentLoopPerTrack = enabled;
+    emit persistFragmentLoopPerTrackChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setTrackFragmentLoops(const QVariantMap &loops)
+{
+    if (m_trackFragmentLoops == loops) {
+        return;
+    }
+
+    m_trackFragmentLoops = loops;
+    emit trackFragmentLoopsChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::saveTrackFragmentLoop(const QString &filePath, qint64 startMs, qint64 endMs)
+{
+    if (filePath.isEmpty() || startMs < 0 || endMs <= startMs) {
+        return;
+    }
+
+    QVariantMap loopData;
+    loopData.insert(QStringLiteral("startMs"), startMs);
+    loopData.insert(QStringLiteral("endMs"), endMs);
+    m_trackFragmentLoops.insert(filePath, loopData);
+    emit trackFragmentLoopsChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::removeTrackFragmentLoop(const QString &filePath)
+{
+    if (filePath.isEmpty() || !m_trackFragmentLoops.contains(filePath)) {
+        return;
+    }
+
+    m_trackFragmentLoops.remove(filePath);
+    emit trackFragmentLoopsChanged();
+    scheduleSaveSettings();
+}
+
+QVariantMap AppSettingsManager::getTrackFragmentLoop(const QString &filePath) const
+{
+    if (filePath.isEmpty()) {
+        return {};
+    }
+    return m_trackFragmentLoops.value(filePath).toMap();
+}
+
 void AppSettingsManager::setReversePlayback(bool enabled)
 {
     if (m_reversePlayback == enabled) {
@@ -3932,6 +4096,17 @@ void AppSettingsManager::setConfirmTrashDeletion(bool enabled)
 
     m_confirmTrashDeletion = enabled;
     emit confirmTrashDeletionChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setSeparateWindowDialogs(bool enabled)
+{
+    if (m_separateWindowDialogs == enabled) {
+        return;
+    }
+
+    m_separateWindowDialogs = enabled;
+    emit separateWindowDialogsChanged();
     scheduleSaveSettings();
 }
 
@@ -4472,12 +4647,16 @@ void AppSettingsManager::loadSettings()
     m_cueWaveformOverlayLabelsEnabled = m_settings.value("waveform.cueOverlayLabelsEnabled", true).toBool();
     m_cueWaveformOverlayAutoHideOnZoom = m_settings.value("waveform.cueOverlayAutoHideOnZoom", true).toBool();
     m_showSpeedPitchControls = m_settings.value("showSpeedPitchControls", false).toBool();
+    m_fragmentRepeatEnabled = m_settings.value("playback.fragmentRepeatEnabled", false).toBool();
+    m_persistFragmentLoopPerTrack = m_settings.value("playback.persistFragmentLoopPerTrack", false).toBool();
+    m_trackFragmentLoops = m_settings.value("playback.trackFragmentLoops").toMap();
     m_reversePlayback = m_settings.value("reversePlayback", false).toBool();
     m_audioQualityProfile =
         normalizeAudioQualityProfile(m_settings.value("audioQualityProfile", QStringLiteral("standard")).toString());
     m_displayVolumeInDecibels = m_settings.value("displayVolumeInDecibels", false).toBool();
     m_dynamicSpectrum = m_settings.value("dynamicSpectrum", false).toBool();
     m_confirmTrashDeletion = m_settings.value("confirmTrashDeletion", true).toBool();
+    m_separateWindowDialogs = m_settings.value("separateWindowDialogs", false).toBool();
     m_automaticPlaylistSearch = m_settings.value("automaticPlaylistSearch", false).toBool();
     m_autoAddTracksFromPlaylistFolder =
         m_settings.value("autoAddTracksFromPlaylistFolder", true).toBool();
@@ -4606,11 +4785,15 @@ void AppSettingsManager::saveSettings()
     m_settings.setValue("waveform.cueOverlayLabelsEnabled", m_cueWaveformOverlayLabelsEnabled);
     m_settings.setValue("waveform.cueOverlayAutoHideOnZoom", m_cueWaveformOverlayAutoHideOnZoom);
     m_settings.setValue("showSpeedPitchControls", m_showSpeedPitchControls);
+    m_settings.setValue("playback.fragmentRepeatEnabled", m_fragmentRepeatEnabled);
+    m_settings.setValue("playback.persistFragmentLoopPerTrack", m_persistFragmentLoopPerTrack);
+    m_settings.setValue("playback.trackFragmentLoops", m_trackFragmentLoops);
     m_settings.setValue("reversePlayback", m_reversePlayback);
     m_settings.setValue("audioQualityProfile", m_audioQualityProfile);
     m_settings.setValue("displayVolumeInDecibels", m_displayVolumeInDecibels);
     m_settings.setValue("dynamicSpectrum", m_dynamicSpectrum);
     m_settings.setValue("confirmTrashDeletion", m_confirmTrashDeletion);
+    m_settings.setValue("separateWindowDialogs", m_separateWindowDialogs);
     m_settings.setValue("automaticPlaylistSearch", m_automaticPlaylistSearch);
     m_settings.setValue("autoAddTracksFromPlaylistFolder", m_autoAddTracksFromPlaylistFolder);
     m_settings.setValue("playlistScrollBarVisible", m_playlistScrollBarVisible);

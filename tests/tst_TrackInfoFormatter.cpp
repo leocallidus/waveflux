@@ -27,6 +27,7 @@ TrackInfoFormatter::TrackInfoContext fullContext()
     context.sampleRateHz = 48'000;
     context.channelCount = 2;
     context.bpm = 128;
+    context.chapter = QStringLiteral("Intro");
     context.filePath = QStringLiteral("/music/Albums/Track Name.flac");
     context.appVersion = QStringLiteral("1.2.3");
     return context;
@@ -61,7 +62,7 @@ void TrackInfoFormatterTest::rendersSimpleParameters()
 {
     const auto context = fullContext();
 
-    QCOMPARE(render(QStringLiteral("%a - %t"), context), QStringLiteral("Artist - Title"));
+    QCOMPARE(render(QStringLiteral("%a - %t [%h]"), context), QStringLiteral("Artist - Title [Intro]"));
     QCOMPARE(render(QStringLiteral("%A / %g / %y / %n"), context),
              QStringLiteral("Album / Rock / 2026 / 07"));
     QCOMPARE(render(QStringLiteral("%b bit %B kbps %s kHz %H ch %M BPM"), context),
@@ -74,10 +75,12 @@ void TrackInfoFormatterTest::skipsUnavailableSimpleParameters()
 {
     TrackInfoFormatter::TrackInfoContext context = fullContext();
     context.genre.clear();
+    context.chapter.clear();
     context.bitrateKbps = 0;
     context.sampleRateHz = 0;
 
     QCOMPARE(render(QStringLiteral("%g"), context), QString());
+    QCOMPARE(render(QStringLiteral("%h"), context), QString());
     QCOMPARE(render(QStringLiteral("%B/%s"), context), QStringLiteral("/"));
 }
 

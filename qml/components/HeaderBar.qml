@@ -477,8 +477,8 @@ Rectangle {
 
             Rectangle {
                 visible: !root.mobileLayout
-                implicitWidth: Math.round(192 * UiMetrics.fontScale)
-                implicitHeight: UiMetrics.controlHeightCompact
+                implicitWidth: Math.max(Math.round(230 * UiMetrics.fontScale), 200)
+                implicitHeight: Math.max(UiMetrics.controlHeightNormal, Math.round(28 * UiMetrics.fontScale))
                 radius: themeManager.borderRadiusLarge
                 color: root.chromeFill
                 border.width: 1
@@ -489,12 +489,19 @@ Rectangle {
                     anchors.fill: parent
                     anchors.leftMargin: Math.round(26 * UiMetrics.fontScale)
                     anchors.rightMargin: Math.round(30 * UiMetrics.fontScale)
-                    anchors.topMargin: 2
-                    anchors.bottomMargin: 2
+                    anchors.topMargin: 0
+                    anchors.bottomMargin: 0
+                    topPadding: 0
+                    bottomPadding: 0
+                    leftPadding: 0
+                    rightPadding: 0
+                    verticalAlignment: TextInput.AlignVCenter
+                    selectByMouse: true
                     placeholderText: appSettings.automaticPlaylistSearch
                                      ? root.tr("header.searchPlaceholder")
                                      : root.tr("header.searchManualPlaceholder")
                     color: themeManager.textColor
+                    font.family: themeManager.fontFamily
                     font.pointSize: UiMetrics.captionPointSize
                     background: Item {}
                     onTextEdited: function() {
@@ -699,6 +706,9 @@ Rectangle {
         }
         MenuSeparator {}
         FluxMenuItem {
+            action: root.menuActions ? root.menuActions.fileResetPlaylist : null
+        }
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileExportPlaylist : null
         }
         FluxMenuItem {
@@ -755,6 +765,38 @@ Rectangle {
         MenuSeparator {}
         FluxMenuItem { action: root.menuActions ? root.menuActions.playbackPrevious : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.playbackNext : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackPreviousChapter : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.playbackNextChapter : null }
+        FluxMenu {
+            id: headerPlaybackChaptersMenu
+            title: root.tr("menu.chapters")
+            icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            visible: trackModel && trackModel.hasChapters
+
+            Instantiator {
+                model: trackModel && trackModel.hasChapters ? trackModel.currentChapters : []
+                delegate: FluxMenuItem {
+                    required property var modelData
+                    required property int index
+                    readonly property int activeIdx: trackModel.currentChapterIndexAtPosition(audioEngine.position)
+                    text: (modelData.startTimeFormatted ? modelData.startTimeFormatted + "  " : "") + (modelData.title || (root.tr("player.chapters") + " " + (index + 1)))
+                    checkable: true
+                    checked: modelData.index === activeIdx
+                    onTriggered: {
+                        if (playbackController) {
+                            playbackController.seekToChapter(modelData.index)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    headerPlaybackChaptersMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    headerPlaybackChaptersMenu.removeItem(object)
+                }
+            }
+        }
         MenuSeparator {}
         FluxMenuItem { action: root.menuActions ? root.menuActions.playbackSeekBack5s : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.playbackSeekForward5s : null }
@@ -780,6 +822,7 @@ Rectangle {
         id: libraryMenu
 
         FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.fileResetPlaylist : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
         MenuSeparator {}
@@ -878,6 +921,7 @@ Rectangle {
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileAddFolder : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileOpenAudioConverter : null }
             MenuSeparator {}
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileResetPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileExportPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileClearPlaylist : null }
             MenuSeparator {}
@@ -944,6 +988,7 @@ Rectangle {
         FluxMenu {
             title: root.tr("menu.library")
             FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileResetPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
             MenuSeparator {}

@@ -136,6 +136,9 @@ public slots:
     Q_INVOKABLE void toggleFragmentRepeat();
     void saveFragmentBoundariesForCurrentTrack();
     Q_INVOKABLE void seekRelative(qint64 deltaMs);
+    Q_INVOKABLE void seekToChapter(int chapterIndex);
+    Q_INVOKABLE void nextChapter();
+    Q_INVOKABLE void previousChapter();
     Q_INVOKABLE void requestPlayIndex(int index, const QString &reason = QString());
     Q_INVOKABLE void addToQueue(int index);
     Q_INVOKABLE void playNextInQueue(int index);

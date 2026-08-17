@@ -51,6 +51,7 @@
 #include "TrayManager.h"
 #include "XdgPortalFilePicker.h"
 #include "PerformanceProfiler.h"
+#include "PlaylistColumnLayoutManager.h"
 #include "library/DatabaseManager.h"
 #include "library/MigrationManager.h"
 #include "library/SmartCollectionsEngine.h"
@@ -334,6 +335,7 @@ int main(int argc, char *argv[])
         TrayManager trayManager;
         XdgPortalFilePicker xdgPortalFilePicker;
         PerformanceProfiler performanceProfiler;
+        PlaylistColumnLayoutManager playlistColumnLayoutManager;
 #ifdef Q_OS_WIN
         WindowsMediaControlsService windowsMediaControlsService(&audioEngine, &trackModel, &playbackController);
 #endif
@@ -667,6 +669,7 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("trayManager", &trayManager);
         engine.rootContext()->setContextProperty("xdgPortalFilePicker", &xdgPortalFilePicker);
         engine.rootContext()->setContextProperty("performanceProfiler", &performanceProfiler);
+        engine.rootContext()->setContextProperty("playlistColumnLayoutManager", &playlistColumnLayoutManager);
         engine.rootContext()->setContextProperty("smartCollectionsEngine", &smartCollectionsEngine);
 
         // Load main QML file

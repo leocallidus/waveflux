@@ -363,8 +363,12 @@ Item {
                     TextField {
                         id: searchField
                         Layout.fillWidth: true
+                        Layout.preferredHeight: Math.max(UiMetrics.controlHeightNormal, 32)
                         placeholderText: root.tr("playlist.searchPlaceholder")
                         selectByMouse: true
+                        font.family: themeManager.fontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
+                        verticalAlignment: TextInput.AlignVCenter
                         onTextChanged: root.scheduleDebouncedSearchUpdate(text)
                     }
 
@@ -396,6 +400,21 @@ Item {
                         enabled: trackModel.count > 1
                         onClicked: trackModel.shuffleOrder()
                         ToolTip.text: root.tr("playlist.randomize")
+                        ToolTip.visible: hovered
+                    }
+
+                    ToolButton {
+                        text: root.compactHeader ? "" : root.tr("menu.resetPlaylist")
+                        icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+                        icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                        enabled: trackModel.canResetPlaylist
+                        onClicked: {
+                            if (playlistTable && playlistTable.clearActiveSort) {
+                                playlistTable.clearActiveSort(false)
+                            }
+                            trackModel.resetPlaylist()
+                        }
+                        ToolTip.text: root.tr("menu.resetPlaylist")
                         ToolTip.visible: hovered
                     }
 
@@ -591,6 +610,7 @@ Item {
                     onClicked: function(mouse) {
                         if (mouse.button === Qt.RightButton) {
                             contextMenu.trackIndex = sourceIndex
+                            contextMenu.trackChapters = trackModel ? trackModel.chaptersForIndex(sourceIndex) : []
                             contextMenu.popup()
                         }
                     }
@@ -705,11 +725,18 @@ Item {
             text: root.tr("playlist.byDateNewest")
             onTriggered: trackModel.sortByDateDesc()
         }
+        MenuSeparator {}
+        MenuItem {
+            text: root.tr("playlist.resetPlaylist")
+            enabled: trackModel.canResetPlaylist
+            onTriggered: trackModel.resetPlaylist()
+        }
     }
 
     AccentMenu {
         id: contextMenu
         property int trackIndex: -1
+        property var trackChapters: []
 
         AccentMenuItem {
             text: root.tr("playlist.play")
@@ -734,6 +761,34 @@ Item {
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             enabled: contextMenu.trackIndex >= 0 && contextMenu.trackIndex !== playbackController.activeTrackIndex
             onTriggered: playbackController.addToQueue(contextMenu.trackIndex)
+        }
+
+        AccentMenu {
+            id: playlistViewChaptersMenu
+            title: root.tr("playlist.chapters")
+            icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            visible: contextMenu.trackChapters && contextMenu.trackChapters.length > 0
+
+            Instantiator {
+                model: contextMenu.trackChapters ? contextMenu.trackChapters : []
+                delegate: AccentMenuItem {
+                    required property var modelData
+                    required property int index
+                    readonly property int targetIndex: contextMenu.trackIndex
+                    text: (modelData.startTimeFormatted ? modelData.startTimeFormatted + "  " : "") + (modelData.title || (root.tr("player.chapters") + " " + (index + 1)))
+                    onTriggered: {
+                        playbackController.requestPlayIndex(targetIndex, "playlist_view.chapter_play")
+                        audioEngine.seekWithSource(Number(modelData.startTimeMs || 0), "qml.playlist_view_chapter_seek")
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    playlistViewChaptersMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    playlistViewChaptersMenu.removeItem(object)
+                }
+            }
         }
 
         AccentMenuItem {
@@ -777,6 +832,16 @@ Item {
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             enabled: playbackController.queueCount > 0
             onTriggered: playbackController.clearQueue()
+        }
+
+        AccentMenuSeparator {}
+
+        AccentMenuItem {
+            text: root.tr("playlist.resetPlaylist")
+            icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            enabled: trackModel.canResetPlaylist
+            onTriggered: trackModel.resetPlaylist()
         }
     }
 

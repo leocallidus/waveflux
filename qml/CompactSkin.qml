@@ -54,6 +54,10 @@ Item {
                                               && !root.cueOverlaySuppressedByDensity
                                               && cueSegments.length > 0
                                               && audioEngine.duration > 0
+    readonly property bool chaptersOverlayVisible: !root.cueOverlayVisible
+                                                   && trackModel.hasChapters
+                                                   && trackModel.currentChapters.length > 0
+                                                   && audioEngine.duration > 0
     readonly property int compactControlsRowHeight: UiMetrics.compactControlsRowHeight
     readonly property bool compactWaveformTinyMode: appSettings.compactWaveformHeight < 30
     readonly property bool compactWaveformHoverPreviewVisible: !root.compactWaveformTinyMode
@@ -117,6 +121,7 @@ Item {
     signal openFilesRequested()
     signal addFolderRequested()
     signal ensurePlaylistModeRequested()
+    signal resetPlaylistRequested()
     signal exportPlaylistRequested()
     signal clearPlaylistRequested()
     signal editTagsRequested(string filePath)
@@ -131,8 +136,76 @@ Item {
     signal playlistProfileRequested(int playlistId, string playlistName)
     signal createSmartCollectionRequested()
     signal equalizerRequested()
+    signal configureColumnsRequested()
     signal helpAboutRequested()
     signal helpShortcutsRequested()
+
+    property string activeSortColumn: ""
+    property int activeSortOrder: 0
+    readonly property int responsiveWidthBucket: playlistColumnLayoutManager.widthBucket("compact", compactPlaylist.width - (appSettings.playlistScrollBarVisible ? 8 : 0))
+    readonly property var effectiveColumns: {
+        const _rev = playlistColumnLayoutManager.layoutRevision
+        const _bucket = root.responsiveWidthBucket
+        return playlistColumnLayoutManager.effectiveVisibleColumns("compact", _bucket)
+    }
+    readonly property bool compactHeaderVisible: {
+        const mode = playlistColumnLayoutManager.compactHeaderMode
+        if (mode === "alwaysShown") return root.effectiveColumns.length > 0
+        if (mode === "alwaysHidden") return false
+        if (root.effectiveColumns.length <= 1) {
+            if (root.effectiveColumns.length === 1 && root.effectiveColumns[0].id === "trackSummary") {
+                return false
+            }
+        }
+        return root.effectiveColumns.length > 0
+    }
+
+    function getTrackModelRoleValue(delegate, colId) {
+        switch (colId) {
+        case "playlistPosition": return (delegate.playlistPosition !== undefined && delegate.playlistPosition > 0) ? delegate.playlistPosition : (delegate.index + 1)
+        case "trackSummary": return delegate.displayName || delegate.trackSummary || ""
+        case "title": return delegate.title || ""
+        case "artist": return delegate.artist || ""
+        case "album": return delegate.album || ""
+        case "duration": return delegate.duration || 0
+        case "bitrate": return delegate.bitrate || 0
+        case "trackNumber": return delegate.trackNumber || ""
+        case "year": return delegate.year || ""
+        case "genre": return delegate.genre || ""
+        case "description": return delegate.description || delegate.comment || ""
+        case "composer": return delegate.composer || ""
+        case "originalArtist": return delegate.originalArtist || ""
+        case "copyright": return delegate.copyright || ""
+        case "url": return delegate.url || ""
+        case "encoder": return delegate.encoder || ""
+        case "format": return delegate.format || ""
+        case "sampleRate": return delegate.sampleRate || 0
+        case "bitDepth": return delegate.bitDepth || 0
+        case "bpm": return delegate.bpm || 0
+        case "channelCount": return delegate.channelCount || 0
+        case "fileName": return delegate.fileName || ""
+        case "filePath": return delegate.filePath || ""
+        case "dateAdded": return delegate.dateAdded || 0
+        default: return ""
+        }
+    }
+
+    function cycleColumnSort(columnKey) {
+        let curState = 0
+        if (activeSortColumn === columnKey) {
+            curState = activeSortOrder
+        }
+        const nextState = (curState + 1) % 3
+        if (nextState === 0) {
+            activeSortColumn = ""
+            activeSortOrder = 0
+            trackModel.restoreBaselineOrder()
+        } else {
+            activeSortColumn = columnKey
+            activeSortOrder = nextState
+            trackModel.sortByColumn(columnKey, nextState === 1 ? Qt.AscendingOrder : Qt.DescendingOrder)
+        }
+    }
 
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
@@ -1143,6 +1216,74 @@ Item {
                         }
                     }
 
+                    Item {
+                        id: compactChaptersOverlay
+                        anchors.fill: parent
+                        visible: root.chaptersOverlayVisible
+                        z: 1
+
+                        Repeater {
+                            model: root.chaptersOverlayVisible ? trackModel.currentChapters : []
+
+                            Rectangle {
+                                required property int index
+                                required property var modelData
+
+                                readonly property real fullDurationMs: Math.max(1, Number(audioEngine.duration || 1))
+                                readonly property real startMs: Math.max(0, Number(modelData.startTimeMs || 0))
+                                readonly property real rawEndMs: Number(modelData.endTimeMs || 0)
+                                readonly property real endMs: rawEndMs > startMs ? rawEndMs : fullDurationMs
+                                readonly property real startTrackPos: Math.max(0, Math.min(1, startMs / fullDurationMs))
+                                readonly property real endTrackPos: Math.max(startTrackPos, Math.min(1, endMs / fullDurationMs))
+                                readonly property real startX: compactWaveform.trackToView(startTrackPos) * parent.width
+                                readonly property real endX: compactWaveform.trackToView(endTrackPos) * parent.width
+                                readonly property real leftX: Math.max(0, Math.min(startX, endX))
+                                readonly property real rightX: Math.min(parent.width, Math.max(startX, endX))
+                                readonly property real rawWidth: Math.max(0, rightX - leftX)
+                                readonly property int activeChapterIdx: trackModel.currentChapterIndexAtPosition(audioEngine.position)
+                                readonly property bool isActive: modelData.index === activeChapterIdx
+                                readonly property string chapterTitle: String(modelData.title || "")
+                                readonly property string chapterDuration: root.formatSegmentDuration(Number(modelData.durationMs || 0))
+
+                                visible: isActive || rawWidth >= 1.1
+                                x: leftX
+                                width: isActive ? Math.max(1, rawWidth) : rawWidth
+                                height: parent.height
+                                color: isActive
+                                       ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.16)
+                                       : (index % 2 === 0
+                                          ? Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.05)
+                                          : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.02))
+
+                                Rectangle {
+                                    visible: parent.width >= (isActive ? 1.0 : 1.35)
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: isActive ? 2 : 1
+                                    color: isActive
+                                           ? themeManager.primaryColor
+                                           : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.24)
+                                }
+
+                                Label {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 3
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - 6
+                                    visible: parent.width >= 60
+                                    elide: Text.ElideRight
+                                    color: isActive ? themeManager.primaryColor : themeManager.textSecondaryColor
+                                    font.pointSize: UiMetrics.microPointSize
+                                    font.family: UiMetrics.monoFontFamily
+                                    text: chapterDuration.length > 0
+                                          ? (chapterTitle + " " + chapterDuration)
+                                          : chapterTitle
+                                }
+                            }
+                        }
+                    }
+
                     // Progress needle
                     Rectangle {
                         visible: audioEngine.duration > 0
@@ -1498,6 +1639,14 @@ Item {
                             }
 
                             AccentMenuSeparator {}
+
+                            AccentMenuItem {
+                                text: root.tr("main.resetPlaylist")
+                                icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: trackModel.canResetPlaylist
+                                onTriggered: root.resetPlaylistRequested()
+                            }
 
                             AccentMenuItem {
                                 text: root.tr("main.exportPlaylist")
@@ -1923,6 +2072,7 @@ Item {
                         TextField {
                             id: compactSearchField
                             Layout.fillWidth: true
+                            Layout.preferredHeight: Math.max(28, UiMetrics.controlHeightCompact + UiMetrics.spaceXS)
                             placeholderText: appSettings.automaticPlaylistSearch
                                              ? root.tr("header.searchPlaceholder")
                                              : root.tr("header.searchManualPlaceholder")
@@ -1930,7 +2080,11 @@ Item {
                             selectByMouse: true
                             color: themeManager.textColor
                             placeholderTextColor: themeManager.textMutedColor
+                            font.family: themeManager.fontFamily
                             font.pointSize: UiMetrics.bodyPointSize
+                            verticalAlignment: TextInput.AlignVCenter
+                            topPadding: 4
+                            bottomPadding: 4
                             background: Rectangle {
                                 radius: themeManager.borderRadius
                                 color: Qt.rgba(themeManager.backgroundColor.r,
@@ -1962,6 +2116,53 @@ Item {
                             onClicked: {
                                 compactSearchField.clear()
                                 root.applySearchQuery("")
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.compactHeaderVisible
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: UiMetrics.playlistHeaderHeight
+                    color: Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.92)
+                    border.width: 1
+                    border.color: themeManager.borderColor
+                    z: 2
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6 + (appSettings.playlistScrollBarVisible ? 8 : 0)
+                        spacing: 6
+
+                        Repeater {
+                            model: root.effectiveColumns
+
+                            delegate: PlaylistColumnHeader {
+                                id: colHeader
+                                required property var modelData
+                                required property int index
+                                readonly property string colId: String(modelData.id || "")
+                                readonly property var desc: playlistColumnLayoutManager.columnDescriptor(colId)
+
+                                columnId: colId
+                                title: root.tr(String(desc.translationKey || ""))
+                                alignment: String(desc.alignment || "left")
+                                sortable: Boolean(desc.sortable)
+                                sortActive: root.activeSortColumn === colId
+                                sortOrder: root.activeSortOrder === 1 ? Qt.AscendingOrder : Qt.DescendingOrder
+                                skin: "compact"
+                                Layout.preferredWidth: Number(modelData.computedWidth || modelData.width || (desc ? desc.defaultWidth : 100))
+                                Layout.minimumWidth: Number(desc ? desc.minimumWidth : 40)
+                                Layout.fillWidth: Boolean(desc && desc.stretchWeight > 0)
+                                Layout.fillHeight: true
+
+                                onSortClicked: root.cycleColumnSort(colId)
+                                onConfigureColumnsRequested: root.configureColumnsRequested()
+                                onResetColumnsRequested: {
+                                    playlistColumnLayoutManager.resetSkin("compact")
+                                }
                             }
                         }
                     }
@@ -2051,11 +2252,33 @@ Item {
 
                     required property int index
                     required property int sourceIndex
+                    required property string filePath
+                    required property string displayName
                     required property string title
                     required property string artist
-                    required property string displayName
-                    required property string filePath
+                    required property string album
+                    required property string comment
+                    required property string genre
+                    required property string year
+                    required property string trackNumber
                     required property int duration
+                    required property string format
+                    required property int bitrate
+                    required property int sampleRate
+                    required property int bitDepth
+                    required property int bpm
+                    required property int channelCount
+                    required property bool hasChapters
+                    required property string description
+                    required property string composer
+                    required property string originalArtist
+                    required property string copyright
+                    required property string url
+                    required property string encoder
+                    required property string fileName
+                    required property var dateAdded
+                    required property string trackSummary
+                    required property int playlistPosition
                     readonly property int transitionStateValue: playbackController.transitionState
                     readonly property bool activeTrack: trackDelegate.sourceIndex === playbackController.activeTrackIndex
                     readonly property bool pendingTrack: trackDelegate.sourceIndex === playbackController.pendingTrackIndex
@@ -2099,47 +2322,40 @@ Item {
                         anchors.rightMargin: 6
                         spacing: 6
 
-                        Label {
-                            text: (trackDelegate.sourceIndex + 1) + "."
-                            color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textMutedColor
-                            font.family: UiMetrics.monoFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            Layout.preferredWidth: Math.round(24 * UiMetrics.fontScale)
-                            horizontalAlignment: Text.AlignRight
-                        }
+                        Repeater {
+                            model: root.effectiveColumns
 
-                        Label {
-                            visible: trackDelegate.queuePosition >= 0
-                            text: "Q" + String(trackDelegate.queuePosition + 1)
-                            color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.primaryColor
-                            font.family: UiMetrics.monoFontFamily
-                            font.pointSize: UiMetrics.microPointSize
-                            font.bold: true
-                            opacity: 0.82
-                        }
+                            delegate: PlaylistColumnCell {
+                                id: cellComponent
+                                required property var modelData
+                                required property int index
+                                readonly property string colId: String(modelData.id || "")
+                                readonly property var desc: playlistColumnLayoutManager.columnDescriptor(colId)
 
-                        Label {
-                            Layout.fillWidth: true
-                            text: {
-                                const t = root.formatCueTrackTitle(trackDelegate.sourceIndex,
-                                                                   trackDelegate.title,
-                                                                   trackDelegate.displayName)
-                                const a = trackDelegate.artist || ""
-                                return a ? (a + " - " + t) : t
+                                columnId: colId
+                                rawValue: root.getTrackModelRoleValue(trackDelegate, colId)
+                                extraData: ({
+                                    "sampleRate": trackDelegate.sampleRate,
+                                    "bitDepth": trackDelegate.bitDepth,
+                                    "format": trackDelegate.format,
+                                    "artist": trackDelegate.artist,
+                                    "title": trackDelegate.title,
+                                    "filePath": trackDelegate.filePath,
+                                    "queuePosition": trackDelegate.queuePosition,
+                                    "hasChapters": trackDelegate.hasChapters
+                                })
+                                alignment: String(desc.alignment || "left")
+                                isHighlighted: trackDelegate.activeTrack
+                                isPlaying: trackDelegate.activeTrack && root.isPlaying
+                                isCueSegment: false
+                                textColor: trackDelegate.activeTrack
+                                           ? themeManager.primaryColor
+                                           : (colId === "artist" || colId === "duration" ? themeManager.textSecondaryColor : (colId === "album" || colId === "format" || colId === "bitrate" ? themeManager.textMutedColor : themeManager.textColor))
+                                Layout.preferredWidth: Number(modelData.computedWidth || modelData.width || (desc ? desc.defaultWidth : 100))
+                                Layout.minimumWidth: Number(desc ? desc.minimumWidth : 40)
+                                Layout.fillWidth: Boolean(desc && desc.stretchWeight > 0)
+                                Layout.fillHeight: true
                             }
-                            color: trackDelegate.activeTrack ? themeManager.primaryColor : themeManager.textColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.bodyPointSize
-                            font.bold: trackDelegate.activeTrack
-                            elide: Text.ElideRight
-                        }
-
-                        Label {
-                            text: trackDelegate.duration > 0 ? root.formatTime(trackDelegate.duration) : ""
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.monoFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            visible: trackDelegate.duration > 0
                         }
                     }
 
@@ -2401,6 +2617,16 @@ Item {
                     enabled: playbackController.queueCount > 0
                     onTriggered: playbackController.clearQueue()
                 }
+
+                AccentMenuSeparator {}
+
+                AccentMenuItem {
+                    text: root.tr("playlist.resetPlaylist")
+                    icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    enabled: trackModel.canResetPlaylist
+                    onTriggered: root.resetPlaylistRequested()
+                }
             }
         }
 
@@ -2423,7 +2649,9 @@ Item {
                     Layout.fillWidth: true
                     text: {
                         const artist = root.stageArtist
-                        return artist ? (artist + " - " + root.stageTitle) : root.stageTitle
+                        const base = artist ? (artist + " - " + root.stageTitle) : root.stageTitle
+                        const ch = (trackModel && trackModel.hasChapters) ? trackModel.currentChapterTitleAtPosition(audioEngine.position) : ""
+                        return (ch && ch.length > 0) ? (base + " [" + ch + "]") : base
                     }
                     color: themeManager.textColor
                     font.family: UiMetrics.playlistFontFamily

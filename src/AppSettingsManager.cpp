@@ -525,6 +525,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("main.addFolder"), QStringLiteral("Add Folder")},
         {QStringLiteral("ytDlpImport.toolbarButton"), QStringLiteral("URL")},
         {QStringLiteral("main.exportPlaylist"), QStringLiteral("Export Playlist")},
+        {QStringLiteral("main.resetPlaylist"), QStringLiteral("Reset Playlist")},
         {QStringLiteral("main.clearPlaylist"), QStringLiteral("Clear Playlist")},
         {QStringLiteral("main.nowPlaying"), QStringLiteral("Now Playing")},
         {QStringLiteral("main.settings"), QStringLiteral("Settings")},
@@ -728,6 +729,9 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.playlistScrollBarVisible"), QStringLiteral("Show playlist scrollbar")},
         {QStringLiteral("settings.playlistScrollBarVisibleDescription"),
          QStringLiteral("Display the vertical scrollbar in the playlist table for both normal and compact skins.")},
+        {QStringLiteral("settings.showPlaylistChapterBadge"), QStringLiteral("Show chapter badge in playlist")},
+        {QStringLiteral("settings.showPlaylistChapterBadgeDescription"),
+         QStringLiteral("Display a CHAP badge in the playlist table for tracks that contain embedded chapters.")},
         {QStringLiteral("settings.playSearchResultsInOrder"), QStringLiteral("Play search results in order")},
         {QStringLiteral("settings.playSearchResultsInOrderDescription"),
          QStringLiteral("When playlist search is active, Next and automatic playback continue through only the visible search results in table order.")},
@@ -1087,6 +1091,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("playlist.locate"), QStringLiteral("Locate")},
         {QStringLiteral("playlist.locateCurrent"), QStringLiteral("Scroll to current track")},
         {QStringLiteral("playlist.clear"), QStringLiteral("Clear")},
+        {QStringLiteral("playlist.resetPlaylist"), QStringLiteral("Reset Playlist")},
         {QStringLiteral("playlist.clearPlaylist"), QStringLiteral("Clear playlist")},
         {QStringLiteral("playlist.tracks"), QStringLiteral("tracks")},
         {QStringLiteral("playlist.matches"), QStringLiteral("matches")},
@@ -1623,6 +1628,8 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("sidebar.buffer"), QStringLiteral("Buffer:")},
         {QStringLiteral("sidebar.bufferValue"), QStringLiteral("512 MB Pre-loaded")},
         {QStringLiteral("sidebar.albumArt"), QStringLiteral("ALBUM ART")},
+        {QStringLiteral("sidebar.chapters"), QStringLiteral("CHAPTERS")},
+        {QStringLiteral("sidebar.noChapters"), QStringLiteral("No chapters in this track")},
         {QStringLiteral("sidebar.unknown"), QStringLiteral("Unknown")},
         {QStringLiteral("sidebar.lossless"), QStringLiteral("Lossless")},
         {QStringLiteral("sidebar.bitPcm"), QStringLiteral("-bit PCM")},
@@ -1632,6 +1639,16 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("player.maxVolume"), QStringLiteral("Max volume")},
         {QStringLiteral("player.equalizer"), QStringLiteral("Equalizer")},
         {QStringLiteral("player.equalizerUnavailable"), QStringLiteral("Equalizer unavailable")},
+        {QStringLiteral("player.chapters"), QStringLiteral("Chapters")},
+        {QStringLiteral("player.currentChapter"), QStringLiteral("Chapter: %1")},
+        {QStringLiteral("player.previousChapter"), QStringLiteral("Previous Chapter")},
+        {QStringLiteral("player.nextChapter"), QStringLiteral("Next Chapter")},
+        {QStringLiteral("player.jumpToChapter"), QStringLiteral("Jump to Chapter")},
+        {QStringLiteral("menu.chapters"), QStringLiteral("Chapters")},
+        {QStringLiteral("menu.previousChapter"), QStringLiteral("Previous Chapter")},
+        {QStringLiteral("menu.nextChapter"), QStringLiteral("Next Chapter")},
+        {QStringLiteral("waveform.chapters"), QStringLiteral("Chapters")},
+        {QStringLiteral("playlist.chapters"), QStringLiteral("Chapters")},
         {QStringLiteral("queue.open"), QStringLiteral("Open Up Next Panel")},
         {QStringLiteral("queue.upNext"), QStringLiteral("Up Next")},
         {QStringLiteral("queue.clear"), QStringLiteral("Clear Queue")},
@@ -1722,6 +1739,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("menu.addFolder"), QStringLiteral("Add Folder...")},
         {QStringLiteral("menu.audioConverter"), QStringLiteral("Audio Converter...")},
         {QStringLiteral("menu.exportPlaylist"), QStringLiteral("Export Playlist...")},
+        {QStringLiteral("menu.resetPlaylist"), QStringLiteral("Reset Playlist")},
         {QStringLiteral("menu.clearPlaylist"), QStringLiteral("Clear Playlist")},
         {QStringLiteral("menu.quit"), QStringLiteral("Quit")},
         {QStringLiteral("menu.find"), QStringLiteral("Find")},
@@ -1948,7 +1966,60 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("collections.opGe"), QStringLiteral(">=")},
         {QStringLiteral("collections.opLe"), QStringLiteral("<=")},
         {QStringLiteral("collections.opGt"), QStringLiteral(">")},
-        {QStringLiteral("collections.opLt"), QStringLiteral("<")}
+        {QStringLiteral("collections.opLt"), QStringLiteral("<")},
+        {QStringLiteral("columns.playlistPosition"), QStringLiteral("Position")},
+        {QStringLiteral("columns.trackSummary"), QStringLiteral("Track")},
+        {QStringLiteral("columns.title"), QStringLiteral("Title")},
+        {QStringLiteral("columns.artist"), QStringLiteral("Artist")},
+        {QStringLiteral("columns.album"), QStringLiteral("Album")},
+        {QStringLiteral("columns.duration"), QStringLiteral("Duration")},
+        {QStringLiteral("columns.bitrate"), QStringLiteral("Bitrate")},
+        {QStringLiteral("columns.trackNumber"), QStringLiteral("Track #")},
+        {QStringLiteral("columns.year"), QStringLiteral("Year")},
+        {QStringLiteral("columns.genre"), QStringLiteral("Genre")},
+        {QStringLiteral("columns.description"), QStringLiteral("Description")},
+        {QStringLiteral("columns.composer"), QStringLiteral("Composer")},
+        {QStringLiteral("columns.originalArtist"), QStringLiteral("Original Artist")},
+        {QStringLiteral("columns.copyright"), QStringLiteral("Copyright")},
+        {QStringLiteral("columns.url"), QStringLiteral("URL")},
+        {QStringLiteral("columns.encoder"), QStringLiteral("Encoder")},
+        {QStringLiteral("columns.format"), QStringLiteral("Format")},
+        {QStringLiteral("columns.sampleRate"), QStringLiteral("Sample Rate")},
+        {QStringLiteral("columns.bitDepth"), QStringLiteral("Bit Depth")},
+        {QStringLiteral("columns.bpm"), QStringLiteral("BPM")},
+        {QStringLiteral("columns.channelCount"), QStringLiteral("Channels")},
+        {QStringLiteral("columns.fileName"), QStringLiteral("File Name")},
+        {QStringLiteral("columns.filePath"), QStringLiteral("File Path")},
+        {QStringLiteral("columns.dateAdded"), QStringLiteral("Date Added")},
+        {QStringLiteral("dialogs.playlistColumns.title"), QStringLiteral("Configure Playlist Columns")},
+        {QStringLiteral("dialogs.playlistColumns.tabNormal"), QStringLiteral("Standard Skin")},
+        {QStringLiteral("dialogs.playlistColumns.tabCompact"), QStringLiteral("Compact Skin")},
+        {QStringLiteral("dialogs.playlistColumns.copyFromOther"), QStringLiteral("Copy from other skin")},
+        {QStringLiteral("dialogs.playlistColumns.copyFromNormal"), QStringLiteral("Copy from standard skin")},
+        {QStringLiteral("dialogs.playlistColumns.copyFromCompact"), QStringLiteral("Copy from compact skin")},
+        {QStringLiteral("dialogs.playlistColumns.resetSkin"), QStringLiteral("Reset to Default")},
+        {QStringLiteral("dialogs.playlistColumns.resetAll"), QStringLiteral("Reset All Skins")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderMode"), QStringLiteral("Compact Header Display")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderAuto"), QStringLiteral("Automatic (hide on single summary column)")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderAlwaysShown"), QStringLiteral("Always show header")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderAlwaysHidden"), QStringLiteral("Always hide header")},
+        {QStringLiteral("dialogs.playlistColumns.visibilityShown"), QStringLiteral("Always Shown")},
+        {QStringLiteral("dialogs.playlistColumns.visibilityAuto"), QStringLiteral("Automatic (Responsive)")},
+        {QStringLiteral("dialogs.playlistColumns.visibilityHidden"), QStringLiteral("Hidden")},
+        {QStringLiteral("dialogs.playlistColumns.dragHint"), QStringLiteral("Drag items to change column order")},
+        {QStringLiteral("dialogs.playlistColumns.allHiddenWarning"), QStringLiteral("At least one column must be visible. Displaying fallback track column.")},
+        {QStringLiteral("dialogs.playlistColumns.restoreDefaults"), QStringLiteral("Restore Columns")},
+        {QStringLiteral("dialogs.playlistColumns.close"), QStringLiteral("Close")},
+        {QStringLiteral("common.close"), QStringLiteral("Close")},
+        {QStringLiteral("settings.ui.playlistColumns"), QStringLiteral("Playlist Columns")},
+        {QStringLiteral("settings.ui.playlistColumnsDesc"), QStringLiteral("Customize visible metadata columns and ordering")},
+        {QStringLiteral("settings.ui.playlistColumnsConfigure"), QStringLiteral("Configure Columns...")},
+        {QStringLiteral("menu.view.playlistColumns"), QStringLiteral("Playlist Columns")},
+        {QStringLiteral("menu.view.playlistColumns.configure"), QStringLiteral("Configure Columns...")},
+        {QStringLiteral("menu.view.playlistColumns.reset"), QStringLiteral("Reset Columns to Default")},
+        {QStringLiteral("toast.columnsRestored"), QStringLiteral("Playlist columns restored to default")},
+        {QStringLiteral("toast.urlCopied"), QStringLiteral("URL copied to clipboard")},
+        {QStringLiteral("toast.urlOpened"), QStringLiteral("URL opened in browser")}
     };
     return texts;
 }
@@ -1961,6 +2032,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("main.addFolder"), QStringLiteral("Добавить папку")},
         {QStringLiteral("ytDlpImport.toolbarButton"), QStringLiteral("URL")},
         {QStringLiteral("main.exportPlaylist"), QStringLiteral("Экспорт плейлиста")},
+        {QStringLiteral("main.resetPlaylist"), QStringLiteral("Сбросить плейлист")},
         {QStringLiteral("main.clearPlaylist"), QStringLiteral("Очистить плейлист")},
         {QStringLiteral("main.nowPlaying"), QStringLiteral("Сейчас играет")},
         {QStringLiteral("main.settings"), QStringLiteral("Настройки")},
@@ -2164,6 +2236,9 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.playlistScrollBarVisible"), QStringLiteral("Показывать скроллбар плейлиста")},
         {QStringLiteral("settings.playlistScrollBarVisibleDescription"),
          QStringLiteral("Показывает вертикальный скроллбар в таблице плейлиста для обычного и компактного скинов.")},
+        {QStringLiteral("settings.showPlaylistChapterBadge"), QStringLiteral("Показывать значок глав в плейлисте")},
+        {QStringLiteral("settings.showPlaylistChapterBadgeDescription"),
+         QStringLiteral("Отображать значок CHAP в таблице плейлиста для треков, содержащих главы.")},
         {QStringLiteral("settings.playSearchResultsInOrder"), QStringLiteral("Играть результаты поиска по порядку")},
         {QStringLiteral("settings.playSearchResultsInOrderDescription"),
          QStringLiteral("Когда поиск по плейлисту активен, следующий трек и автопереход идут только по видимым результатам поиска в порядке таблицы.")},
@@ -2526,6 +2601,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("playlist.locate"), QStringLiteral("Найти")},
         {QStringLiteral("playlist.locateCurrent"), QStringLiteral("Прокрутить к текущему треку")},
         {QStringLiteral("playlist.clear"), QStringLiteral("Очистить")},
+        {QStringLiteral("playlist.resetPlaylist"), QStringLiteral("Сбросить плейлист")},
         {QStringLiteral("playlist.clearPlaylist"), QStringLiteral("Очистить плейлист")},
         {QStringLiteral("playlist.tracks"), QStringLiteral("треков")},
         {QStringLiteral("playlist.matches"), QStringLiteral("совпадений")},
@@ -3063,6 +3139,8 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("sidebar.buffer"), QStringLiteral("Буфер:")},
         {QStringLiteral("sidebar.bufferValue"), QStringLiteral("512 МБ предзагружено")},
         {QStringLiteral("sidebar.albumArt"), QStringLiteral("ОБЛОЖКА")},
+        {QStringLiteral("sidebar.chapters"), QStringLiteral("ГЛАВЫ")},
+        {QStringLiteral("sidebar.noChapters"), QStringLiteral("В этом треке нет глав")},
         {QStringLiteral("sidebar.unknown"), QStringLiteral("Неизвестно")},
         {QStringLiteral("sidebar.lossless"), QStringLiteral("Без потерь")},
         {QStringLiteral("sidebar.bitPcm"), QStringLiteral("-бит PCM")},
@@ -3072,6 +3150,16 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("player.maxVolume"), QStringLiteral("Максимум")},
         {QStringLiteral("player.equalizer"), QStringLiteral("Эквалайзер")},
         {QStringLiteral("player.equalizerUnavailable"), QStringLiteral("Эквалайзер недоступен")},
+        {QStringLiteral("player.chapters"), QStringLiteral("Главы")},
+        {QStringLiteral("player.currentChapter"), QStringLiteral("Глава: %1")},
+        {QStringLiteral("player.previousChapter"), QStringLiteral("Предыдущая глава")},
+        {QStringLiteral("player.nextChapter"), QStringLiteral("Следующая глава")},
+        {QStringLiteral("player.jumpToChapter"), QStringLiteral("Перейти к главе")},
+        {QStringLiteral("menu.chapters"), QStringLiteral("Главы")},
+        {QStringLiteral("menu.previousChapter"), QStringLiteral("Предыдущая глава")},
+        {QStringLiteral("menu.nextChapter"), QStringLiteral("Следующая глава")},
+        {QStringLiteral("waveform.chapters"), QStringLiteral("Главы")},
+        {QStringLiteral("playlist.chapters"), QStringLiteral("Главы")},
         {QStringLiteral("queue.open"), QStringLiteral("Открыть панель далее в очереди")},
         {QStringLiteral("queue.upNext"), QStringLiteral("Далее в очереди")},
         {QStringLiteral("queue.clear"), QStringLiteral("Очистить очередь")},
@@ -3162,6 +3250,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("menu.addFolder"), QStringLiteral("Добавить папку...")},
         {QStringLiteral("menu.audioConverter"), QStringLiteral("Аудиоконвертер...")},
         {QStringLiteral("menu.exportPlaylist"), QStringLiteral("Экспорт плейлиста...")},
+        {QStringLiteral("menu.resetPlaylist"), QStringLiteral("Сбросить плейлист")},
         {QStringLiteral("menu.clearPlaylist"), QStringLiteral("Очистить плейлист")},
         {QStringLiteral("menu.quit"), QStringLiteral("Выход")},
         {QStringLiteral("menu.find"), QStringLiteral("Найти")},
@@ -3388,7 +3477,60 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("collections.opGe"), QStringLiteral(">=")},
         {QStringLiteral("collections.opLe"), QStringLiteral("<=")},
         {QStringLiteral("collections.opGt"), QStringLiteral(">")},
-        {QStringLiteral("collections.opLt"), QStringLiteral("<")}
+        {QStringLiteral("collections.opLt"), QStringLiteral("<")},
+        {QStringLiteral("columns.playlistPosition"), QStringLiteral("Позиция")},
+        {QStringLiteral("columns.trackSummary"), QStringLiteral("Трек")},
+        {QStringLiteral("columns.title"), QStringLiteral("Название")},
+        {QStringLiteral("columns.artist"), QStringLiteral("Исполнитель")},
+        {QStringLiteral("columns.album"), QStringLiteral("Альбом")},
+        {QStringLiteral("columns.duration"), QStringLiteral("Длительность")},
+        {QStringLiteral("columns.bitrate"), QStringLiteral("Битрейт")},
+        {QStringLiteral("columns.trackNumber"), QStringLiteral("№ трека")},
+        {QStringLiteral("columns.year"), QStringLiteral("Год")},
+        {QStringLiteral("columns.genre"), QStringLiteral("Жанр")},
+        {QStringLiteral("columns.description"), QStringLiteral("Описание")},
+        {QStringLiteral("columns.composer"), QStringLiteral("Композитор")},
+        {QStringLiteral("columns.originalArtist"), QStringLiteral("Исходный исполнитель")},
+        {QStringLiteral("columns.copyright"), QStringLiteral("Авторские права")},
+        {QStringLiteral("columns.url"), QStringLiteral("URL")},
+        {QStringLiteral("columns.encoder"), QStringLiteral("Кодировщик")},
+        {QStringLiteral("columns.format"), QStringLiteral("Формат")},
+        {QStringLiteral("columns.sampleRate"), QStringLiteral("Частота дискретизации")},
+        {QStringLiteral("columns.bitDepth"), QStringLiteral("Разрядность")},
+        {QStringLiteral("columns.bpm"), QStringLiteral("BPM")},
+        {QStringLiteral("columns.channelCount"), QStringLiteral("Каналы")},
+        {QStringLiteral("columns.fileName"), QStringLiteral("Имя файла")},
+        {QStringLiteral("columns.filePath"), QStringLiteral("Путь к файлу")},
+        {QStringLiteral("columns.dateAdded"), QStringLiteral("Дата добавления")},
+        {QStringLiteral("dialogs.playlistColumns.title"), QStringLiteral("Настройка колонок плейлиста")},
+        {QStringLiteral("dialogs.playlistColumns.tabNormal"), QStringLiteral("Стандартный скин")},
+        {QStringLiteral("dialogs.playlistColumns.tabCompact"), QStringLiteral("Компактный скин")},
+        {QStringLiteral("dialogs.playlistColumns.copyFromOther"), QStringLiteral("Копировать из другого скина")},
+        {QStringLiteral("dialogs.playlistColumns.copyFromNormal"), QStringLiteral("Копировать из стандартного скина")},
+        {QStringLiteral("dialogs.playlistColumns.copyFromCompact"), QStringLiteral("Копировать из компактного скина")},
+        {QStringLiteral("dialogs.playlistColumns.resetSkin"), QStringLiteral("Сбросить по умолчанию")},
+        {QStringLiteral("dialogs.playlistColumns.resetAll"), QStringLiteral("Сбросить все скины")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderMode"), QStringLiteral("Отображение заголовков в компактном скине")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderAuto"), QStringLiteral("Автоматически (скрывать для одной сводной колонки)")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderAlwaysShown"), QStringLiteral("Всегда показывать заголовок")},
+        {QStringLiteral("dialogs.playlistColumns.compactHeaderAlwaysHidden"), QStringLiteral("Всегда скрывать заголовок")},
+        {QStringLiteral("dialogs.playlistColumns.visibilityShown"), QStringLiteral("Всегда отображать")},
+        {QStringLiteral("dialogs.playlistColumns.visibilityAuto"), QStringLiteral("Автоматически (адаптивно)")},
+        {QStringLiteral("dialogs.playlistColumns.visibilityHidden"), QStringLiteral("Скрыто")},
+        {QStringLiteral("dialogs.playlistColumns.dragHint"), QStringLiteral("Перетаскивайте элементы для изменения порядка колонок")},
+        {QStringLiteral("dialogs.playlistColumns.allHiddenWarning"), QStringLiteral("Хотя бы одна колонка должна быть видимой. Отображается резервная колонка.")},
+        {QStringLiteral("dialogs.playlistColumns.restoreDefaults"), QStringLiteral("Восстановить колонки")},
+        {QStringLiteral("dialogs.playlistColumns.close"), QStringLiteral("Закрыть")},
+        {QStringLiteral("common.close"), QStringLiteral("Закрыть")},
+        {QStringLiteral("settings.ui.playlistColumns"), QStringLiteral("Колонки плейлиста")},
+        {QStringLiteral("settings.ui.playlistColumnsDesc"), QStringLiteral("Настройка отображаемых колонок и порядка")},
+        {QStringLiteral("settings.ui.playlistColumnsConfigure"), QStringLiteral("Настроить колонки...")},
+        {QStringLiteral("menu.view.playlistColumns"), QStringLiteral("Колонки плейлиста")},
+        {QStringLiteral("menu.view.playlistColumns.configure"), QStringLiteral("Настроить колонки...")},
+        {QStringLiteral("menu.view.playlistColumns.reset"), QStringLiteral("Сбросить колонки по умолчанию")},
+        {QStringLiteral("toast.columnsRestored"), QStringLiteral("Колонки плейлиста сброшены по умолчанию")},
+        {QStringLiteral("toast.urlCopied"), QStringLiteral("URL скопирован в буфер обмена")},
+        {QStringLiteral("toast.urlOpened"), QStringLiteral("URL открыт в браузере")}
     };
     return texts;
 }
@@ -3824,6 +3966,7 @@ QString AppSettingsManager::renderTrackInfoFormat(const QString &format,
                                            trackInfo.value(QStringLiteral("sampleRateHz"))).toInt();
     context.channelCount = trackInfo.value(QStringLiteral("channelCount")).toInt();
     context.bpm = trackInfo.value(QStringLiteral("bpm")).toInt();
+    context.chapter = trackInfo.value(QStringLiteral("chapter")).toString();
     context.filePath = trackInfo.value(QStringLiteral("filePath")).toString();
     context.appVersion = QCoreApplication::applicationVersion();
     return WaveFlux::TrackInfoFormatter::render(format, context, renderContext);
@@ -4140,6 +4283,17 @@ void AppSettingsManager::setPlaylistScrollBarVisible(bool visible)
 
     m_playlistScrollBarVisible = visible;
     emit playlistScrollBarVisibleChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setShowPlaylistChapterBadge(bool enabled)
+{
+    if (m_showPlaylistChapterBadge == enabled) {
+        return;
+    }
+
+    m_showPlaylistChapterBadge = enabled;
+    emit showPlaylistChapterBadgeChanged();
     scheduleSaveSettings();
 }
 
@@ -4661,6 +4815,7 @@ void AppSettingsManager::loadSettings()
     m_autoAddTracksFromPlaylistFolder =
         m_settings.value("autoAddTracksFromPlaylistFolder", true).toBool();
     m_playlistScrollBarVisible = m_settings.value("playlistScrollBarVisible", true).toBool();
+    m_showPlaylistChapterBadge = m_settings.value("showPlaylistChapterBadge", true).toBool();
     m_playSearchResultsInOrder = m_settings.value("playSearchResultsInOrder", false).toBool();
     m_trackInfoEnabled = m_settings.value("trackInfo.enabled", false).toBool();
     m_trackInfoWaveformOverlayHoverOnly =
@@ -4797,6 +4952,7 @@ void AppSettingsManager::saveSettings()
     m_settings.setValue("automaticPlaylistSearch", m_automaticPlaylistSearch);
     m_settings.setValue("autoAddTracksFromPlaylistFolder", m_autoAddTracksFromPlaylistFolder);
     m_settings.setValue("playlistScrollBarVisible", m_playlistScrollBarVisible);
+    m_settings.setValue("showPlaylistChapterBadge", m_showPlaylistChapterBadge);
     m_settings.setValue("playSearchResultsInOrder", m_playSearchResultsInOrder);
     m_settings.setValue("trackInfo.enabled", m_trackInfoEnabled);
     m_settings.setValue("trackInfo.waveformOverlayHoverOnly", m_trackInfoWaveformOverlayHoverOnly);

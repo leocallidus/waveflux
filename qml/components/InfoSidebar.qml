@@ -403,6 +403,126 @@ Rectangle {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: UiMetrics.spaceM
+                    visible: trackModel.hasChapters && trackModel.currentChapterCount > 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Label {
+                            text: root.tr("sidebar.chapters")
+                            color: themeManager.textMutedColor
+                            font.pointSize: UiMetrics.captionPointSize
+                            font.bold: true
+                            font.letterSpacing: 1.8
+                            Layout.fillWidth: true
+                        }
+
+                        Label {
+                            text: String(trackModel.currentChapterCount)
+                            color: themeManager.primaryColor
+                            font.family: UiMetrics.monoFontFamily
+                            font.pointSize: UiMetrics.captionPointSize
+                            font.bold: true
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(220, chapterListView.contentHeight + 2)
+                        Layout.maximumHeight: 280
+                        radius: themeManager.borderRadius
+                        color: themeManager.surfaceColor
+                        border.width: 1
+                        border.color: themeManager.borderColor
+                        clip: true
+
+                        ListView {
+                            id: chapterListView
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            model: trackModel.currentChapters
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar {
+                                id: chapterScrollBar
+                                policy: ScrollBar.AsNeeded
+                            }
+
+                            delegate: Rectangle {
+                                id: chapterRow
+                                required property var modelData
+                                required property int index
+                                readonly property int activeIndex: trackModel.currentChapterIndexAtPosition(audioEngine.position)
+                                readonly property bool isActive: modelData.index === activeIndex
+                                width: chapterListView.width
+                                height: Math.round(28 * UiMetrics.fontScale)
+                                color: isActive
+                                       ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.18)
+                                       : (rowHover.hovered
+                                          ? Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.06)
+                                          : "transparent")
+
+                                Rectangle {
+                                    visible: parent.isActive
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: 3
+                                    color: themeManager.primaryColor
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: UiMetrics.spaceM
+                                    anchors.rightMargin: (chapterScrollBar.visible ? (chapterScrollBar.width + UiMetrics.spaceS + 4) : UiMetrics.spaceM)
+                                    spacing: UiMetrics.spaceS
+
+                                    Label {
+                                        text: String(chapterRow.index + 1)
+                                        color: chapterRow.isActive ? themeManager.primaryColor : themeManager.textMutedColor
+                                        font.family: UiMetrics.monoFontFamily
+                                        font.pointSize: UiMetrics.microPointSize
+                                        font.bold: chapterRow.isActive
+                                        Layout.preferredWidth: 20
+                                    }
+
+                                    Label {
+                                        text: chapterRow.modelData.title || root.tr("player.chapters")
+                                        color: chapterRow.isActive ? themeManager.primaryColor : themeManager.textColor
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        font.bold: chapterRow.isActive
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Label {
+                                        text: chapterRow.modelData.startTimeFormatted || ""
+                                        color: chapterRow.isActive ? themeManager.primaryColor : themeManager.textMutedColor
+                                        font.family: UiMetrics.monoFontFamily
+                                        font.pointSize: UiMetrics.microPointSize
+                                    }
+                                }
+
+                                HoverHandler {
+                                    id: rowHover
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+
+                                TapHandler {
+                                    onTapped: {
+                                        if (playbackController) {
+                                            playbackController.seekToChapter(chapterRow.modelData.index)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: UiMetrics.spaceM
 
                     Label {
                         text: root.tr("sidebar.albumArt")

@@ -40,6 +40,7 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(bool automaticPlaylistSearch READ automaticPlaylistSearch WRITE setAutomaticPlaylistSearch NOTIFY automaticPlaylistSearchChanged)
     Q_PROPERTY(bool autoAddTracksFromPlaylistFolder READ autoAddTracksFromPlaylistFolder WRITE setAutoAddTracksFromPlaylistFolder NOTIFY autoAddTracksFromPlaylistFolderChanged)
     Q_PROPERTY(bool playlistScrollBarVisible READ playlistScrollBarVisible WRITE setPlaylistScrollBarVisible NOTIFY playlistScrollBarVisibleChanged)
+    Q_PROPERTY(bool showPlaylistChapterBadge READ showPlaylistChapterBadge WRITE setShowPlaylistChapterBadge NOTIFY showPlaylistChapterBadgeChanged)
     Q_PROPERTY(bool playSearchResultsInOrder READ playSearchResultsInOrder WRITE setPlaySearchResultsInOrder NOTIFY playSearchResultsInOrderChanged)
     Q_PROPERTY(bool trackInfoEnabled READ trackInfoEnabled WRITE setTrackInfoEnabled NOTIFY trackInfoEnabledChanged)
     Q_PROPERTY(bool trackInfoWaveformOverlayHoverOnly READ trackInfoWaveformOverlayHoverOnly WRITE setTrackInfoWaveformOverlayHoverOnly NOTIFY trackInfoWaveformOverlayHoverOnlyChanged)
@@ -111,6 +112,7 @@ public:
     bool automaticPlaylistSearch() const { return m_automaticPlaylistSearch; }
     bool autoAddTracksFromPlaylistFolder() const { return m_autoAddTracksFromPlaylistFolder; }
     bool playlistScrollBarVisible() const { return m_playlistScrollBarVisible; }
+    bool showPlaylistChapterBadge() const { return m_showPlaylistChapterBadge; }
     bool playSearchResultsInOrder() const { return m_playSearchResultsInOrder; }
     bool trackInfoEnabled() const { return m_trackInfoEnabled; }
     bool trackInfoWaveformOverlayHoverOnly() const { return m_trackInfoWaveformOverlayHoverOnly; }
@@ -206,6 +208,7 @@ public slots:
     void setAutomaticPlaylistSearch(bool enabled);
     void setAutoAddTracksFromPlaylistFolder(bool enabled);
     void setPlaylistScrollBarVisible(bool visible);
+    void setShowPlaylistChapterBadge(bool enabled);
     void setPlaySearchResultsInOrder(bool enabled);
     void setTrackInfoEnabled(bool enabled);
     void setTrackInfoWaveformOverlayHoverOnly(bool hoverOnly);
@@ -275,6 +278,7 @@ signals:
     void automaticPlaylistSearchChanged();
     void autoAddTracksFromPlaylistFolderChanged();
     void playlistScrollBarVisibleChanged();
+    void showPlaylistChapterBadgeChanged();
     void playSearchResultsInOrderChanged();
     void trackInfoEnabledChanged();
     void trackInfoWaveformOverlayHoverOnlyChanged();
@@ -364,6 +368,7 @@ private:
     bool m_automaticPlaylistSearch = false;
     bool m_autoAddTracksFromPlaylistFolder = true;
     bool m_playlistScrollBarVisible = true;
+    bool m_showPlaylistChapterBadge = true;
     bool m_playSearchResultsInOrder = false;
     bool m_trackInfoEnabled = false;
     bool m_trackInfoWaveformOverlayHoverOnly = true;

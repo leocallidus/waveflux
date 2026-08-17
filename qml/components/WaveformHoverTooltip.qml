@@ -107,6 +107,7 @@ Item {
         }
         info.positionMs = Math.max(0, Number(_enginePosition || 0))
         info.hoverPositionMs = root.hoverPositionMs
+        info.chapter = (trackModel && trackModel.hasChapters) ? trackModel.currentChapterTitleAtPosition(root.hoverPositionMs) : ""
         if (info.playlistIndex === undefined) {
             info.playlistIndex = _currentIndex
         }
@@ -132,16 +133,20 @@ Item {
         if (audioEngine.duration <= 0) {
             return ""
         }
+        const chTitle = (trackModel && trackModel.hasChapters) ? trackModel.currentChapterTitleAtPosition(root.hoverPositionMs) : ""
+        const baseTime = formatPreviewTime(root.hoverPositionMs)
+        const defaultText = (chTitle && chTitle.length > 0) ? (baseTime + "  •  " + chTitle) : baseTime
+
         if (!appSettings.trackInfoEnabled) {
-            return formatPreviewTime(root.hoverPositionMs)
+            return defaultText
         }
 
         const format = String(appSettings.trackInfoWaveformTooltipFormat || "")
         if (format.length === 0) {
-            return formatPreviewTime(root.hoverPositionMs)
+            return defaultText
         }
 
         const rendered = appSettings.renderTrackInfoFormat(format, trackInfoContext(), "waveformTooltip")
-        return rendered.length > 0 ? rendered : formatPreviewTime(root.hoverPositionMs)
+        return rendered.length > 0 ? rendered : defaultText
     }
 }

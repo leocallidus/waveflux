@@ -50,7 +50,12 @@
 #include <taglib/flacpicture.h>
 #include <taglib/flacproperties.h>
 #include <taglib/id3v2tag.h>
+#include <taglib/chapterframe.h>
+#include <taglib/tableofcontentsframe.h>
+#include <taglib/textidentificationframe.h>
 #include <taglib/mp4properties.h>
+#include <taglib/mp4file.h>
+#include <taglib/mp4chapter.h>
 #include <taglib/mpegfile.h>
 #if __has_include(<taglib/shortenproperties.h>)
 #include <taglib/shortenproperties.h>
@@ -439,6 +444,258 @@ QString extractFlacAlbumArt(const QString &filePath)
     return dataUrlFromBytes(picture->data(), toQString(picture->mimeType()));
 }
 
+QString formatChapterTime(qint64 ms)
+{
+    if (ms < 0) return QStringLiteral("00:00");
+    const qint64 totalSeconds = ms / 1000;
+    const qint64 minutes = totalSeconds / 60;
+    const qint64 seconds = totalSeconds % 60;
+    return QStringLiteral("%1:%2")
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
+QVariantMap chapterToVariantMap(const TrackChapter &chapter, int index, qint64 totalDurationMs)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("index"), index);
+    map.insert(QStringLiteral("title"), chapter.title);
+    map.insert(QStringLiteral("startTimeMs"), chapter.startTimeMs);
+    map.insert(QStringLiteral("endTimeMs"), chapter.endTimeMs);
+    map.insert(QStringLiteral("startTimeFormatted"), formatChapterTime(chapter.startTimeMs));
+    const qint64 effectiveEndMs = (chapter.endTimeMs > chapter.startTimeMs) ? chapter.endTimeMs : totalDurationMs;
+    map.insert(QStringLiteral("endTimeFormatted"), formatChapterTime(effectiveEndMs));
+    const qint64 durationMs = (effectiveEndMs > chapter.startTimeMs) ? (effectiveEndMs - chapter.startTimeMs) : 0;
+    map.insert(QStringLiteral("durationMs"), durationMs);
+    map.insert(QStringLiteral("durationFormatted"), formatChapterTime(durationMs));
+    return map;
+}
+
+QVector<TrackChapter> extractId3v2Chapters(TagLib::ID3v2::Tag *id3v2)
+{
+    QVector<TrackChapter> chapters;
+    if (!id3v2) {
+        return chapters;
+    }
+    const auto chapFrames = id3v2->frameListMap()["CHAP"];
+    if (chapFrames.isEmpty()) {
+        return chapters;
+    }
+
+    QHash<QByteArray, TrackChapter> chaptersById;
+    QList<QByteArray> orderedIds;
+
+    const auto ctocFrames = id3v2->frameListMap()["CTOC"];
+    for (const auto *rawCtoc : ctocFrames) {
+        const auto *ctoc = dynamic_cast<const TagLib::ID3v2::TableOfContentsFrame *>(rawCtoc);
+        if (ctoc) {
+            const auto childList = ctoc->childElements();
+            for (const auto &childId : childList) {
+                orderedIds.append(QByteArray(childId.data(), childId.size()));
+            }
+        }
+    }
+
+    for (const auto *rawFrame : chapFrames) {
+        const auto *chap = dynamic_cast<const TagLib::ID3v2::ChapterFrame *>(rawFrame);
+        if (!chap) {
+            continue;
+        }
+        TrackChapter ch;
+        ch.startTimeMs = chap->startTime();
+        ch.endTimeMs = chap->endTime();
+
+        const auto tit2List = chap->embeddedFrameList("TIT2");
+        if (!tit2List.isEmpty() && tit2List.front()) {
+            ch.title = toQString(tit2List.front()->toString()).trimmed();
+        }
+        if (ch.title.isEmpty()) {
+            const auto tit1List = chap->embeddedFrameList("TIT1");
+            if (!tit1List.isEmpty() && tit1List.front()) {
+                ch.title = toQString(tit1List.front()->toString()).trimmed();
+            }
+        }
+        if (ch.title.isEmpty()) {
+            ch.title = toQString(chap->toString()).trimmed();
+        }
+
+        const QByteArray elementId(chap->elementID().data(), chap->elementID().size());
+        chaptersById.insert(elementId, ch);
+        if (!orderedIds.contains(elementId)) {
+            orderedIds.append(elementId);
+        }
+    }
+
+    for (const auto &id : orderedIds) {
+        if (chaptersById.contains(id)) {
+            chapters.append(chaptersById.value(id));
+        }
+    }
+
+    std::sort(chapters.begin(), chapters.end(), [](const TrackChapter &a, const TrackChapter &b) {
+        return a.startTimeMs < b.startTimeMs;
+    });
+
+    for (int i = 0; i < chapters.size(); ++i) {
+        if (chapters[i].endTimeMs <= chapters[i].startTimeMs && i + 1 < chapters.size()) {
+            chapters[i].endTimeMs = chapters[i + 1].startTimeMs;
+        }
+    }
+
+    return chapters;
+}
+
+QVector<TrackChapter> extractMp4Chapters(const QString &localPath)
+{
+    QVector<TrackChapter> chapters;
+    const WaveFlux::TagLibPath::NativePath nativePath(localPath);
+    TagLib::MP4::File mp4File(nativePath.fileName(), false);
+    if (!mp4File.isValid()) {
+        return chapters;
+    }
+
+    auto neroList = mp4File.neroChapters();
+    if (!neroList.isEmpty()) {
+        for (const auto &ch : neroList) {
+            TrackChapter item;
+            item.title = toQString(ch.title()).trimmed();
+            item.startTimeMs = ch.startTime();
+            chapters.append(item);
+        }
+    } else {
+        auto qtList = mp4File.qtChapters();
+        for (const auto &ch : qtList) {
+            TrackChapter item;
+            item.title = toQString(ch.title()).trimmed();
+            item.startTimeMs = ch.startTime();
+            chapters.append(item);
+        }
+    }
+
+    std::sort(chapters.begin(), chapters.end(), [](const TrackChapter &a, const TrackChapter &b) {
+        return a.startTimeMs < b.startTimeMs;
+    });
+
+    for (int i = 0; i < chapters.size(); ++i) {
+        if (chapters[i].endTimeMs <= 0 && i + 1 < chapters.size()) {
+            chapters[i].endTimeMs = chapters[i + 1].startTimeMs;
+        }
+    }
+    return chapters;
+}
+
+qint64 parseVorbisChapterTimestamp(const QString &str)
+{
+    const QString trimmed = str.trimmed();
+    if (!trimmed.contains(QLatin1Char(':'))) {
+        return -1;
+    }
+    const QStringList parts = trimmed.split(QLatin1Char(':'));
+    if (parts.size() < 2 || parts.size() > 3) {
+        return -1;
+    }
+    bool ok1 = false, ok2 = false, ok3 = false;
+    if (parts.size() == 3) {
+        const double h = parts[0].toDouble(&ok1);
+        const double m = parts[1].toDouble(&ok2);
+        const double s = parts[2].toDouble(&ok3);
+        if (ok1 && ok2 && ok3 && h >= 0 && m >= 0 && m < 60 && s >= 0 && s < 60) {
+            return static_cast<qint64>((h * 3600.0 + m * 60.0 + s) * 1000.0);
+        }
+    } else if (parts.size() == 2) {
+        const double m = parts[0].toDouble(&ok1);
+        const double s = parts[1].toDouble(&ok2);
+        if (ok1 && ok2 && m >= 0 && s >= 0 && s < 60) {
+            return static_cast<qint64>((m * 60.0 + s) * 1000.0);
+        }
+    }
+    return -1;
+}
+
+QVector<TrackChapter> extractVorbisChapters(const TagLib::PropertyMap &properties)
+{
+    QVector<TrackChapter> chapters;
+    QMap<QString, qint64> timeMap;
+    QMap<QString, QString> nameMap;
+
+    for (auto it = properties.begin(); it != properties.end(); ++it) {
+        const QString key = toQString(it->first).toUpper();
+        if (key.startsWith(QStringLiteral("CHAPTER")) && !it->second.isEmpty()) {
+            const QString val = toQString(it->second.front()).trimmed();
+            if (key.endsWith(QStringLiteral("NAME"))) {
+                const QString numStr = key.mid(7, key.length() - 11);
+                if (!numStr.isEmpty() && (numStr.at(0).isDigit() || numStr.startsWith(QLatin1Char('_')))) {
+                    nameMap.insert(numStr, val);
+                }
+            } else if (!key.endsWith(QStringLiteral("URL")) && !key.endsWith(QStringLiteral("HIDDEN")) && !key.endsWith(QStringLiteral("ENABLED"))) {
+                const QString numStr = key.mid(7);
+                if (!numStr.isEmpty() && (numStr.at(0).isDigit() || numStr.startsWith(QLatin1Char('_')))) {
+                    const qint64 ts = parseVorbisChapterTimestamp(val);
+                    if (ts >= 0) {
+                        timeMap.insert(numStr, ts);
+                    }
+                }
+            }
+        }
+    }
+
+    if (timeMap.isEmpty()) {
+        return {};
+    }
+
+    for (auto it = timeMap.begin(); it != timeMap.end(); ++it) {
+        const QString num = it.key();
+        TrackChapter ch;
+        ch.startTimeMs = it.value();
+        ch.title = nameMap.value(num, QStringLiteral("Chapter %1").arg(num));
+        chapters.append(ch);
+    }
+
+    std::sort(chapters.begin(), chapters.end(), [](const TrackChapter &a, const TrackChapter &b) {
+        return a.startTimeMs < b.startTimeMs;
+    });
+
+    for (int i = 0; i < chapters.size(); ++i) {
+        if (chapters[i].endTimeMs <= 0 && i + 1 < chapters.size()) {
+            chapters[i].endTimeMs = chapters[i + 1].startTimeMs;
+        }
+    }
+    return chapters;
+}
+
+QVector<TrackChapter> extractTrackChapters(const QString &filePath)
+{
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    if (suffix == QStringLiteral("mp3")) {
+        const auto file = WaveFlux::TagLibPath::openMpegFile(filePath, false);
+        if (file) {
+            return extractId3v2Chapters(file->ID3v2Tag(false));
+        }
+    } else if (suffix == QStringLiteral("m4a") || suffix == QStringLiteral("m4b") || suffix == QStringLiteral("mp4") || suffix == QStringLiteral("aac")) {
+        return extractMp4Chapters(filePath);
+    }
+
+    const auto file = WaveFlux::TagLibPath::makeFileRef(filePath, false);
+    if (!file.isNull() && file.file()) {
+        const TagLib::PropertyMap properties = file.file()->properties();
+        const auto vorbisChapters = extractVorbisChapters(properties);
+        if (!vorbisChapters.isEmpty()) {
+            return vorbisChapters;
+        }
+    }
+    if (suffix == QStringLiteral("flac")) {
+        const auto flacFile = WaveFlux::TagLibPath::openFlacFile(filePath, false);
+        if (flacFile && flacFile->ID3v2Tag(false)) {
+            const auto id3Chapters = extractId3v2Chapters(flacFile->ID3v2Tag(false));
+            if (!id3Chapters.isEmpty()) {
+                return id3Chapters;
+            }
+        }
+    }
+
+    return {};
+}
+
 struct SearchToken {
     enum class Field {
         Any,
@@ -574,6 +831,12 @@ LibraryTrackUpsertData toLibraryUpsert(const Track &track)
     data.bitDepth = track.bitDepth;
     data.albumArtUri = track.albumArt;
     data.addedAtMs = track.addedAt;
+    data.description = track.description;
+    data.composer = track.composer;
+    data.originalArtist = track.originalArtist;
+    data.copyright = track.copyright;
+    data.url = track.url;
+    data.encoder = track.encoder;
     return data;
 }
 
@@ -588,6 +851,12 @@ Track trackFromVariantMap(const QVariantMap &map)
     track.genre = map.value(QStringLiteral("genre")).toString();
     track.year = map.value(QStringLiteral("year")).toString();
     track.trackNumber = map.value(QStringLiteral("trackNumber")).toString();
+    track.description = map.value(QStringLiteral("description")).toString();
+    track.composer = map.value(QStringLiteral("composer")).toString();
+    track.originalArtist = map.value(QStringLiteral("originalArtist")).toString();
+    track.copyright = map.value(QStringLiteral("copyright")).toString();
+    track.url = map.value(QStringLiteral("url")).toString();
+    track.encoder = map.value(QStringLiteral("encoder")).toString();
     track.duration = map.value(QStringLiteral("durationMs"), map.value(QStringLiteral("duration"))).toLongLong();
     track.addedAt = map.value(QStringLiteral("addedAtMs"), map.value(QStringLiteral("addedAt"))).toLongLong();
     track.format = map.value(QStringLiteral("format")).toString();
@@ -607,6 +876,17 @@ Track trackFromVariantMap(const QVariantMap &map)
         track.trackNumber = QString::number(track.cueTrackNumber);
     }
     track.cueSheetPath = map.value(QStringLiteral("cueSheetPath")).toString();
+    if (map.contains(QStringLiteral("chapters"))) {
+        const QVariantList chList = map.value(QStringLiteral("chapters")).toList();
+        for (const auto &item : chList) {
+            const QVariantMap chMap = item.toMap();
+            TrackChapter ch;
+            ch.title = chMap.value(QStringLiteral("title")).toString();
+            ch.startTimeMs = chMap.value(QStringLiteral("startTimeMs")).toLongLong();
+            ch.endTimeMs = chMap.value(QStringLiteral("endTimeMs")).toLongLong();
+            track.chapters.append(ch);
+        }
+    }
     return track;
 }
 
@@ -621,6 +901,12 @@ QVariantMap trackToVariantMap(const Track &track)
     map.insert(QStringLiteral("genre"), track.genre);
     map.insert(QStringLiteral("year"), track.year);
     map.insert(QStringLiteral("trackNumber"), track.trackNumber);
+    map.insert(QStringLiteral("description"), track.description);
+    map.insert(QStringLiteral("composer"), track.composer);
+    map.insert(QStringLiteral("originalArtist"), track.originalArtist);
+    map.insert(QStringLiteral("copyright"), track.copyright);
+    map.insert(QStringLiteral("url"), track.url);
+    map.insert(QStringLiteral("encoder"), track.encoder);
     map.insert(QStringLiteral("durationMs"), track.duration);
     map.insert(QStringLiteral("addedAtMs"), track.addedAt);
     map.insert(QStringLiteral("format"), track.format);
@@ -635,6 +921,13 @@ QVariantMap trackToVariantMap(const Track &track)
     map.insert(QStringLiteral("cueEndMs"), track.cueEndMs);
     map.insert(QStringLiteral("cueTrackNumber"), track.cueTrackNumber);
     map.insert(QStringLiteral("cueSheetPath"), track.cueSheetPath);
+    if (!track.chapters.isEmpty()) {
+        QVariantList chList;
+        for (int i = 0; i < track.chapters.size(); ++i) {
+            chList.append(chapterToVariantMap(track.chapters.at(i), i, track.duration));
+        }
+        map.insert(QStringLiteral("chapters"), chList);
+    }
     return map;
 }
 } // namespace
@@ -761,6 +1054,39 @@ QVariant TrackModel::data(const QModelIndex &index, int role) const
     case AlbumArtRole:
         result = track.albumArt;
         break;
+    case HasChaptersRole:
+        result = !track.chapters.isEmpty();
+        break;
+    case DescriptionRole:
+        result = track.description.isEmpty() ? track.comment : track.description;
+        break;
+    case ComposerRole:
+        result = track.composer;
+        break;
+    case OriginalArtistRole:
+        result = track.originalArtist;
+        break;
+    case CopyrightRole:
+        result = track.copyright;
+        break;
+    case UrlRole:
+        result = track.url;
+        break;
+    case EncoderRole:
+        result = track.encoder;
+        break;
+    case FileNameRole:
+        result = QFileInfo(track.filePath).fileName();
+        break;
+    case DateAddedRole:
+        result = track.addedAt;
+        break;
+    case TrackSummaryRole:
+        result = track.displayName();
+        break;
+    case PlaylistPositionRole:
+        result = index.row() + 1;
+        break;
     default:
         result = {};
         break;
@@ -792,7 +1118,18 @@ QHash<int, QByteArray> TrackModel::roleNames() const
         {BitDepthRole, "bitDepth"},
         {BpmRole, "bpm"},
         {ChannelCountRole, "channelCount"},
-        {AlbumArtRole, "albumArt"}
+        {AlbumArtRole, "albumArt"},
+        {HasChaptersRole, "hasChapters"},
+        {DescriptionRole, "description"},
+        {ComposerRole, "composer"},
+        {OriginalArtistRole, "originalArtist"},
+        {CopyrightRole, "copyright"},
+        {UrlRole, "url"},
+        {EncoderRole, "encoder"},
+        {FileNameRole, "fileName"},
+        {DateAddedRole, "dateAdded"},
+        {TrackSummaryRole, "trackSummary"},
+        {PlaylistPositionRole, "playlistPosition"}
     };
 }
 
@@ -911,6 +1248,49 @@ bool TrackModel::currentIsHiRes() const
     const int bitDepth = currentBitDepth();
     const int sampleRate = currentSampleRate();
     return bitDepth > 16 || sampleRate > 48000;
+}
+
+QString TrackModel::currentDescription() const
+{
+    const Track *track = currentTrackPtr();
+    if (!track) return QString();
+    return track->description.isEmpty() ? track->comment : track->description;
+}
+
+QString TrackModel::currentComposer() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->composer : QString();
+}
+
+QString TrackModel::currentOriginalArtist() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->originalArtist : QString();
+}
+
+QString TrackModel::currentCopyright() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->copyright : QString();
+}
+
+QString TrackModel::currentUrl() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->url : QString();
+}
+
+QString TrackModel::currentEncoder() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->encoder : QString();
+}
+
+qint64 TrackModel::currentDateAdded() const
+{
+    const Track *track = currentTrackPtr();
+    return track ? track->addedAt : 0;
 }
 
 qint64 TrackModel::playlistDuration() const
@@ -1167,6 +1547,24 @@ TrackModel::AppendReport TrackModel::insertAcceptedTracks(int index,
     emit countChanged();
     emit playlistDurationChanged();
     updateProfilerPlaylistCount();
+
+    if (m_baselineTracks.isEmpty()) {
+        m_baselineTracks = m_tracks;
+    } else {
+        int baselineInsertAt = m_baselineTracks.size();
+        if (first < m_tracks.size() - acceptedTracks.size()) {
+            baselineInsertAt = qBound(0, first, m_baselineTracks.size());
+        }
+        int insertPos = baselineInsertAt;
+        for (int i = 0; i < acceptedTracks.size(); ++i) {
+            const int trackIdx = first + i;
+            if (trackIdx >= 0 && trackIdx < m_tracks.size()) {
+                m_baselineTracks.insert(insertPos, m_tracks.at(trackIdx));
+                ++insertPos;
+            }
+        }
+    }
+    emit canResetPlaylistChanged();
 
     if (m_libraryRepository && !ingestBatch.isEmpty()) {
         m_libraryRepository->enqueueUpsertTracks(ingestBatch);
@@ -1469,6 +1867,7 @@ void TrackModel::removeAt(int index)
     emit countChanged();
     emit playlistDurationChanged();
     updateProfilerPlaylistCount();
+    emit canResetPlaylistChanged();
 
     if (!removedCueSegment
         && !m_collectionViewActive
@@ -1487,6 +1886,7 @@ void TrackModel::clear()
     beginResetModel();
     QSet<QString>().swap(m_stringPool);
     QVector<Track>().swap(m_tracks);
+    QVector<Track>().swap(m_baselineTracks);
     m_currentIndex = -1;
     m_currentAlbumArt.clear();
     resetTransientSearchState();
@@ -1498,6 +1898,7 @@ void TrackModel::clear()
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
+    emit canResetPlaylistChanged();
 
     if (!m_collectionViewActive && m_libraryRepository && hadTracks) {
         m_libraryRepository->enqueueSoftDeleteAll();
@@ -1523,11 +1924,19 @@ void TrackModel::setTracks(QVector<Track> tracks)
         updateTrackSearchBlob(track);
         ingestBatch.append(toLibraryUpsert(track));
     }
+    m_baselineTracks = m_tracks;
     m_currentIndex = -1;
     m_currentAlbumArt.clear();
     trimAlbumArtToCurrentTrack(false);
     invalidateSearchCache();
     endResetModel();
+
+    emit countChanged();
+    emit playlistDurationChanged();
+    updateProfilerPlaylistCount();
+    emit currentIndexChanged(m_currentIndex);
+    emit currentTrackChanged();
+    emit canResetPlaylistChanged();
 
     emit countChanged();
     emit playlistDurationChanged();
@@ -1683,6 +2092,7 @@ void TrackModel::importTracksSnapshot(const QVariantList &snapshot, int requeste
     resetTransientMetadataState();
     QSet<QString>().swap(m_stringPool);
     m_tracks = std::move(restoredTracks);
+    m_baselineTracks = m_tracks;
     if (requestedCurrentIndex >= 0 && requestedCurrentIndex < m_tracks.size()) {
         m_currentIndex = requestedCurrentIndex;
     } else {
@@ -1699,6 +2109,7 @@ void TrackModel::importTracksSnapshot(const QVariantList &snapshot, int requeste
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
+    emit canResetPlaylistChanged();
 
     updatePlaylistFolderWatch();
 }
@@ -1738,6 +2149,7 @@ void TrackModel::applySmartCollectionRows(const QVariantList &rows)
     resetTransientMetadataState();
     QSet<QString>().swap(m_stringPool);
     m_tracks = std::move(collectionTracks);
+    m_baselineTracks = m_tracks;
     m_currentIndex = nextCurrentIndex;
     m_currentAlbumArt.clear();
     trimAlbumArtToCurrentTrack(false);
@@ -1750,6 +2162,7 @@ void TrackModel::applySmartCollectionRows(const QVariantList &rows)
     updateProfilerPlaylistCount();
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
+    emit canResetPlaylistChanged();
 
     if (m_currentIndex >= 0) {
         loadMetadata(m_currentIndex, true);
@@ -1784,6 +2197,7 @@ void TrackModel::move(int from, int to)
         emit currentIndexChanged(m_currentIndex);
         emit currentTrackChanged();
     }
+    emit canResetPlaylistChanged();
 }
 
 QString TrackModel::getFilePath(int index) const
@@ -1950,6 +2364,230 @@ bool TrackModel::matchesSearchAdvancedNormalized(int index,
     return m_cachedSearchMatches.at(index) != 0;
 }
 
+void TrackModel::restoreBaselineOrder()
+{
+    resetPlaylist();
+}
+
+bool TrackModel::sortByColumn(const QString &columnId, Qt::SortOrder order)
+{
+    if (m_tracks.size() < 2) {
+        return true;
+    }
+
+    if (m_baselineTracks.isEmpty()) {
+        m_baselineTracks = m_tracks;
+    }
+
+    const QString currentPath = getFilePath(m_currentIndex);
+    const bool ascending = (order == Qt::AscendingOrder);
+
+    if (columnId == QStringLiteral("playlistPosition") || columnId == QStringLiteral("index")) {
+        if (ascending) {
+            restoreBaselineOrder();
+        } else {
+            if (m_baselineTracks.isEmpty()) {
+                m_baselineTracks = m_tracks;
+            }
+            QVector<Track> reversed = m_baselineTracks;
+            std::reverse(reversed.begin(), reversed.end());
+            beginResetModel();
+            m_tracks = reversed;
+            rebuildFilePathIndexCache();
+            invalidateSearchCache();
+            endResetModel();
+            applyCurrentIndex(findIndexByPath(currentPath), false);
+            emit canResetPlaylistChanged();
+        }
+        return true;
+    }
+
+    QHash<QString, int> baselineIndices;
+    baselineIndices.reserve(m_baselineTracks.size());
+    for (int i = 0; i < m_baselineTracks.size(); ++i) {
+        if (!baselineIndices.contains(m_baselineTracks.at(i).filePath)) {
+            baselineIndices.insert(m_baselineTracks.at(i).filePath, i);
+        }
+    }
+
+    auto getBaselineIndex = [&baselineIndices](const QString &path) -> int {
+        return baselineIndices.value(path, 999999);
+    };
+
+    struct SortRecord {
+        int originalIndex = 0;
+        int baselineIndex = 0;
+        bool hasValue = false;
+        QString textValue;
+        qint64 numValue = 0;
+    };
+
+    QVector<SortRecord> records;
+    records.reserve(m_tracks.size());
+
+    for (int i = 0; i < m_tracks.size(); ++i) {
+        const Track &t = m_tracks.at(i);
+        SortRecord rec;
+        rec.originalIndex = i;
+        rec.baselineIndex = getBaselineIndex(t.filePath);
+
+        if (columnId == QStringLiteral("title")) {
+            rec.textValue = t.title.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("artist")) {
+            rec.textValue = t.artist.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("album")) {
+            rec.textValue = t.album.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("genre")) {
+            rec.textValue = t.genre.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("comment") || columnId == QStringLiteral("description")) {
+            rec.textValue = t.description.isEmpty() ? t.comment.trimmed() : t.description.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("composer")) {
+            rec.textValue = t.composer.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("originalArtist")) {
+            rec.textValue = t.originalArtist.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("copyright")) {
+            rec.textValue = t.copyright.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("url")) {
+            rec.textValue = t.url.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("encoder")) {
+            rec.textValue = t.encoder.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("format")) {
+            rec.textValue = t.format.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("fileName")) {
+            rec.textValue = QFileInfo(t.filePath).fileName().trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("filePath")) {
+            rec.textValue = t.filePath.trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("trackSummary")) {
+            rec.textValue = t.displayName().trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        } else if (columnId == QStringLiteral("duration")) {
+            rec.numValue = t.duration;
+            rec.hasValue = (t.duration > 0);
+        } else if (columnId == QStringLiteral("bitrate")) {
+            rec.numValue = t.bitrate;
+            rec.hasValue = (t.bitrate > 0);
+        } else if (columnId == QStringLiteral("sampleRate")) {
+            rec.numValue = t.sampleRate;
+            rec.hasValue = (t.sampleRate > 0);
+        } else if (columnId == QStringLiteral("bitDepth")) {
+            rec.numValue = t.bitDepth;
+            rec.hasValue = (t.bitDepth > 0);
+        } else if (columnId == QStringLiteral("bpm")) {
+            rec.numValue = t.bpm;
+            rec.hasValue = (t.bpm > 0);
+        } else if (columnId == QStringLiteral("channelCount")) {
+            rec.numValue = t.channelCount;
+            rec.hasValue = (t.channelCount > 0);
+        } else if (columnId == QStringLiteral("dateAdded")) {
+            rec.numValue = t.addedAt;
+            rec.hasValue = (t.addedAt > 0);
+        } else if (columnId == QStringLiteral("trackNumber")) {
+            const QString raw = t.trackNumber.trimmed();
+            if (!raw.isEmpty()) {
+                bool ok = false;
+                int idx = 0;
+                while (idx < raw.size() && raw.at(idx).isDigit()) {
+                    ++idx;
+                }
+                if (idx > 0) {
+                    rec.numValue = raw.left(idx).toLongLong(&ok);
+                }
+                if (ok && rec.numValue > 0) {
+                    rec.hasValue = true;
+                } else {
+                    rec.textValue = raw;
+                    rec.hasValue = true;
+                }
+            }
+        } else if (columnId == QStringLiteral("year")) {
+            const QString raw = t.year.trimmed();
+            if (!raw.isEmpty()) {
+                bool ok = false;
+                rec.numValue = raw.left(4).toLongLong(&ok);
+                if (ok && rec.numValue > 0) {
+                    rec.hasValue = true;
+                } else {
+                    rec.textValue = raw;
+                    rec.hasValue = true;
+                }
+            }
+        } else {
+            rec.textValue = t.displayName().trimmed();
+            rec.hasValue = !rec.textValue.isEmpty();
+        }
+
+        records.push_back(rec);
+    }
+
+    const bool isNumeric = (columnId == QStringLiteral("duration") ||
+                            columnId == QStringLiteral("bitrate") ||
+                            columnId == QStringLiteral("sampleRate") ||
+                            columnId == QStringLiteral("bitDepth") ||
+                            columnId == QStringLiteral("bpm") ||
+                            columnId == QStringLiteral("channelCount") ||
+                            columnId == QStringLiteral("dateAdded") ||
+                            columnId == QStringLiteral("trackNumber") ||
+                            columnId == QStringLiteral("year"));
+
+    auto comparator = [ascending, isNumeric](const SortRecord &a, const SortRecord &b) -> bool {
+        if (a.hasValue != b.hasValue) {
+            return a.hasValue;
+        }
+        if (!a.hasValue && !b.hasValue) {
+            return a.baselineIndex < b.baselineIndex;
+        }
+
+        if (isNumeric) {
+            if (a.numValue != b.numValue) {
+                return ascending ? (a.numValue < b.numValue) : (a.numValue > b.numValue);
+            }
+        }
+
+        if (!a.textValue.isEmpty() || !b.textValue.isEmpty()) {
+            const int cmp = QString::compare(a.textValue, b.textValue, Qt::CaseInsensitive);
+            if (cmp != 0) {
+                return ascending ? (cmp < 0) : (cmp > 0);
+            }
+        }
+
+        if (a.baselineIndex != b.baselineIndex) {
+            return a.baselineIndex < b.baselineIndex;
+        }
+        return a.originalIndex < b.originalIndex;
+    };
+
+    std::stable_sort(records.begin(), records.end(), comparator);
+
+    QVector<Track> newTracks;
+    newTracks.reserve(m_tracks.size());
+    for (const auto &rec : records) {
+        newTracks.push_back(m_tracks.at(rec.originalIndex));
+    }
+
+    beginResetModel();
+    m_tracks = newTracks;
+    rebuildFilePathIndexCache();
+    invalidateSearchCache();
+    endResetModel();
+
+    applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
+    return true;
+}
+
 void TrackModel::sortByNameAsc()
 {
     if (m_tracks.size() < 2) {
@@ -1975,6 +2613,7 @@ void TrackModel::sortByNameAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByNameDesc()
@@ -2002,6 +2641,7 @@ void TrackModel::sortByNameDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByDateAsc()
@@ -2030,6 +2670,7 @@ void TrackModel::sortByDateAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByDateDesc()
@@ -2058,6 +2699,7 @@ void TrackModel::sortByDateDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByIndexAsc()
@@ -2079,6 +2721,7 @@ void TrackModel::sortByIndexAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByIndexDesc()
@@ -2100,6 +2743,7 @@ void TrackModel::sortByIndexDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByDurationAsc()
@@ -2128,6 +2772,7 @@ void TrackModel::sortByDurationAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByDurationDesc()
@@ -2156,6 +2801,7 @@ void TrackModel::sortByDurationDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByBitrateAsc()
@@ -2184,6 +2830,7 @@ void TrackModel::sortByBitrateAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByBitrateDesc()
@@ -2212,6 +2859,7 @@ void TrackModel::sortByBitrateDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByArtistAsc()
@@ -2242,6 +2890,7 @@ void TrackModel::sortByArtistAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByArtistDesc()
@@ -2272,6 +2921,7 @@ void TrackModel::sortByArtistDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByAlbumAsc()
@@ -2302,6 +2952,7 @@ void TrackModel::sortByAlbumAsc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::sortByAlbumDesc()
@@ -2332,6 +2983,7 @@ void TrackModel::sortByAlbumDesc()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::restoreOrder(const QVariantList &filePaths)
@@ -2391,6 +3043,7 @@ void TrackModel::restoreOrder(const QVariantList &filePaths)
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::shuffleOrder()
@@ -2414,6 +3067,98 @@ void TrackModel::shuffleOrder()
     endResetModel();
 
     applyCurrentIndex(findIndexByPath(currentPath), false);
+    emit canResetPlaylistChanged();
+}
+
+bool TrackModel::canResetPlaylist() const
+{
+    if (m_baselineTracks.isEmpty()) {
+        return false;
+    }
+    if (m_tracks.size() != m_baselineTracks.size()) {
+        return true;
+    }
+    for (int i = 0; i < m_tracks.size(); ++i) {
+        const Track &current = m_tracks.at(i);
+        const Track &baseline = m_baselineTracks.at(i);
+        if (current.filePath != baseline.filePath
+            || current.cueSegment != baseline.cueSegment
+            || current.cueStartMs != baseline.cueStartMs
+            || current.cueEndMs != baseline.cueEndMs
+            || current.cueTrackNumber != baseline.cueTrackNumber) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TrackModel::resetPlaylist()
+{
+    if (m_baselineTracks.isEmpty() || !canResetPlaylist()) {
+        return false;
+    }
+
+    const QString currentPath = getFilePath(m_currentIndex);
+    const int currentCueTrack = (m_currentIndex >= 0 && m_currentIndex < m_tracks.size() && m_tracks.at(m_currentIndex).cueSegment)
+                                    ? m_tracks.at(m_currentIndex).cueTrackNumber
+                                    : 0;
+
+    beginResetModel();
+    resetTransientSearchState();
+    resetTransientMetadataState();
+    m_tracks = m_baselineTracks;
+
+    int newIndex = -1;
+    if (!currentPath.isEmpty()) {
+        for (int i = 0; i < m_tracks.size(); ++i) {
+            const Track &t = m_tracks.at(i);
+            if (t.filePath == currentPath) {
+                if (!t.cueSegment || t.cueTrackNumber == currentCueTrack) {
+                    newIndex = i;
+                    break;
+                }
+                if (newIndex < 0) {
+                    newIndex = i;
+                }
+            }
+        }
+    }
+
+    m_currentIndex = newIndex;
+    m_currentAlbumArt.clear();
+    trimAlbumArtToCurrentTrack(false);
+    invalidateSearchCache();
+    endResetModel();
+
+    emit countChanged();
+    emit playlistDurationChanged();
+    updateProfilerPlaylistCount();
+    emit currentIndexChanged(m_currentIndex);
+    emit currentTrackChanged();
+    emit canResetPlaylistChanged();
+
+    if (m_currentIndex >= 0) {
+        loadMetadata(m_currentIndex, true);
+    }
+
+    updatePlaylistFolderWatch();
+    return true;
+}
+
+void TrackModel::captureBaselineSnapshot()
+{
+    m_baselineTracks = m_tracks;
+    emit canResetPlaylistChanged();
+}
+
+QVariantList TrackModel::exportBaselineSnapshot() const
+{
+    QVariantList snapshot;
+    snapshot.reserve(m_baselineTracks.size());
+    for (const Track &track : m_baselineTracks) {
+        snapshot.push_back(trackToVariantMap(track));
+    }
+    return snapshot;
 }
 
 void TrackModel::playNext()
@@ -2574,6 +3319,7 @@ void TrackModel::applyCurrentIndex(int index, bool emitTrackSelectedSignal)
 
     emit currentIndexChanged(m_currentIndex);
     emit currentTrackChanged();
+    emit currentChaptersChanged();
 
     if (emitTrackSelectedSignal && m_currentIndex >= 0) {
         emit trackSelected(m_tracks[m_currentIndex].filePath);
@@ -2630,6 +3376,7 @@ TrackModel::ParsedMetadata TrackModel::readMetadataForFile(const QString &filePa
     if (!isLocalSourcePath(normalizedSource)) {
         const QUrl remoteUrl(normalizedSource);
         metadata.format = upperExtension(remoteUrl.path());
+        metadata.url = normalizedSource;
         return metadata;
     }
 
@@ -2654,6 +3401,7 @@ TrackModel::ParsedMetadata TrackModel::readMetadataForFile(const QString &filePa
         metadata.artist = toQString(tag->artist());
         metadata.album = toQString(tag->album());
         metadata.comment = toQString(tag->comment());
+        metadata.description = metadata.comment;
         metadata.genre = toQString(tag->genre());
         if (tag->year() > 0) {
             metadata.year = QString::number(tag->year());
@@ -2680,6 +3428,56 @@ TrackModel::ParsedMetadata TrackModel::readMetadataForFile(const QString &filePa
         if (metadata.comment.isEmpty()) {
             metadata.comment = propertyToString(properties, "DESCRIPTION");
         }
+        const QString descProp = propertyToString(properties, "DESCRIPTION");
+        if (!descProp.isEmpty()) {
+            metadata.description = descProp;
+        } else if (metadata.description.isEmpty()) {
+            metadata.description = metadata.comment;
+        }
+
+        metadata.composer = propertyToString(properties, "COMPOSER");
+
+        metadata.originalArtist = propertyToString(properties, "ORIGINALARTIST");
+        if (metadata.originalArtist.isEmpty()) {
+            metadata.originalArtist = propertyToString(properties, "ORIGINAL ARTIST");
+        }
+        if (metadata.originalArtist.isEmpty()) {
+            metadata.originalArtist = propertyToString(properties, "TOPE");
+        }
+
+        metadata.copyright = propertyToString(properties, "COPYRIGHT");
+        if (metadata.copyright.isEmpty()) {
+            metadata.copyright = propertyToString(properties, "TCOP");
+        }
+
+        metadata.url = propertyToString(properties, "URL");
+        if (metadata.url.isEmpty()) {
+            metadata.url = propertyToString(properties, "WEBSITE");
+        }
+        if (metadata.url.isEmpty()) {
+            metadata.url = propertyToString(properties, "CONTACT");
+        }
+        if (metadata.url.isEmpty()) {
+            metadata.url = propertyToString(properties, "WOAR");
+        }
+        if (metadata.url.isEmpty()) {
+            metadata.url = propertyToString(properties, "WOAS");
+        }
+        if (metadata.url.isEmpty()) {
+            metadata.url = propertyToString(properties, "WXXX");
+        }
+
+        metadata.encoder = propertyToString(properties, "ENCODER");
+        if (metadata.encoder.isEmpty()) {
+            metadata.encoder = propertyToString(properties, "ENCODEDBY");
+        }
+        if (metadata.encoder.isEmpty()) {
+            metadata.encoder = propertyToString(properties, "ENCODED-BY");
+        }
+        if (metadata.encoder.isEmpty()) {
+            metadata.encoder = propertyToString(properties, "TSSE");
+        }
+
         if (metadata.genre.isEmpty()) {
             metadata.genre = propertyToString(properties, "GENRE");
         }
@@ -2732,6 +3530,8 @@ TrackModel::ParsedMetadata TrackModel::readMetadataForFile(const QString &filePa
             }
         }
     }
+
+    metadata.chapters = extractTrackChapters(localPath);
 
     return metadata;
 }
@@ -2929,6 +3729,12 @@ void TrackModel::internTrackStrings(Track &track)
     track.genre = internString(track.genre);
     track.year = internString(track.year);
     track.trackNumber = internString(track.trackNumber);
+    track.description = internString(track.description);
+    track.composer = internString(track.composer);
+    track.originalArtist = internString(track.originalArtist);
+    track.copyright = internString(track.copyright);
+    track.url = internString(track.url);
+    track.encoder = internString(track.encoder);
     track.format = internString(track.format);
     track.albumArt = internString(track.albumArt);
     track.cueSheetPath = internString(track.cueSheetPath);
@@ -3581,6 +4387,24 @@ void TrackModel::applyParsedMetadataBatch(const QVector<ParsedMetadata> &batch)
             if (!metadata.year.isEmpty()) {
                 setIfDifferent(track.year, metadata.year);
             }
+            if (!metadata.description.isEmpty()) {
+                setIfDifferent(track.description, metadata.description);
+            }
+            if (!metadata.composer.isEmpty()) {
+                setIfDifferent(track.composer, metadata.composer);
+            }
+            if (!metadata.originalArtist.isEmpty()) {
+                setIfDifferent(track.originalArtist, metadata.originalArtist);
+            }
+            if (!metadata.copyright.isEmpty()) {
+                setIfDifferent(track.copyright, metadata.copyright);
+            }
+            if (!metadata.url.isEmpty()) {
+                setIfDifferent(track.url, metadata.url);
+            }
+            if (!metadata.encoder.isEmpty()) {
+                setIfDifferent(track.encoder, metadata.encoder);
+            }
             if (!track.cueSegment && !metadata.trackNumber.isEmpty()) {
                 setIfDifferent(track.trackNumber, metadata.trackNumber);
             } else if (track.cueSegment && track.cueTrackNumber > 0) {
@@ -3626,6 +4450,9 @@ void TrackModel::applyParsedMetadataBatch(const QVector<ParsedMetadata> &batch)
             }
             if (metadata.channelCount > 0) {
                 setIfDifferent(track.channelCount, metadata.channelCount);
+            }
+            if (!metadata.chapters.isEmpty()) {
+                setIfDifferent(track.chapters, metadata.chapters);
             }
             if (metadata.albumArtChecked) {
                 if (i == m_currentIndex) {
@@ -3677,7 +4504,7 @@ void TrackModel::applyParsedMetadataBatch(const QVector<ParsedMetadata> &batch)
                              {TitleRole, ArtistRole, AlbumRole, CommentRole, GenreRole,
                               YearRole, TrackNumberRole, DurationRole, DisplayNameRole,
                               FormatRole, BitrateRole, SampleRateRole, BitDepthRole,
-                              BpmRole, ChannelCountRole, AlbumArtRole});
+                              BpmRole, ChannelCountRole, AlbumArtRole, HasChaptersRole});
             rangeStart = row;
             rangeEnd = row;
         }
@@ -3686,10 +4513,11 @@ void TrackModel::applyParsedMetadataBatch(const QVector<ParsedMetadata> &batch)
                      {TitleRole, ArtistRole, AlbumRole, CommentRole, GenreRole,
                       YearRole, TrackNumberRole, DurationRole, DisplayNameRole,
                       FormatRole, BitrateRole, SampleRateRole, BitDepthRole,
-                      BpmRole, ChannelCountRole, AlbumArtRole});
+                      BpmRole, ChannelCountRole, AlbumArtRole, HasChaptersRole});
 
     if (currentTrackWasChanged) {
         emit currentTrackChanged();
+        emit currentChaptersChanged();
     }
     if (playlistDurationWasChanged) {
         emit playlistDurationChanged();
@@ -3917,3 +4745,103 @@ void TrackModel::rescanWatchedPlaylistFolder()
 
     (void)addFilesWithReport(newEntries);
 }
+
+bool TrackModel::hasChapters(int index) const
+{
+    if (index < 0 || index >= m_tracks.size()) {
+        return false;
+    }
+    return !m_tracks.at(index).chapters.isEmpty();
+}
+
+QVariantList TrackModel::chaptersForIndex(int index) const
+{
+    if (index < 0 || index >= m_tracks.size()) {
+        return {};
+    }
+    const Track &track = m_tracks.at(index);
+    QVariantList list;
+    list.reserve(track.chapters.size());
+    for (int i = 0; i < track.chapters.size(); ++i) {
+        list.append(chapterToVariantMap(track.chapters.at(i), i, track.duration));
+    }
+    return list;
+}
+
+QVariantList TrackModel::currentChapters() const
+{
+    return chaptersForIndex(m_currentIndex);
+}
+
+bool TrackModel::currentHasChapters() const
+{
+    return hasChapters(m_currentIndex);
+}
+
+int TrackModel::currentChapterCount() const
+{
+    if (m_currentIndex < 0 || m_currentIndex >= m_tracks.size()) {
+        return 0;
+    }
+    return m_tracks.at(m_currentIndex).chapters.size();
+}
+
+int TrackModel::chapterIndexAtPosition(int trackIndex, qint64 positionMs) const
+{
+    if (trackIndex < 0 || trackIndex >= m_tracks.size()) {
+        return -1;
+    }
+    const auto &chapters = m_tracks.at(trackIndex).chapters;
+    if (chapters.isEmpty()) {
+        return -1;
+    }
+    for (int i = 0; i < chapters.size(); ++i) {
+        const auto &ch = chapters.at(i);
+        const qint64 endMs = (ch.endTimeMs > ch.startTimeMs)
+            ? ch.endTimeMs
+            : ((i + 1 < chapters.size()) ? chapters.at(i + 1).startTimeMs : LLONG_MAX);
+        if (positionMs >= ch.startTimeMs && positionMs < endMs) {
+            return i;
+        }
+    }
+    if (positionMs >= chapters.last().startTimeMs) {
+        return chapters.size() - 1;
+    }
+    return 0;
+}
+
+int TrackModel::currentChapterIndexAtPosition(qint64 positionMs) const
+{
+    return chapterIndexAtPosition(m_currentIndex, positionMs);
+}
+
+QVariantMap TrackModel::chapterAt(int trackIndex, int chapterIndex) const
+{
+    if (trackIndex < 0 || trackIndex >= m_tracks.size()) {
+        return {};
+    }
+    const Track &track = m_tracks.at(trackIndex);
+    if (chapterIndex < 0 || chapterIndex >= track.chapters.size()) {
+        return {};
+    }
+    return chapterToVariantMap(track.chapters.at(chapterIndex), chapterIndex, track.duration);
+}
+
+QString TrackModel::chapterTitleAtPosition(int trackIndex, qint64 positionMs) const
+{
+    const int idx = chapterIndexAtPosition(trackIndex, positionMs);
+    if (idx < 0 || trackIndex < 0 || trackIndex >= m_tracks.size()) {
+        return QString();
+    }
+    const auto &chapters = m_tracks.at(trackIndex).chapters;
+    if (idx < chapters.size()) {
+        return chapters.at(idx).title;
+    }
+    return QString();
+}
+
+QString TrackModel::currentChapterTitleAtPosition(qint64 positionMs) const
+{
+    return chapterTitleAtPosition(m_currentIndex, positionMs);
+}
+

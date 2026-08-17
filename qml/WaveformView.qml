@@ -26,6 +26,12 @@ Item {
                                                && !root.cueOverlaySuppressedByDensity
                                                && cueSegments.length > 0
                                                && audioEngine.duration > 0
+    readonly property bool chaptersOverlayVisible: root.showOverlays
+                                                   && !root.tinyMode
+                                                   && !root.cueOverlayVisible
+                                                   && trackModel.hasChapters
+                                                   && trackModel.currentChapters.length > 0
+                                                   && audioEngine.duration > 0
     readonly property string zoomText: root.tr("waveform.zoomBadgeZoom").arg(waveformItem.zoom.toFixed(1))
     readonly property string quickText: root.tr("waveform.zoomBadgeQuick").arg(waveformItem.zoom.toFixed(1))
     readonly property string quickScrubText: root.tr("waveform.zoomBadgeQuickScrub").arg(waveformItem.zoom.toFixed(1))
@@ -240,6 +246,86 @@ Item {
                     text: segmentDuration.length > 0
                           ? (segmentName + "  " + segmentDuration)
                           : segmentName
+                }
+            }
+        }
+    }
+
+    // Chapters Overlay
+    Item {
+        id: chaptersOverlay
+        anchors.fill: parent
+        visible: root.chaptersOverlayVisible
+        z: 2.0
+
+        Repeater {
+            model: root.chaptersOverlayVisible ? trackModel.currentChapters : []
+
+            Rectangle {
+                required property int index
+                required property var modelData
+
+                readonly property real fullDurationMs: Math.max(1, Number(audioEngine.duration || 1))
+                readonly property real startMs: Math.max(0, Number(modelData.startTimeMs || 0))
+                readonly property real rawEndMs: Number(modelData.endTimeMs || 0)
+                readonly property real endMs: rawEndMs > startMs ? rawEndMs : fullDurationMs
+                readonly property real startTrackPos: Math.max(0, Math.min(1, startMs / fullDurationMs))
+                readonly property real endTrackPos: Math.max(startTrackPos, Math.min(1, endMs / fullDurationMs))
+                readonly property real startX: root.trackToViewX(startTrackPos)
+                readonly property real endX: root.trackToViewX(endTrackPos)
+                readonly property real leftX: Math.max(0, Math.min(startX, endX))
+                readonly property real rightX: Math.min(root.width, Math.max(startX, endX))
+                readonly property real rawWidth: Math.max(0, rightX - leftX)
+                readonly property int activeChapterIdx: trackModel.currentChapterIndexAtPosition(audioEngine.position)
+                readonly property bool isActive: modelData.index === activeChapterIdx
+                readonly property string chapterTitle: String(modelData.title || "")
+                readonly property string chapterDuration: root.formatSegmentDuration(Number(modelData.durationMs || 0))
+
+                visible: isActive || rawWidth >= (root.denseMode ? 1.1 : 1.5)
+                x: leftX
+                width: isActive ? Math.max(1, rawWidth) : rawWidth
+                height: parent.height
+                color: isActive
+                       ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.14)
+                       : (index % 2 === 0
+                          ? Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.04)
+                          : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.015))
+
+                // Left chapter boundary tick / line
+                Rectangle {
+                    visible: parent.width >= (isActive ? 1.0 : 1.5)
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: isActive ? 2 : 1
+                    color: isActive
+                           ? themeManager.primaryColor
+                           : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.22)
+                }
+
+                // Top chapter marker notch
+                Rectangle {
+                    visible: parent.width >= 4 && !root.tinyMode
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    width: isActive ? 3 : 2
+                    height: 5
+                    color: isActive ? themeManager.primaryColor : Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.45)
+                }
+
+                Label {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 8
+                    visible: parent.width >= 64
+                    elide: Text.ElideRight
+                    color: isActive ? themeManager.primaryColor : themeManager.textSecondaryColor
+                    font.pointSize: root.denseMode ? UiMetrics.microPointSize : UiMetrics.captionPointSize
+                    font.family: UiMetrics.monoFontFamily
+                    text: chapterDuration.length > 0
+                          ? (chapterTitle + "  " + chapterDuration)
+                          : chapterTitle
                 }
             }
         }
@@ -714,6 +800,65 @@ Item {
             onTriggered: {
                 if (typeof fragmentRepeatDialog !== "undefined" && fragmentRepeatDialog) {
                     fragmentRepeatDialog.open()
+                }
+            }
+        }
+
+        AccentMenuSeparator {
+            visible: trackModel.hasChapters
+        }
+
+        AccentMenuItem {
+            visible: trackModel.hasChapters
+            text: root.tr("player.previousChapter")
+            icon.source: IconResolver.themed("media-skip-backward", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.previousChapter()
+                }
+            }
+        }
+
+        AccentMenuItem {
+            visible: trackModel.hasChapters
+            text: root.tr("player.nextChapter")
+            icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: {
+                if (playbackController) {
+                    playbackController.nextChapter()
+                }
+            }
+        }
+
+        AccentMenu {
+            id: waveformChaptersSubMenu
+            title: root.tr("player.chapters")
+            icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            visible: trackModel.hasChapters
+
+            Instantiator {
+                model: trackModel.hasChapters ? trackModel.currentChapters : []
+                delegate: AccentMenuItem {
+                    required property var modelData
+                    required property int index
+                    readonly property int activeIdx: trackModel.currentChapterIndexAtPosition(audioEngine.position)
+                    text: (modelData.startTimeFormatted ? modelData.startTimeFormatted + "  " : "") + (modelData.title || (root.tr("player.chapters") + " " + (index + 1)))
+                    checkable: true
+                    checked: modelData.index === activeIdx
+                    onTriggered: {
+                        if (playbackController) {
+                            playbackController.seekToChapter(modelData.index)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    waveformChaptersSubMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    waveformChaptersSubMenu.removeItem(object)
                 }
             }
         }

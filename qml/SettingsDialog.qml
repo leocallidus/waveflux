@@ -10,6 +10,7 @@ AppDialog {
 
     property var sidebarSectionController: null
     property string requestedInitialSectionId: ""
+    signal playlistColumnsRequested()
 
     title: root.tr("settings.title")
     modal: true
@@ -133,6 +134,7 @@ AppDialog {
                 "settings.automaticPlaylistSearch",
                 "settings.autoAddTracksFromPlaylistFolder",
                 "settings.playlistScrollBarVisible",
+                "settings.showPlaylistChapterBadge",
                 "settings.playSearchResultsInOrder",
                 "settings.autoCheckUpdates",
                 "settings.includePrereleaseUpdates",
@@ -439,6 +441,7 @@ AppDialog {
         appSettings.automaticPlaylistSearch = false
         appSettings.autoAddTracksFromPlaylistFolder = true
         appSettings.playlistScrollBarVisible = true
+        appSettings.showPlaylistChapterBadge = true
         appSettings.playSearchResultsInOrder = false
         appSettings.autoCheckUpdates = true
         appSettings.includePrereleaseUpdates = false
@@ -787,6 +790,9 @@ AppDialog {
             appendResetChange(changes, root.tr("settings.playlistScrollBarVisible"),
                               appSettings.playlistScrollBarVisible, true,
                               localizedBoolean(appSettings.playlistScrollBarVisible), localizedBoolean(true))
+            appendResetChange(changes, root.tr("settings.showPlaylistChapterBadge"),
+                              appSettings.showPlaylistChapterBadge, true,
+                              localizedBoolean(appSettings.showPlaylistChapterBadge), localizedBoolean(true))
             appendResetChange(changes, root.tr("settings.playSearchResultsInOrder"),
                               appSettings.playSearchResultsInOrder, false,
                               localizedBoolean(appSettings.playSearchResultsInOrder), localizedBoolean(false))
@@ -1308,6 +1314,7 @@ AppDialog {
                     || (automaticPlaylistSearchRow && automaticPlaylistSearchRow.visible)
                     || (autoAddTracksFromPlaylistFolderRow && autoAddTracksFromPlaylistFolderRow.visible)
                     || (playlistScrollBarVisibleRow && playlistScrollBarVisibleRow.visible)
+                    || (showPlaylistChapterBadgeRow && showPlaylistChapterBadgeRow.visible)
                     || (playSearchResultsInOrderRow && playSearchResultsInOrderRow.visible)
                     || (autoCheckUpdatesRow && autoCheckUpdatesRow.visible)
                     || (includePrereleaseUpdatesRow && includePrereleaseUpdatesRow.visible)
@@ -2215,6 +2222,62 @@ AppDialog {
                         text: root.tr("settings.playlistScrollBarVisibleDescription")
                         searchQuery: root.settingsSearchQuery
                         forceVisible: playlistScrollBarVisibleRow.visible
+                    }
+
+                    SettingToggleRow {
+                        id: showPlaylistChapterBadgeRow
+                        title: root.tr("settings.showPlaylistChapterBadge")
+                        checked: appSettings.showPlaylistChapterBadge
+                        searchQuery: root.settingsSearchQuery
+                        extraSearchText: root.tr("settings.showPlaylistChapterBadgeDescription")
+
+                        onToggled: function(checked) {
+                            appSettings.showPlaylistChapterBadge = checked
+                        }
+                    }
+
+                    SettingHintText {
+                        text: root.tr("settings.showPlaylistChapterBadgeDescription")
+                        searchQuery: root.settingsSearchQuery
+                        forceVisible: showPlaylistChapterBadgeRow.visible
+                    }
+
+                    RowLayout {
+                        id: playlistColumnsConfigureRow
+                        Layout.fillWidth: true
+                        spacing: UiMetrics.spaceM
+                        visible: root.matchesSearch(root.tr("settings.ui.playlistColumns"), root.tr("settings.ui.playlistColumnsDesc"))
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: UiMetrics.spaceXS
+
+                            Label {
+                                text: root.highlightedSearchText(root.tr("settings.ui.playlistColumns"))
+                                textFormat: Text.StyledText
+                                font.pointSize: UiMetrics.bodyPointSize
+                                font.bold: true
+                                color: themeManager.textColor
+                            }
+
+                            Label {
+                                text: root.highlightedSearchText(root.tr("settings.ui.playlistColumnsDesc"))
+                                textFormat: Text.StyledText
+                                font.pointSize: UiMetrics.captionPointSize
+                                color: themeManager.textMutedColor
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Button {
+                            text: root.tr("settings.ui.playlistColumnsConfigure")
+                            implicitHeight: root.minimumInteractiveHeight
+                            activeFocusOnTab: true
+                            onClicked: {
+                                root.playlistColumnsRequested()
+                            }
+                        }
                     }
 
                     SettingToggleRow {

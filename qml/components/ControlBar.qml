@@ -304,32 +304,82 @@ Rectangle {
 
         Item { Layout.fillWidth: true }
 
-        RowLayout {
+        ColumnLayout {
             visible: !root.mobileOnly
-            spacing: UiMetrics.spaceM
+            spacing: 2
+            Layout.alignment: Qt.AlignHCenter
 
-            Label {
-                text: root.formatPreciseTime(audioEngine.position)
-                color: themeManager.primaryColor
-                font.family: UiMetrics.monoFontFamily
-                font.pointSize: root.minimalTimeReadout ? UiMetrics.bodyStrongPointSize : (root.compactTimeReadout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize)
-                font.bold: true
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: UiMetrics.spaceM
+
+                Label {
+                    text: root.formatPreciseTime(audioEngine.position)
+                    color: themeManager.primaryColor
+                    font.family: UiMetrics.monoFontFamily
+                    font.pointSize: root.minimalTimeReadout ? UiMetrics.bodyStrongPointSize : (root.compactTimeReadout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize)
+                    font.bold: true
+                }
+
+                Label {
+                    visible: !root.minimalTimeReadout
+                    text: "/"
+                    color: themeManager.textMutedColor
+                    font.family: UiMetrics.monoFontFamily
+                    font.pointSize: root.compactTimeReadout ? UiMetrics.bodyPointSize : UiMetrics.titlePointSize
+                }
+
+                Label {
+                    visible: !root.minimalTimeReadout
+                    text: root.formatPreciseTime(audioEngine.duration)
+                    color: themeManager.textSecondaryColor
+                    font.family: UiMetrics.monoFontFamily
+                    font.pointSize: root.compactTimeReadout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize
+                }
             }
 
-            Label {
-                visible: !root.minimalTimeReadout
-                text: "/"
-                color: themeManager.textMutedColor
-                font.family: UiMetrics.monoFontFamily
-                font.pointSize: root.compactTimeReadout ? UiMetrics.bodyPointSize : UiMetrics.titlePointSize
-            }
+            Rectangle {
+                id: controlBarChapterBadge
+                visible: trackModel && trackModel.hasChapters && !root.compactTimeReadout
+                Layout.alignment: Qt.AlignHCenter
+                implicitWidth: controlBarChapterLabel.implicitWidth + 12
+                implicitHeight: controlBarChapterLabel.implicitHeight + 2
+                radius: 3
+                color: chapterBadgeHover.hovered
+                       ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.22)
+                       : Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.12)
+                border.width: 1
+                border.color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.35)
 
-            Label {
-                visible: !root.minimalTimeReadout
-                text: root.formatPreciseTime(audioEngine.duration)
-                color: themeManager.textSecondaryColor
-                font.family: UiMetrics.monoFontFamily
-                font.pointSize: root.compactTimeReadout ? UiMetrics.titlePointSize : UiMetrics.displayPointSize
+                Label {
+                    id: controlBarChapterLabel
+                    anchors.centerIn: parent
+                    text: {
+                        const title = trackModel ? trackModel.currentChapterTitleAtPosition(audioEngine.position) : ""
+                        return title ? root.tr("player.currentChapter").arg(title) : root.tr("player.chapters")
+                    }
+                    color: themeManager.primaryColor
+                    font.pointSize: UiMetrics.microPointSize
+                    font.family: UiMetrics.monoFontFamily
+                    font.bold: true
+                    elide: Text.ElideRight
+                    width: Math.min(220, implicitWidth)
+                }
+
+                HoverHandler {
+                    id: chapterBadgeHover
+                    cursorShape: Qt.PointingHandCursor
+                }
+
+                TapHandler {
+                    onTapped: {
+                        if (controlBarChapterMenu.visible) {
+                            controlBarChapterMenu.close()
+                        } else {
+                            controlBarChapterMenu.popup(controlBarChapterBadge, 0, -controlBarChapterMenu.implicitHeight)
+                        }
+                    }
+                }
             }
         }
 
@@ -569,6 +619,26 @@ Rectangle {
         }
 
         MenuSeparator {
+            visible: trackModel && trackModel.hasChapters
+        }
+
+        MenuItem {
+            visible: trackModel && trackModel.hasChapters
+            text: root.tr("player.previousChapter")
+            icon.source: IconResolver.themed("media-skip-backward", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: playbackController.previousChapter()
+        }
+
+        MenuItem {
+            visible: trackModel && trackModel.hasChapters
+            text: root.tr("player.nextChapter")
+            icon.source: IconResolver.themed("media-skip-forward", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            onTriggered: playbackController.nextChapter()
+        }
+
+        MenuSeparator {
             visible: appSettings.showSpeedPitchControls
                      && audioEngine
                      && (audioEngine.rateAvailable || audioEngine.pitchAvailable)
@@ -795,6 +865,33 @@ Rectangle {
                         horizontalAlignment: Text.AlignHCenter
                     }
                 }
+            }
+        }
+    }
+
+    Menu {
+        id: controlBarChapterMenu
+
+        Instantiator {
+            model: trackModel && trackModel.hasChapters ? trackModel.currentChapters : []
+            delegate: MenuItem {
+                required property var modelData
+                required property int index
+                readonly property int activeIdx: trackModel.currentChapterIndexAtPosition(audioEngine.position)
+                text: (modelData.startTimeFormatted ? modelData.startTimeFormatted + "  " : "") + (modelData.title || (root.tr("player.chapters") + " " + (index + 1)))
+                checkable: true
+                checked: modelData.index === activeIdx
+                onTriggered: {
+                    if (playbackController) {
+                        playbackController.seekToChapter(modelData.index)
+                    }
+                }
+            }
+            onObjectAdded: function(index, object) {
+                controlBarChapterMenu.insertItem(index, object)
+            }
+            onObjectRemoved: function(index, object) {
+                controlBarChapterMenu.removeItem(object)
             }
         }
     }

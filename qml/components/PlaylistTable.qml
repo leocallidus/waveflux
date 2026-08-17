@@ -21,7 +21,8 @@ Item {
     property bool ctrlDragSelecting: false
     property int ctrlDragAnchorIndex: -1
     property bool ctrlDragMoved: false
-    property bool ctrlDragConsumeClick: false
+    property string activeSortColumn: ""
+    property int activeSortOrder: 0
     property int titleSortState: 0 // 0:none, 1:ascending, 2:descending
     property var titleSortBaselinePaths: []
     property int artistSortState: 0 // 0:none, 1:ascending, 2:descending
@@ -81,6 +82,7 @@ Item {
         return "auto"
     }
     signal editTagsRequested(string filePath)
+    signal configureColumnsRequested()
     signal audioConverterRequested(int trackIndex, string filePath)
     signal batchAudioConverterRequested(var filePaths)
     signal editTagsSelectionRequested(var filePaths)
@@ -203,47 +205,54 @@ Item {
         onTriggered: root.reapplyActiveSort()
     }
 
-    readonly property bool showArtistColumn: effectiveColumnPreset === "auto"
-                                             ? width >= UiMetrics.breakpoint(600)
-                                             : (effectiveColumnPreset === "full" || effectiveColumnPreset === "reduced")
-    readonly property bool showAlbumColumn: effectiveColumnPreset === "auto"
-                                            ? width >= UiMetrics.breakpoint(1000)
-                                            : effectiveColumnPreset === "full"
-    readonly property bool showBitrateColumn: effectiveColumnPreset === "auto"
-                                              ? width >= UiMetrics.breakpoint(800)
-                                              : effectiveColumnPreset === "full"
-
     readonly property int rowHeight: UiMetrics.playlistRowHeight
     readonly property int tableHeaderHeight: UiMetrics.playlistHeaderHeight
     readonly property int horizontalPadding: UiMetrics.spaceL
     readonly property int columnSpacing: UiMetrics.spaceM
+    readonly property int responsiveWidthBucket: playlistColumnLayoutManager.widthBucket("normal", width - horizontalPadding * 2)
+    readonly property var effectiveColumns: {
+        const _rev = playlistColumnLayoutManager.layoutRevision
+        const _bucket = root.responsiveWidthBucket
+        return playlistColumnLayoutManager.effectiveVisibleColumns("normal", _bucket)
+    }
+    readonly property int visibleColumnCount: effectiveColumns.length
+
+    // Legacy fallback width helpers for compatibility
     readonly property int indexColumnWidth: Math.round(42 * UiMetrics.playlistFontScale)
     readonly property int durationColumnWidth: Math.round(90 * UiMetrics.playlistFontScale)
-    readonly property int bitrateColumnWidth: showBitrateColumn ? Math.round(132 * UiMetrics.playlistFontScale) : 0
-    readonly property int visibleColumnCount: 3 + (showArtistColumn ? 1 : 0) + (showAlbumColumn ? 1 : 0) + (showBitrateColumn ? 1 : 0)
+    readonly property int bitrateColumnWidth: Math.round(132 * UiMetrics.playlistFontScale)
+    readonly property real titleColumnWidth: Math.max(180, width * 0.4)
+    readonly property real artistColumnWidth: Math.max(120, width * 0.25)
+    readonly property real albumColumnWidth: Math.max(120, width * 0.25)
 
-    readonly property real textColumnsWidth: Math.max(
-        180,
-        width
-        - horizontalPadding * 2
-        - indexColumnWidth
-        - durationColumnWidth
-        - bitrateColumnWidth
-        - columnSpacing * (visibleColumnCount - 1)
-    )
-    readonly property real titleColumnWidth: {
-        if (showAlbumColumn) return Math.max(152, textColumnsWidth * 0.40)
-        if (showArtistColumn) return Math.max(168, textColumnsWidth * 0.60)
-        return Math.max(220, textColumnsWidth)
-    }
-    readonly property real artistColumnWidth: {
-        if (!showArtistColumn) return 0
-        if (showAlbumColumn) return Math.max(116, textColumnsWidth * 0.24)
-        return Math.max(112, textColumnsWidth - titleColumnWidth)
-    }
-    readonly property real albumColumnWidth: {
-        if (!showAlbumColumn) return 0
-        return Math.max(132, textColumnsWidth - titleColumnWidth - artistColumnWidth)
+    function getTrackModelRoleValue(delegate, colId) {
+        switch (colId) {
+        case "playlistPosition": return (delegate.playlistPosition !== undefined && delegate.playlistPosition > 0) ? delegate.playlistPosition : (delegate.index + 1)
+        case "trackSummary": return delegate.displayName || delegate.trackSummary || ""
+        case "title": return delegate.title || ""
+        case "artist": return delegate.artist || ""
+        case "album": return delegate.album || ""
+        case "duration": return delegate.duration || 0
+        case "bitrate": return delegate.bitrate || 0
+        case "trackNumber": return delegate.trackNumber || ""
+        case "year": return delegate.year || ""
+        case "genre": return delegate.genre || ""
+        case "description": return delegate.description || delegate.comment || ""
+        case "composer": return delegate.composer || ""
+        case "originalArtist": return delegate.originalArtist || ""
+        case "copyright": return delegate.copyright || ""
+        case "url": return delegate.url || ""
+        case "encoder": return delegate.encoder || ""
+        case "format": return delegate.format || ""
+        case "sampleRate": return delegate.sampleRate || 0
+        case "bitDepth": return delegate.bitDepth || 0
+        case "bpm": return delegate.bpm || 0
+        case "channelCount": return delegate.channelCount || 0
+        case "fileName": return delegate.fileName || ""
+        case "filePath": return delegate.filePath || ""
+        case "dateAdded": return delegate.dateAdded || 0
+        default: return ""
+        }
     }
 
     function tr(key) {
@@ -354,7 +363,8 @@ Item {
     }
 
     function hasActiveColumnSort() {
-        return titleSortState !== 0
+        return (activeSortOrder !== 0 && activeSortColumn.length > 0)
+                || titleSortState !== 0
                 || artistSortState !== 0
                 || albumSortState !== 0
                 || indexSortState !== 0
@@ -363,6 +373,7 @@ Item {
     }
 
     function activeSortColumnKey() {
+        if (activeSortOrder !== 0 && activeSortColumn.length > 0) return activeSortColumn
         if (indexSortState !== 0) return "index"
         if (titleSortState !== 0) return "title"
         if (artistSortState !== 0) return "artist"
@@ -373,6 +384,7 @@ Item {
     }
 
     function activeSortOrderState() {
+        if (activeSortOrder !== 0 && activeSortColumn.length > 0) return activeSortOrder
         if (indexSortState !== 0) return indexSortState
         if (titleSortState !== 0) return titleSortState
         if (artistSortState !== 0) return artistSortState
@@ -392,6 +404,8 @@ Item {
     }
 
     function clearSortStates() {
+        activeSortColumn = ""
+        activeSortOrder = 0
         titleSortState = 0
         artistSortState = 0
         albumSortState = 0
@@ -457,8 +471,11 @@ Item {
             return
         }
 
+        activeSortColumn = column
+        activeSortOrder = order
         switch (column) {
         case "index":
+        case "playlistPosition":
             indexSortState = order
             break
         case "title":
@@ -477,7 +494,6 @@ Item {
             bitrateSortState = order
             break
         default:
-            clearSortStates()
             break
         }
 
@@ -503,7 +519,7 @@ Item {
         }
 
         suppressSortReapplyOnModelReset = true
-        if (columnKey === "index") {
+        if (columnKey === "index" || columnKey === "playlistPosition") {
             if (normalizedOrder === 1) trackModel.sortByIndexAsc()
             else trackModel.sortByIndexDesc()
         } else if (columnKey === "title") {
@@ -521,11 +537,15 @@ Item {
         } else if (columnKey === "bitrate") {
             if (normalizedOrder === 1) trackModel.sortByBitrateAsc()
             else trackModel.sortByBitrateDesc()
+        } else {
+            trackModel.sortByColumn(columnKey, normalizedOrder === 1 ? Qt.AscendingOrder : Qt.DescendingOrder)
         }
         suppressSortReapplyOnModelReset = false
 
         clearSortStates()
-        if (columnKey === "index") indexSortState = normalizedOrder
+        activeSortColumn = columnKey
+        activeSortOrder = normalizedOrder
+        if (columnKey === "index" || columnKey === "playlistPosition") indexSortState = normalizedOrder
         else if (columnKey === "title") titleSortState = normalizedOrder
         else if (columnKey === "artist") artistSortState = normalizedOrder
         else if (columnKey === "album") albumSortState = normalizedOrder
@@ -534,6 +554,20 @@ Item {
 
         if (persistState !== false) {
             savePersistedSortState()
+        }
+    }
+
+    function cycleColumnSort(columnKey) {
+        let curState = 0
+        if (activeSortColumnKey() === columnKey) {
+            curState = activeSortOrderState()
+        }
+        const nextState = (curState + 1) % 3
+        if (nextState === 0) {
+            clearActiveSort(true)
+            savePersistedSortState()
+        } else {
+            applySortByColumn(columnKey, nextState, true, true)
         }
     }
 
@@ -1364,228 +1398,33 @@ Item {
                 anchors.rightMargin: root.horizontalPadding
                 spacing: root.columnSpacing
 
-                Item {
-                    Layout.preferredWidth: root.indexColumnWidth
-                    Layout.fillHeight: true
+                Repeater {
+                    model: root.effectiveColumns
 
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
+                    delegate: AppComponents.PlaylistColumnHeader {
+                        id: colHeader
+                        required property var modelData
+                        required property int index
+                        readonly property string colId: String(modelData.id || "")
+                        readonly property var desc: playlistColumnLayoutManager.columnDescriptor(colId)
 
-                        Label {
-                            horizontalAlignment: Text.AlignHCenter
-                            text: "#"
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            font.bold: true
-                            font.letterSpacing: 1.3
+                        columnId: colId
+                        title: root.tr(String(desc.translationKey || ""))
+                        alignment: String(desc.alignment || "left")
+                        sortable: Boolean(desc.sortable)
+                        sortActive: root.activeSortColumnKey() === colId
+                        sortOrder: root.activeSortOrderState() === 1 ? Qt.AscendingOrder : Qt.DescendingOrder
+                        skin: "normal"
+                        Layout.preferredWidth: Number(modelData.computedWidth || modelData.width || (desc ? desc.defaultWidth : 100))
+                        Layout.minimumWidth: Number(desc ? desc.minimumWidth : 40)
+                        Layout.fillWidth: Boolean(desc && desc.stretchWeight > 0)
+                        Layout.fillHeight: true
+
+                        onSortClicked: root.cycleColumnSort(colId)
+                        onConfigureColumnsRequested: root.configureColumnsRequested()
+                        onResetColumnsRequested: {
+                            playlistColumnLayoutManager.resetSkin("normal")
                         }
-
-                        Image {
-                            visible: root.indexSortState !== 0
-                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
-                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
-                            source: IconResolver.themed(root.indexSortState === 1 ? "go-up" : "go-down", themeManager.darkMode)
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            fillMode: Image.PreserveAspectFit
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.cycleIndexSort()
-                    }
-                }
-
-                Item {
-                    Layout.preferredWidth: root.titleColumnWidth
-                    Layout.fillHeight: true
-
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
-
-                        Label {
-                            text: root.tr("table.title")
-                            elide: Text.ElideRight
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            font.bold: true
-                            font.letterSpacing: 1.3
-                        }
-
-                        Image {
-                            visible: root.titleSortState !== 0
-                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
-                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
-                            source: IconResolver.themed(root.titleSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            fillMode: Image.PreserveAspectFit
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.cycleTitleSort()
-                    }
-                }
-
-                Item {
-                    visible: root.showArtistColumn
-                    Layout.preferredWidth: root.artistColumnWidth
-                    Layout.fillHeight: true
-
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
-
-                        Label {
-                            text: root.tr("table.artist")
-                            elide: Text.ElideRight
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            font.bold: true
-                            font.letterSpacing: 1.3
-                        }
-
-                        Image {
-                            visible: root.artistSortState !== 0
-                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
-                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
-                            source: IconResolver.themed(root.artistSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            fillMode: Image.PreserveAspectFit
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.cycleArtistSort()
-                    }
-                }
-
-                Item {
-                    visible: root.showAlbumColumn
-                    Layout.preferredWidth: root.albumColumnWidth
-                    Layout.fillHeight: true
-
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
-
-                        Label {
-                            text: root.tr("table.album")
-                            elide: Text.ElideRight
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            font.bold: true
-                            font.letterSpacing: 1.3
-                        }
-
-                        Image {
-                            visible: root.albumSortState !== 0
-                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
-                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
-                            source: IconResolver.themed(root.albumSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            fillMode: Image.PreserveAspectFit
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.cycleAlbumSort()
-                    }
-                }
-
-                Item {
-                    Layout.preferredWidth: root.durationColumnWidth
-                    Layout.fillHeight: true
-
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
-
-                        Label {
-                            horizontalAlignment: Text.AlignRight
-                            text: root.tr("table.duration")
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            font.bold: true
-                            font.letterSpacing: 1.3
-                        }
-
-                        Image {
-                            visible: root.durationSortState !== 0
-                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
-                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
-                            source: IconResolver.themed(root.durationSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            fillMode: Image.PreserveAspectFit
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.cycleDurationSort()
-                    }
-                }
-
-                Item {
-                    visible: root.showBitrateColumn
-                    Layout.preferredWidth: root.bitrateColumnWidth
-                    Layout.fillHeight: true
-
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
-
-                        Label {
-                            text: root.tr("table.bitrate")
-                            elide: Text.ElideRight
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.playlistFontFamily
-                            font.pointSize: UiMetrics.captionPointSize
-                            font.bold: true
-                            font.letterSpacing: 1.3
-                        }
-
-                        Image {
-                            visible: root.bitrateSortState !== 0
-                            Layout.preferredWidth: UiMetrics.playlistSortIconSize
-                            Layout.preferredHeight: UiMetrics.playlistSortIconSize
-                            source: IconResolver.themed(root.bitrateSortState === 1 ? "go-down" : "go-up", themeManager.darkMode)
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            fillMode: Image.PreserveAspectFit
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.cycleBitrateSort()
                     }
                 }
             }
@@ -1673,9 +1512,28 @@ Item {
                 required property string title
                 required property string artist
                 required property string album
+                required property string comment
+                required property string genre
+                required property string year
+                required property string trackNumber
+                required property int duration
                 required property string format
                 required property int bitrate
-                required property int duration
+                required property int sampleRate
+                required property int bitDepth
+                required property int bpm
+                required property int channelCount
+                required property bool hasChapters
+                required property string description
+                required property string composer
+                required property string originalArtist
+                required property string copyright
+                required property string url
+                required property string encoder
+                required property string fileName
+                required property var dateAdded
+                required property string trackSummary
+                required property int playlistPosition
                 readonly property int transitionStateValue: playbackController.transitionState
                 readonly property bool activeTrack: trackDelegate.sourceIndex === playbackController.activeTrackIndex
                 readonly property bool pendingTrack: trackDelegate.sourceIndex === playbackController.pendingTrackIndex
@@ -1690,29 +1548,6 @@ Item {
                 readonly property int queuePosition: {
                     const _queueRevision = playbackController.queueRevision
                     return playbackController.queuedPosition(filePath)
-                }
-
-                function truncatedCellTooltipAt(mouseX) {
-                    function tooltipForLabel(label) {
-                        if (!label || !label.visible || !label.text || label.text.length === 0 || !(label.implicitWidth > label.width)) {
-                            return ""
-                        }
-                        const topLeft = label.mapToItem(trackDelegate, 0, 0)
-                        if (mouseX < topLeft.x || mouseX > topLeft.x + label.width) {
-                            return ""
-                        }
-                        return label.text
-                    }
-
-                    const titleText = tooltipForLabel(titleLabel)
-                    if (titleText.length > 0) {
-                        return titleText
-                    }
-                    const artistText = tooltipForLabel(artistLabel)
-                    if (artistText.length > 0) {
-                        return artistText
-                    }
-                    return tooltipForLabel(albumLabel)
                 }
 
                 width: playlistView.width
@@ -1765,95 +1600,40 @@ Item {
                     anchors.rightMargin: root.horizontalPadding
                     spacing: root.columnSpacing
 
-                    Item {
-                        Layout.preferredWidth: root.indexColumnWidth
-                        Layout.fillHeight: true
+                    Repeater {
+                        model: root.effectiveColumns
 
-                        ToolButton {
-                            anchors.centerIn: parent
-                            visible: trackDelegate.highlighted
-                            icon.source: IconResolver.themed("audio-volume-high", themeManager.darkMode)
-                            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
-                            display: AbstractButton.IconOnly
-                            enabled: false
+                        delegate: AppComponents.PlaylistColumnCell {
+                            id: cellComponent
+                            required property var modelData
+                            required property int index
+                            readonly property string colId: String(modelData.id || "")
+                            readonly property var desc: playlistColumnLayoutManager.columnDescriptor(colId)
+
+                            columnId: colId
+                            rawValue: root.getTrackModelRoleValue(trackDelegate, colId)
+                            extraData: ({
+                                "sampleRate": trackDelegate.sampleRate,
+                                "bitDepth": trackDelegate.bitDepth,
+                                "format": trackDelegate.format,
+                                "artist": trackDelegate.artist,
+                                "title": trackDelegate.title,
+                                "filePath": trackDelegate.filePath,
+                                "queuePosition": trackDelegate.queuePosition,
+                                "hasChapters": trackDelegate.hasChapters
+                            })
+                            alignment: String(desc.alignment || "left")
+                            isHighlighted: trackDelegate.highlighted
+                            isPlaying: trackDelegate.activeTrack && playbackController.playbackState === 1
+                            isCueSegment: false
+                            textColor: trackDelegate.highlighted
+                                       ? themeManager.primaryColor
+                                       : (colId === "artist" || colId === "duration" ? themeManager.textSecondaryColor : (colId === "album" || colId === "format" || colId === "bitrate" ? themeManager.textMutedColor : themeManager.textColor))
+                            Layout.preferredWidth: Number(modelData.computedWidth || modelData.width || (desc ? desc.defaultWidth : 100))
+                            Layout.minimumWidth: Number(desc ? desc.minimumWidth : 40)
+                            Layout.fillWidth: Boolean(desc && desc.stretchWeight > 0)
+                            Layout.fillHeight: true
                         }
-
-                        Label {
-                            anchors.centerIn: parent
-                            visible: !trackDelegate.highlighted
-                            text: root.formatTrackNumber(trackDelegate.sourceIndex)
-                            color: themeManager.textMutedColor
-                            font.family: UiMetrics.monoFontFamily
-                            font.pointSize: UiMetrics.bodyPointSize
-                        }
-
-                        Label {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 1
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: trackDelegate.queuePosition >= 0
-                            text: "Q" + String(trackDelegate.queuePosition + 1)
-                            color: themeManager.primaryColor
-                            font.family: UiMetrics.monoFontFamily
-                            font.pointSize: UiMetrics.microPointSize
-                            font.bold: true
-                            opacity: trackDelegate.highlighted ? 1.0 : 0.82
-                        }
-                    }
-
-                    Label {
-                        id: titleLabel
-                        Layout.preferredWidth: root.titleColumnWidth
-                        text: root.formatTrackTitle(trackDelegate.sourceIndex,
-                                                     trackDelegate.title,
-                                                     trackDelegate.displayName)
-                        elide: Text.ElideRight
-                        color: trackDelegate.highlighted ? themeManager.primaryColor : themeManager.textColor
-                        font.family: UiMetrics.playlistFontFamily
-                        font.pointSize: UiMetrics.bodyPointSize
-                        font.bold: trackDelegate.highlighted
-                    }
-
-                    Label {
-                        id: artistLabel
-                        visible: root.showArtistColumn
-                        Layout.preferredWidth: root.artistColumnWidth
-                        text: trackDelegate.artist
-                        elide: Text.ElideRight
-                        color: themeManager.textSecondaryColor
-                        font.family: UiMetrics.playlistFontFamily
-                        font.pointSize: UiMetrics.bodyPointSize
-                    }
-
-                    Label {
-                        id: albumLabel
-                        visible: root.showAlbumColumn
-                        Layout.preferredWidth: root.albumColumnWidth
-                        text: trackDelegate.album
-                        elide: Text.ElideRight
-                        color: themeManager.textMutedColor
-                        font.family: UiMetrics.playlistFontFamily
-                        font.pointSize: UiMetrics.bodyPointSize
-                    }
-
-                    Label {
-                        Layout.preferredWidth: root.durationColumnWidth
-                        horizontalAlignment: Text.AlignRight
-                        text: root.formatDuration(trackDelegate.duration)
-                        color: themeManager.textSecondaryColor
-                        font.family: UiMetrics.monoFontFamily
-                        font.pointSize: UiMetrics.bodyPointSize
-                    }
-
-                    Label {
-                        visible: root.showBitrateColumn
-                        Layout.preferredWidth: root.bitrateColumnWidth
-                        text: root.formatBitrate(trackDelegate.format, trackDelegate.bitrate)
-                        elide: Text.ElideRight
-                        color: trackDelegate.highlighted ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.8)
-                                                       : themeManager.textMutedColor
-                        font.family: UiMetrics.monoFontFamily
-                        font.pointSize: UiMetrics.bodyPointSize
                     }
                 }
 
@@ -1862,9 +1642,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    readonly property string hoveredCellTooltipText: trackDelegate.truncatedCellTooltipAt(mouseX)
-                    ToolTip.text: hoveredCellTooltipText
-                    ToolTip.visible: containsMouse && hoveredCellTooltipText.length > 0
                     onPressed: function(mouse) {
                         root.tablePressed()
                         if (mouse.button !== Qt.LeftButton) {
@@ -1913,6 +1690,7 @@ Item {
                         if (mouse.button === Qt.RightButton) {
                             contextMenu.trackIndex = trackDelegate.sourceIndex
                             contextMenu.trackFilePath = trackDelegate.filePath
+                            contextMenu.trackChapters = trackModel ? trackModel.chaptersForIndex(trackDelegate.sourceIndex) : []
                             contextMenu.popup()
                         }
                     }
@@ -2016,6 +1794,7 @@ Item {
         id: contextMenu
         property int trackIndex: -1
         property string trackFilePath: ""
+        property var trackChapters: []
         readonly property bool trackIsLocalFile: root.isLocalTrackSource(trackFilePath)
 
         AccentMenuItem {
@@ -2041,6 +1820,34 @@ Item {
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             enabled: contextMenu.trackIndex >= 0 && contextMenu.trackIndex !== playbackController.activeTrackIndex
             onTriggered: playbackController.addToQueue(contextMenu.trackIndex)
+        }
+
+        AccentMenu {
+            id: trackChaptersMenu
+            title: root.tr("playlist.chapters")
+            icon.source: IconResolver.themed("view-list-tree", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            visible: contextMenu.trackChapters && contextMenu.trackChapters.length > 0
+
+            Instantiator {
+                model: contextMenu.trackChapters ? contextMenu.trackChapters : []
+                delegate: AccentMenuItem {
+                    required property var modelData
+                    required property int index
+                    readonly property int targetIndex: contextMenu.trackIndex
+                    text: (modelData.startTimeFormatted ? modelData.startTimeFormatted + "  " : "") + (modelData.title || (root.tr("player.chapters") + " " + (index + 1)))
+                    onTriggered: {
+                        playbackController.requestPlayIndex(targetIndex, "playlist.chapter_play")
+                        audioEngine.seekWithSource(Number(modelData.startTimeMs || 0), "qml.playlist_chapter_seek")
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    trackChaptersMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    trackChaptersMenu.removeItem(object)
+                }
+            }
         }
 
         AccentMenuItem {
@@ -2144,6 +1951,16 @@ Item {
             icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
             enabled: playbackController.queueCount > 0
             onTriggered: playbackController.clearQueue()
+        }
+
+        AccentMenuSeparator {}
+
+        AccentMenuItem {
+            text: root.tr("playlist.resetPlaylist")
+            icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            enabled: trackModel.canResetPlaylist
+            onTriggered: trackModel.resetPlaylist()
         }
     }
 

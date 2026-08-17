@@ -1023,6 +1023,74 @@ void PlaybackController::seekRelative(qint64 deltaMs)
                                   QStringLiteral("playback_controller.seek_relative_cue_segment"));
 }
 
+void PlaybackController::seekToChapter(int chapterIndex)
+{
+    if (!m_audioEngine || !m_trackModel) {
+        return;
+    }
+    const int currentIndex = effectiveCurrentIndex();
+    if (currentIndex < 0 || currentIndex >= m_trackModel->rowCount()) {
+        return;
+    }
+    const QVariantList chapters = m_trackModel->chaptersForIndex(currentIndex);
+    if (chapterIndex < 0 || chapterIndex >= chapters.size()) {
+        return;
+    }
+    const QVariantMap chMap = chapters.at(chapterIndex).toMap();
+    const qint64 startMs = chMap.value(QStringLiteral("startTimeMs")).toLongLong();
+    m_audioEngine->seekWithSource(startMs, QStringLiteral("playback_controller.seek_to_chapter"));
+}
+
+void PlaybackController::nextChapter()
+{
+    if (!m_audioEngine || !m_trackModel) {
+        return;
+    }
+    const int currentIndex = effectiveCurrentIndex();
+    if (currentIndex < 0 || currentIndex >= m_trackModel->rowCount()) {
+        return;
+    }
+    const QVariantList chapters = m_trackModel->chaptersForIndex(currentIndex);
+    if (chapters.isEmpty()) {
+        return;
+    }
+    const qint64 currentPos = qMax<qint64>(0, m_audioEngine->position());
+    const int activeChapterIdx = m_trackModel->chapterIndexAtPosition(currentIndex, currentPos);
+    if (activeChapterIdx + 1 < chapters.size()) {
+        seekToChapter(activeChapterIdx + 1);
+    }
+}
+
+void PlaybackController::previousChapter()
+{
+    if (!m_audioEngine || !m_trackModel) {
+        return;
+    }
+    const int currentIndex = effectiveCurrentIndex();
+    if (currentIndex < 0 || currentIndex >= m_trackModel->rowCount()) {
+        return;
+    }
+    const QVariantList chapters = m_trackModel->chaptersForIndex(currentIndex);
+    if (chapters.isEmpty()) {
+        return;
+    }
+    const qint64 currentPos = qMax<qint64>(0, m_audioEngine->position());
+    const int activeChapterIdx = m_trackModel->chapterIndexAtPosition(currentIndex, currentPos);
+    if (activeChapterIdx >= 0 && activeChapterIdx < chapters.size()) {
+        const QVariantMap chMap = chapters.at(activeChapterIdx).toMap();
+        const qint64 startMs = chMap.value(QStringLiteral("startTimeMs")).toLongLong();
+        if (currentPos - startMs > 2000) {
+            seekToChapter(activeChapterIdx);
+            return;
+        }
+    }
+    if (activeChapterIdx > 0) {
+        seekToChapter(activeChapterIdx - 1);
+    } else {
+        seekToChapter(0);
+    }
+}
+
 quint64 PlaybackController::nextTrackTransitionId()
 {
     m_transitionIdCounter = qMax(m_transitionIdCounter, m_activeTrackTransitionId);

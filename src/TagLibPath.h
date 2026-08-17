@@ -10,6 +10,7 @@
 #include <taglib/audioproperties.h>
 #include <taglib/fileref.h>
 #include <taglib/flacfile.h>
+#include <taglib/mp4file.h>
 #include <taglib/mpegfile.h>
 #include <taglib/taglib.h>
 #include <taglib/tiostream.h>
@@ -331,6 +332,46 @@ private:
     std::unique_ptr<TagLib::FLAC::File> m_file;
 };
 
+class Mp4FileHandle
+{
+public:
+    explicit Mp4FileHandle(const QString &path, bool readProperties = true)
+    {
+        NativePath nativePath(path);
+        try {
+            m_file = std::make_unique<TagLib::MP4::File>(
+                nativePath.fileName(),
+                readProperties,
+                TagLib::AudioProperties::Fast);
+        } catch (...) {
+            m_file.reset();
+        }
+
+        if ((!m_file || !m_file->isValid()) && QFile::exists(path)) {
+            m_stream = std::make_unique<QtFileStream>(path, true);
+            if (m_stream->isOpen()) {
+                try {
+                    m_file = std::make_unique<TagLib::MP4::File>(
+                        m_stream.get(),
+                        readProperties,
+                        TagLib::AudioProperties::Fast);
+                } catch (...) {
+                    m_file.reset();
+                }
+            }
+        }
+    }
+
+    TagLib::MP4::File *get() const { return m_file.get(); }
+    TagLib::MP4::File &operator*() const { return *m_file; }
+    TagLib::MP4::File *operator->() const { return m_file.get(); }
+    explicit operator bool() const { return m_file && m_file->isValid(); }
+
+private:
+    std::unique_ptr<QtFileStream> m_stream;
+    std::unique_ptr<TagLib::MP4::File> m_file;
+};
+
 inline FileRefHandle makeFileRef(
     const QString &path,
     bool readAudioProperties = true,
@@ -347,6 +388,11 @@ inline MpegFileHandle openMpegFile(const QString &path, bool readProperties = tr
 inline FlacFileHandle openFlacFile(const QString &path, bool readProperties = true)
 {
     return FlacFileHandle(path, readProperties);
+}
+
+inline Mp4FileHandle openMp4File(const QString &path, bool readProperties = true)
+{
+    return Mp4FileHandle(path, readProperties);
 }
 
 } // namespace WaveFlux::TagLibPath

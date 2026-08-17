@@ -8,7 +8,7 @@ class QSqlDatabase;
 class MigrationManager
 {
 public:
-    static constexpr int kLatestVersion = 3;
+    static constexpr int kLatestVersion = 4;
 
     bool migrate(const QString &connectionName);
     QString lastError() const { return m_lastError; }
@@ -19,6 +19,7 @@ private:
     bool applyMigrationV1(QSqlDatabase *db);
     bool applyMigrationV2(QSqlDatabase *db);
     bool applyMigrationV3(QSqlDatabase *db);
+    bool applyMigrationV4(QSqlDatabase *db);
     bool executeStatement(QSqlDatabase *db, const QString &sql);
     bool runIntegrityCheck(const QString &connectionName);
 

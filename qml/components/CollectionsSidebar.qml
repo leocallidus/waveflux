@@ -657,6 +657,78 @@ Rectangle {
             }
         }
 
+        Rectangle {
+            id: currentPlaylistRow
+            Layout.fillWidth: true
+            height: 34
+            radius: themeManager.borderRadius
+            color: {
+                if (!root.collectionModeActive && root.selectedPlaylistProfileId < 0) {
+                    return Qt.rgba(themeManager.primaryColor.r,
+                                   themeManager.primaryColor.g,
+                                   themeManager.primaryColor.b,
+                                   0.16)
+                }
+                return currentPlaylistMouseArea.containsMouse
+                    ? Qt.rgba(themeManager.primaryColor.r,
+                              themeManager.primaryColor.g,
+                              themeManager.primaryColor.b,
+                              0.08)
+                    : "transparent"
+            }
+            border.width: (!root.collectionModeActive && root.selectedPlaylistProfileId < 0) ? 1 : 0
+            border.color: themeManager.primaryColor
+
+            MouseArea {
+                id: currentPlaylistMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.playlistRequested()
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 4
+                spacing: 6
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 0
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.tr("collections.currentPlaylist")
+                        color: themeManager.textColor
+                        elide: Text.ElideRight
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.bodyPointSize
+                        font.bold: (!root.collectionModeActive && root.selectedPlaylistProfileId < 0)
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.tr("playlists.trackCount").arg(trackModel.count)
+                        color: themeManager.textMutedColor
+                        elide: Text.ElideRight
+                        font.family: UiMetrics.playlistFontFamily
+                        font.pointSize: UiMetrics.microPointSize
+                    }
+                }
+
+                ToolButton {
+                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    display: AbstractButton.IconOnly
+                    enabled: trackModel.count > 0
+                    onClicked: root.openSavePlaylistDialog()
+                    ToolTip.text: root.tr("playlists.saveCurrent")
+                    ToolTip.visible: hovered
+                }
+            }
+        }
+
         Label {
             Layout.fillWidth: true
             visible: root.playlistsEnabled && playlistsModel.count === 0

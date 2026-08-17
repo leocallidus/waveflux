@@ -132,6 +132,7 @@ Item {
             info.durationMs = _engineDuration
         }
         info.positionMs = Math.max(0, Number(_enginePosition || 0))
+        info.chapter = (trackModel && trackModel.hasChapters) ? trackModel.currentChapterTitleAtPosition(info.positionMs) : ""
         if (info.playlistIndex === undefined) {
             info.playlistIndex = _currentIndex
         }

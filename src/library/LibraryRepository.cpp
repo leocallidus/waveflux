@@ -29,6 +29,12 @@ struct DbTrackRow {
     qint64 mtimeMs = 0;
     qint64 addedAtMs = 0;
     qint64 updatedAtMs = 0;
+    QString description;
+    QString composer;
+    QString originalArtist;
+    QString copyright;
+    QString url;
+    QString encoder;
 };
 
 QString normalizePath(const QString &path)
@@ -122,11 +128,11 @@ public:
             "INSERT INTO tracks ("
             "canonical_path, file_name, title, artist, album, duration_ms, format, bitrate, "
             "sample_rate, bit_depth, album_art_uri, file_size_bytes, mtime_ms, added_at_ms, "
-            "updated_at_ms, deleted_at_ms) "
+            "updated_at_ms, deleted_at_ms, description, composer, original_artist, copyright, url, encoder) "
             "VALUES ("
             ":canonical_path, :file_name, :title, :artist, :album, :duration_ms, :format, :bitrate, "
             ":sample_rate, :bit_depth, :album_art_uri, :file_size_bytes, :mtime_ms, :added_at_ms, "
-            ":updated_at_ms, NULL) "
+            ":updated_at_ms, NULL, :description, :composer, :original_artist, :copyright, :url, :encoder) "
             "ON CONFLICT(canonical_path) DO UPDATE SET "
             "file_name = excluded.file_name, "
             "title = CASE "
@@ -165,6 +171,36 @@ public:
             "    WHEN excluded.album_art_uri IS NOT NULL AND length(trim(excluded.album_art_uri)) > 0 "
             "    THEN excluded.album_art_uri "
             "    ELSE tracks.album_art_uri "
+            "END, "
+            "description = CASE "
+            "    WHEN excluded.description IS NOT NULL AND length(trim(excluded.description)) > 0 "
+            "    THEN excluded.description "
+            "    ELSE tracks.description "
+            "END, "
+            "composer = CASE "
+            "    WHEN excluded.composer IS NOT NULL AND length(trim(excluded.composer)) > 0 "
+            "    THEN excluded.composer "
+            "    ELSE tracks.composer "
+            "END, "
+            "original_artist = CASE "
+            "    WHEN excluded.original_artist IS NOT NULL AND length(trim(excluded.original_artist)) > 0 "
+            "    THEN excluded.original_artist "
+            "    ELSE tracks.original_artist "
+            "END, "
+            "copyright = CASE "
+            "    WHEN excluded.copyright IS NOT NULL AND length(trim(excluded.copyright)) > 0 "
+            "    THEN excluded.copyright "
+            "    ELSE tracks.copyright "
+            "END, "
+            "url = CASE "
+            "    WHEN excluded.url IS NOT NULL AND length(trim(excluded.url)) > 0 "
+            "    THEN excluded.url "
+            "    ELSE tracks.url "
+            "END, "
+            "encoder = CASE "
+            "    WHEN excluded.encoder IS NOT NULL AND length(trim(excluded.encoder)) > 0 "
+            "    THEN excluded.encoder "
+            "    ELSE tracks.encoder "
             "END, "
             "file_size_bytes = excluded.file_size_bytes, "
             "mtime_ms = excluded.mtime_ms, "
@@ -206,6 +242,12 @@ public:
             query.bindValue(QStringLiteral(":mtime_ms"), row.mtimeMs);
             query.bindValue(QStringLiteral(":added_at_ms"), row.addedAtMs);
             query.bindValue(QStringLiteral(":updated_at_ms"), row.updatedAtMs);
+            query.bindValue(QStringLiteral(":description"), row.description);
+            query.bindValue(QStringLiteral(":composer"), row.composer);
+            query.bindValue(QStringLiteral(":original_artist"), row.originalArtist);
+            query.bindValue(QStringLiteral(":copyright"), row.copyright);
+            query.bindValue(QStringLiteral(":url"), row.url);
+            query.bindValue(QStringLiteral(":encoder"), row.encoder);
 
             if (!query.exec()) {
                 const QString message = QStringLiteral("%1 (path=%2)")
@@ -556,6 +598,12 @@ private:
         }
         row.addedAtMs = track.addedAtMs > 0 ? track.addedAtMs : nowMs;
         row.updatedAtMs = nowMs;
+        row.description = track.description.trimmed();
+        row.composer = track.composer.trimmed();
+        row.originalArtist = track.originalArtist.trimmed();
+        row.copyright = track.copyright.trimmed();
+        row.url = track.url.trimmed();
+        row.encoder = track.encoder.trimmed();
         return row;
     }
 

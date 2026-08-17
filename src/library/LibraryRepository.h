@@ -21,6 +21,12 @@ struct LibraryTrackUpsertData {
     int bitDepth = 0;
     QString albumArtUri;
     qint64 addedAtMs = 0;
+    QString description;
+    QString composer;
+    QString originalArtist;
+    QString copyright;
+    QString url;
+    QString encoder;
 };
 
 struct LibraryPlaybackEventData {

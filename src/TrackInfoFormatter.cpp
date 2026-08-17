@@ -135,6 +135,8 @@ RenderResult placeholderValue(QChar token,
         return stringValue(track.year);
     case 'n':
         return stringValue(track.trackNumber);
+    case 'h':
+        return stringValue(track.chapter);
     case 'i':
         if (renderContext == RenderContext::Playlist && track.playlistIndex >= 0) {
             return {QString::number(track.playlistIndex + 1), true};

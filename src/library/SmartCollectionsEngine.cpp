@@ -575,7 +575,8 @@ QVariantList SmartCollectionsEngine::resolveCollectionTracks(int id, int overrid
         "t.bitrate, t.sample_rate, t.bit_depth, t.album_art_uri, t.added_at_ms, "
         "COALESCE(s.play_count, 0), COALESCE(s.skip_count, 0), "
         "COALESCE(s.completion_count, 0), COALESCE(s.total_listen_ms, 0), "
-        "COALESCE(s.last_played_at_ms, 0), COALESCE(s.favorite, 0), COALESCE(s.rating, 0) "
+        "COALESCE(s.last_played_at_ms, 0), COALESCE(s.favorite, 0), COALESCE(s.rating, 0), "
+        "t.description, t.composer, t.original_artist, t.copyright, t.url, t.encoder "
         "FROM tracks t "
         "LEFT JOIN track_stats s ON s.track_id = t.id "
         "WHERE t.deleted_at_ms IS NULL");
@@ -1682,6 +1683,12 @@ QVariantMap SmartCollectionsEngine::trackRecordFromQuery(const QSqlQuery &query)
     record.insert(QStringLiteral("lastPlayedAtMs"), query.value(15).toLongLong());
     record.insert(QStringLiteral("favorite"), query.value(16).toInt() != 0);
     record.insert(QStringLiteral("rating"), query.value(17).toInt());
+    record.insert(QStringLiteral("description"), query.value(18).toString());
+    record.insert(QStringLiteral("composer"), query.value(19).toString());
+    record.insert(QStringLiteral("originalArtist"), query.value(20).toString());
+    record.insert(QStringLiteral("copyright"), query.value(21).toString());
+    record.insert(QStringLiteral("url"), query.value(22).toString());
+    record.insert(QStringLiteral("encoder"), query.value(23).toString());
     return record;
 }
 

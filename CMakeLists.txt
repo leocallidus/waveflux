@@ -148,6 +148,7 @@ set(SOURCES
     src/TrayManager.cpp
     src/PeaksCacheManager.cpp
     src/PerformanceProfiler.cpp
+    src/PlaylistColumnLayoutManager.cpp
     src/library/DatabaseManager.cpp
     src/library/MigrationManager.cpp
     src/library/LibraryRepository.cpp
@@ -211,6 +212,7 @@ set(HEADERS
     src/TrayManager.h
     src/XdgPortalFilePicker.h
     src/PerformanceProfiler.h
+    src/PlaylistColumnLayoutManager.h
     src/library/DatabaseManager.h
     src/library/MigrationManager.h
     src/library/LibraryRepository.h
@@ -298,6 +300,9 @@ qt_add_qml_module(waveflux
         qml/EqualizerDialog.qml
         qml/FragmentRepeatDialog.qml
         qml/SmartCollectionDialog.qml
+        qml/PlaylistColumnsDialog.qml
+        qml/components/PlaylistColumnHeader.qml
+        qml/components/PlaylistColumnCell.qml
         qml/components/CollectionsSidebar.qml
     RESOURCES
         qml/IconResolver.js

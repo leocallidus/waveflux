@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style type="text/css">.ColorScheme-Text { color: #232629; }</style>
+  </defs>
+  <path style="fill:currentColor;fill-opacity:1;stroke:none" d="M 12 4 C 7.58 4 4 7.58 4 12 L 1 12 L 5 16 L 9 12 L 6 12 C 6 8.69 8.69 6 12 6 C 15.31 6 18 8.69 18 12 C 18 15.31 15.31 18 12 18 C 10.28 18 8.75 17.27 7.66 16.1 L 6.24 17.52 C 7.69 19.06 9.73 20 12 20 C 16.42 20 20 16.42 20 12 C 20 7.58 16.42 4 12 4 z" class="ColorScheme-Text"/>
+</svg>

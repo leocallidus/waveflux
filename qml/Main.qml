@@ -879,11 +879,16 @@ Kirigami.ApplicationWindow {
             return
         }
         const switchingContext = collectionModeActive || Number(selectedPlaylistProfileId) !== Number(playlistId)
-        flushSelectedPlaylistAutosave(false)
-        captureActiveContextProgress(true)
-        captureActiveTrackListViewState()
         if (switchingContext) {
+            flushSelectedPlaylistAutosave(false)
+            captureActiveContextProgress(true)
+            captureActiveTrackListViewState()
             stopPlaybackForContextSwitch()
+        } else {
+            if (selectedPlaylistAutosaveTimer.running) {
+                selectedPlaylistAutosaveTimer.stop()
+            }
+            captureActiveContextProgress(false)
         }
 
         const payload = playlistProfilesManager.loadPlaylist(playlistId)
@@ -1919,6 +1924,14 @@ Kirigami.ApplicationWindow {
         xdgPortalFilePicker.saveFile(root.tr("dialogs.exportPlaylist"), "playlist.m3u")
     }
 
+    function cmdResetPlaylist() {
+        ensurePlaylistModeForMutation()
+        if (playlistTable && playlistTable.clearActiveSort) {
+            playlistTable.clearActiveSort(false)
+        }
+        trackModel.resetPlaylist()
+    }
+
     function cmdClearPlaylist() {
         ensurePlaylistModeForMutation()
         trackModel.clear()
@@ -2467,6 +2480,7 @@ Kirigami.ApplicationWindow {
         readonly property var fileOpenAudioConverter: actionFileOpenAudioConverter
         readonly property var fileOpenUrl: actionFileOpenUrl
         readonly property var fileImportUrl: actionFileImportUrl
+        readonly property var fileResetPlaylist: actionFileResetPlaylist
         readonly property var fileExportPlaylist: actionFileExportPlaylist
         readonly property var fileClearPlaylist: actionFileClearPlaylist
         readonly property var fileSettings: actionFileSettings
@@ -2498,6 +2512,8 @@ Kirigami.ApplicationWindow {
         readonly property var playbackStop: actionPlaybackStop
         readonly property var playbackPrevious: actionPlaybackPrevious
         readonly property var playbackNext: actionPlaybackNext
+        readonly property var playbackPreviousChapter: actionPlaybackPreviousChapter
+        readonly property var playbackNextChapter: actionPlaybackNextChapter
         readonly property var playbackSeekBack5s: actionPlaybackSeekBack5s
         readonly property var playbackSeekForward5s: actionPlaybackSeekForward5s
         readonly property var playbackToggleShuffle: actionPlaybackToggleShuffle
@@ -2532,6 +2548,7 @@ Kirigami.ApplicationWindow {
             actionFileOpenUrl,
             actionFileImportUrl,
             actionFileShowUrlImportSession,
+            actionFileResetPlaylist,
             actionFileExportPlaylist,
             actionFileClearPlaylist,
             actionFileSettings,
@@ -2569,6 +2586,8 @@ Kirigami.ApplicationWindow {
             actionPlaybackStop,
             actionPlaybackPrevious,
             actionPlaybackNext,
+            actionPlaybackPreviousChapter,
+            actionPlaybackNextChapter,
             actionPlaybackSeekBack5s,
             actionPlaybackSeekForward5s,
             actionPlaybackToggleShuffle,
@@ -2650,6 +2669,16 @@ Kirigami.ApplicationWindow {
         shortcut: root.actionShortcut(objectName)
         enabled: root.ytDlpImportSessionAvailable
         onTriggered: root.cmdShowCurrentYtDlpImportSession()
+    }
+
+    Action {
+        id: actionFileResetPlaylist
+        objectName: "file.resetPlaylist"
+        text: root.tr("menu.resetPlaylist")
+        icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+        shortcut: root.actionShortcut(objectName)
+        enabled: trackModel.canResetPlaylist
+        onTriggered: root.cmdResetPlaylist()
     }
 
     Action {
@@ -2913,6 +2942,32 @@ Kirigami.ApplicationWindow {
         shortcut: root.actionShortcut(objectName)
         enabled: playbackController.canGoNext
         onTriggered: root.cmdPlaybackNext()
+    }
+
+    Action {
+        id: actionPlaybackPreviousChapter
+        objectName: "playback.previousChapter"
+        text: root.tr("menu.previousChapter")
+        shortcut: root.actionShortcut(objectName)
+        enabled: trackModel.hasChapters
+        onTriggered: {
+            if (playbackController) {
+                playbackController.previousChapter()
+            }
+        }
+    }
+
+    Action {
+        id: actionPlaybackNextChapter
+        objectName: "playback.nextChapter"
+        text: root.tr("menu.nextChapter")
+        shortcut: root.actionShortcut(objectName)
+        enabled: trackModel.hasChapters
+        onTriggered: {
+            if (playbackController) {
+                playbackController.nextChapter()
+            }
+        }
     }
 
     Action {
@@ -3664,6 +3719,7 @@ Kirigami.ApplicationWindow {
                 function onExportPlaylistRequested() {
                     root.cmdExportPlaylist()
                 }
+                function onResetPlaylistRequested() { root.cmdResetPlaylist() }
                 function onClearPlaylistRequested() { root.cmdClearPlaylist() }
                 function onEditTagsRequested(filePath) {
                     if (!root.isLocalTrackSource(filePath)) {
@@ -3700,6 +3756,9 @@ Kirigami.ApplicationWindow {
                 }
                 function onPlaylistModeRequested() {
                     root.activateCurrentPlaylistView()
+                }
+                function onConfigureColumnsRequested() {
+                    playlistColumnsDialog.open()
                 }
                 function onNewPlaylistRequested() {
                     root.cmdLibraryAddPlaylist()
@@ -3910,6 +3969,7 @@ Kirigami.ApplicationWindow {
                         }
                     }
                     onTablePressed: root.clearSearchFieldFocusFromPlaylistTable()
+                    onConfigureColumnsRequested: playlistColumnsDialog.open()
                 }
 
                 Loader {
@@ -4731,12 +4791,24 @@ Kirigami.ApplicationWindow {
     SettingsDialog {
         id: settingsDialog
         sidebarSectionController: root
+        onPlaylistColumnsRequested: playlistColumnsDialog.open()
     }
 
     Connections {
         target: settingsDialog
         function onClosed() {
             performanceProfiler.captureMemoryCheckpoint("dialog.settings.closed")
+        }
+    }
+
+    PlaylistColumnsDialog {
+        id: playlistColumnsDialog
+    }
+
+    Connections {
+        target: playlistColumnsDialog
+        function onClosed() {
+            performanceProfiler.captureMemoryCheckpoint("dialog.playlist_columns.closed")
         }
     }
 
@@ -4967,7 +5039,31 @@ Kirigami.ApplicationWindow {
             }
 
             root.ensurePlaylistModeForMutation()
+            const wasEmpty = trackModel.count === 0
+            const wasWorkingPlaylist = selectedPlaylistProfileId <= 0
             trackModel.addFolder(folderUrl)
+            if (wasEmpty && wasWorkingPlaylist && trackModel.count > 0 && playlistProfilesManager) {
+                const folderPath = root.localFilePathFromUrl(folderUrl)
+                let folderName = ""
+                if (folderPath.length > 0) {
+                    const normalized = folderPath.replace(/\/+$/, "")
+                    const parts = normalized.split("/")
+                    if (parts.length > 0) {
+                        folderName = parts[parts.length - 1]
+                    }
+                }
+                if (folderName.length > 0) {
+                    const uniqueName = makeUniquePlaylistName(folderName)
+                    const newId = playlistProfilesManager.savePlaylist(
+                                uniqueName,
+                                trackModel.exportTracksSnapshot(),
+                                trackModel.currentIndex >= 0 ? trackModel.currentIndex : 0)
+                    if (newId > 0) {
+                        selectedPlaylistProfileId = newId
+                        playlistPlaybackProgressById[String(newId)] = createPlaybackProgressState()
+                    }
+                }
+            }
             if (trackModel.count > 0 && playbackController.activeTrackIndex < 0) {
                 playbackController.requestPlayIndex(0, "main.open_folder_autoplay")
             }

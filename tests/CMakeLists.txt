@@ -552,6 +552,10 @@ target_include_directories(tst_track_model PRIVATE
     ${TAGLIB_INCLUDE_DIRS}
 )
 
+target_compile_definitions(tst_track_model PRIVATE
+    WAVEFLUX_PROJECT_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
+)
+
 target_link_libraries(tst_track_model PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -654,6 +658,26 @@ target_link_libraries(tst_app_dialog PRIVATE
 )
 
 add_test(NAME tst_app_dialog COMMAND tst_app_dialog)
+
+qt_add_executable(tst_playlist_column_layout_manager
+    tst_PlaylistColumnLayoutManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/PlaylistColumnLayoutManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+)
+
+target_include_directories(tst_playlist_column_layout_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_playlist_column_layout_manager PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test
+    KF6::I18n
+)
+
+add_test(NAME tst_playlist_column_layout_manager COMMAND tst_playlist_column_layout_manager)
 
 qt_add_executable(tst_theme_manager_ui_metrics
     tst_ThemeManagerUiMetrics.cpp

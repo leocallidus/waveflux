@@ -22,6 +22,21 @@ class LibraryRepository;
 class SearchRepository;
 class PlaybackController;
 
+struct TrackChapter {
+    QString title;
+    qint64 startTimeMs = 0;
+    qint64 endTimeMs = 0;
+
+    bool operator==(const TrackChapter &other) const {
+        return title == other.title
+            && startTimeMs == other.startTimeMs
+            && endTimeMs == other.endTimeMs;
+    }
+    bool operator!=(const TrackChapter &other) const {
+        return !(*this == other);
+    }
+};
+
 /**
  * @brief Track - Represents a single audio track in the playlist
  */
@@ -34,6 +49,13 @@ struct Track {
     QString genre;
     QString year;
     QString trackNumber;
+    QString description;
+    QString composer;
+    QString originalArtist;
+    QString copyright;
+    QString url;
+    QString encoder;
+    quint32 metadataCompletenessMask = 0;
     qint64 duration = 0; // in milliseconds
     qint64 addedAt = 0;  // unix ms timestamp
     QString format;
@@ -49,6 +71,7 @@ struct Track {
     int cueTrackNumber = 0;
     QString cueSheetPath;
     QString searchBlob;
+    QVector<TrackChapter> chapters;
 
     QString displayName() const {
         if (!title.isEmpty()) {
@@ -108,11 +131,21 @@ class TrackModel : public QAbstractListModel
     Q_PROPERTY(QString currentAlbumArt READ currentAlbumArt NOTIFY currentTrackChanged)
     Q_PROPERTY(bool currentIsLossless READ currentIsLossless NOTIFY currentTrackChanged)
     Q_PROPERTY(bool currentIsHiRes READ currentIsHiRes NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentDescription READ currentDescription NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentComposer READ currentComposer NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentOriginalArtist READ currentOriginalArtist NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentCopyright READ currentCopyright NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentUrl READ currentUrl NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString currentEncoder READ currentEncoder NOTIFY currentTrackChanged)
+    Q_PROPERTY(qint64 currentDateAdded READ currentDateAdded NOTIFY currentTrackChanged)
     Q_PROPERTY(qint64 playlistDuration READ playlistDuration NOTIFY playlistDurationChanged)
     Q_PROPERTY(int searchRevision READ searchRevision NOTIFY searchRevisionChanged)
     Q_PROPERTY(bool deterministicShuffleEnabled READ deterministicShuffleEnabled WRITE setDeterministicShuffleEnabled NOTIFY deterministicShuffleEnabledChanged)
     Q_PROPERTY(quint32 shuffleSeed READ shuffleSeed WRITE setShuffleSeed NOTIFY shuffleSeedChanged)
-    Q_PROPERTY(bool repeatableShuffle READ repeatableShuffle WRITE setRepeatableShuffle NOTIFY repeatableShuffleChanged)
+    Q_PROPERTY(bool canResetPlaylist READ canResetPlaylist NOTIFY canResetPlaylistChanged)
+    Q_PROPERTY(bool hasChapters READ currentHasChapters NOTIFY currentChaptersChanged)
+    Q_PROPERTY(QVariantList currentChapters READ currentChapters NOTIFY currentChaptersChanged)
+    Q_PROPERTY(int currentChapterCount READ currentChapterCount NOTIFY currentChaptersChanged)
 
 public:
     enum SearchFieldFlag {
@@ -149,7 +182,18 @@ public:
         BitDepthRole,
         BpmRole,
         ChannelCountRole,
-        AlbumArtRole
+        AlbumArtRole,
+        HasChaptersRole,
+        DescriptionRole,
+        ComposerRole,
+        OriginalArtistRole,
+        CopyrightRole,
+        UrlRole,
+        EncoderRole,
+        FileNameRole,
+        DateAddedRole,
+        TrackSummaryRole,
+        PlaylistPositionRole
     };
     Q_ENUM(Roles)
 
@@ -182,6 +226,13 @@ public:
     QString currentAlbumArt() const;
     bool currentIsLossless() const;
     bool currentIsHiRes() const;
+    QString currentDescription() const;
+    QString currentComposer() const;
+    QString currentOriginalArtist() const;
+    QString currentCopyright() const;
+    QString currentUrl() const;
+    QString currentEncoder() const;
+    qint64 currentDateAdded() const;
     qint64 playlistDuration() const;
     int searchRevision() const { return m_searchUiRevision; }
     bool deterministicShuffleEnabled() const { return m_deterministicShuffleEnabled; }
@@ -223,6 +274,8 @@ public:
                                                           const QString &normalizedQuery,
                                                           int fieldMask,
                                                           int quickFilterMask) const;
+    Q_INVOKABLE bool sortByColumn(const QString &columnId, Qt::SortOrder order);
+    Q_INVOKABLE void restoreBaselineOrder();
     Q_INVOKABLE void sortByNameAsc();
     Q_INVOKABLE void sortByNameDesc();
     Q_INVOKABLE void sortByDateAsc();
@@ -239,6 +292,10 @@ public:
     Q_INVOKABLE void sortByAlbumDesc();
     Q_INVOKABLE void restoreOrder(const QVariantList &filePaths);
     Q_INVOKABLE void shuffleOrder();
+    Q_INVOKABLE bool canResetPlaylist() const;
+    Q_INVOKABLE bool resetPlaylist();
+    Q_INVOKABLE void captureBaselineSnapshot();
+    Q_INVOKABLE QVariantList exportBaselineSnapshot() const;
     Q_INVOKABLE QVariantList exportTracksSnapshot() const;
     Q_INVOKABLE void importTracksSnapshot(const QVariantList &snapshot, int requestedCurrentIndex = -1);
     Q_INVOKABLE void applySmartCollectionRows(const QVariantList &rows);
@@ -261,6 +318,16 @@ public:
     Q_INVOKABLE void refreshMetadataForFile(const QString &filePath, bool includeAlbumArt = true);
     Q_INVOKABLE QVariantList cueSegmentsForFile(const QString &filePath,
                                                 qint64 fallbackDurationMs = -1) const;
+    Q_INVOKABLE bool hasChapters(int index) const;
+    Q_INVOKABLE QVariantList chaptersForIndex(int index) const;
+    Q_INVOKABLE QVariantList currentChapters() const;
+    Q_INVOKABLE bool currentHasChapters() const;
+    Q_INVOKABLE int currentChapterCount() const;
+    Q_INVOKABLE int chapterIndexAtPosition(int trackIndex, qint64 positionMs) const;
+    Q_INVOKABLE int currentChapterIndexAtPosition(qint64 positionMs) const;
+    Q_INVOKABLE QVariantMap chapterAt(int trackIndex, int chapterIndex) const;
+    Q_INVOKABLE QString chapterTitleAtPosition(int trackIndex, qint64 positionMs) const;
+    Q_INVOKABLE QString currentChapterTitleAtPosition(qint64 positionMs) const;
 
     const QVector<Track> &tracks() const { return m_tracks; }
     void setTracks(QVector<Track> tracks);
@@ -279,6 +346,8 @@ signals:
     void shuffleSeedChanged();
     void repeatableShuffleChanged();
     void playlistDurationChanged();
+    void canResetPlaylistChanged();
+    void currentChaptersChanged();
 
 private:
     friend class PlaybackController;
@@ -292,6 +361,12 @@ private:
         QString genre;
         QString year;
         QString trackNumber;
+        QString description;
+        QString composer;
+        QString originalArtist;
+        QString copyright;
+        QString url;
+        QString encoder;
         qint64 duration = 0;
         QString format;
         int bitrate = 0;
@@ -301,6 +376,7 @@ private:
         int channelCount = 0;
         QString albumArt;
         bool albumArtChecked = false;
+        QVector<TrackChapter> chapters;
     };
 
     static ParsedMetadata readMetadataForFile(const QString &filePath, bool includeAlbumArt);
@@ -438,6 +514,7 @@ private:
     QTimer m_playlistFolderRescanTimer;
     QString m_watchedPlaylistFolder;
     QSet<QString> m_knownWatchedFolderEntries;
+    QVector<Track> m_baselineTracks;
 };
 
 #endif // TRACKMODEL_H

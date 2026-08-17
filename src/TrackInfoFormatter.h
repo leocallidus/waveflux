@@ -34,6 +34,7 @@ public:
         int sampleRateHz = 0;
         int channelCount = 0;
         int bpm = 0;
+        QString chapter;
         QString filePath;
         QString appVersion;
     };

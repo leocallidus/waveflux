@@ -120,6 +120,8 @@ bool MigrationManager::applyMigrationStep(QSqlDatabase *db, int targetVersion)
         return applyMigrationV2(db);
     case 3:
         return applyMigrationV3(db);
+    case 4:
+        return applyMigrationV4(db);
     default:
         m_lastError = QStringLiteral("Unknown migration target version: %1").arg(targetVersion);
         return false;
@@ -266,6 +268,26 @@ bool MigrationManager::applyMigrationV3(QSqlDatabase *db)
                        "ON context_playback_progress(updated_at_ms DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_context_progress_type "
                        "ON context_playback_progress(context_type)")
+    };
+
+    for (const QString &statement : statements) {
+        if (!executeStatement(db, statement)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool MigrationManager::applyMigrationV4(QSqlDatabase *db)
+{
+    const QStringList statements = {
+        QStringLiteral("ALTER TABLE tracks ADD COLUMN description TEXT"),
+        QStringLiteral("ALTER TABLE tracks ADD COLUMN composer TEXT"),
+        QStringLiteral("ALTER TABLE tracks ADD COLUMN original_artist TEXT"),
+        QStringLiteral("ALTER TABLE tracks ADD COLUMN copyright TEXT"),
+        QStringLiteral("ALTER TABLE tracks ADD COLUMN url TEXT"),
+        QStringLiteral("ALTER TABLE tracks ADD COLUMN encoder TEXT")
     };
 
     for (const QString &statement : statements) {

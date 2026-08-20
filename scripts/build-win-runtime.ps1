@@ -56,11 +56,29 @@ if (Test-Path -LiteralPath $msysBinDir) {
     $env:PATH = "$msysBinDir;$env:PATH"
 }
 
+$cCompiler = Join-Path $msysBinDir "gcc.exe"
+$cxxCompiler = Join-Path $msysBinDir "g++.exe"
+$cmakePrefixPath = $msysPrefix.Replace("\", "/")
+
 if (-not $SkipBuild) {
-    & $cmakePath -S $repoRoot -B $buildDir -G Ninja `
-        -DCMAKE_BUILD_TYPE=Release `
-        -DBUILD_TESTING=ON `
-        "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$msysPrefix"
+    $cmakeArgs = @(
+        "-S", $repoRoot,
+        "-B", $buildDir,
+        "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DBUILD_TESTING=ON",
+        "-DCMAKE_PREFIX_PATH=$cmakePrefixPath",
+        "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$cmakePrefixPath"
+    )
+
+    if (Test-Path -LiteralPath $cCompiler) {
+        $cmakeArgs += "-DCMAKE_C_COMPILER=$($cCompiler.Replace('\', '/'))"
+    }
+    if (Test-Path -LiteralPath $cxxCompiler) {
+        $cmakeArgs += "-DCMAKE_CXX_COMPILER=$($cxxCompiler.Replace('\', '/'))"
+    }
+
+    & $cmakePath @cmakeArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Configure failed for build directory '$buildDir'."
     }

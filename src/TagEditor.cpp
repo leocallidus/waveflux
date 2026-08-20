@@ -39,7 +39,9 @@
 #include <taglib/aiffproperties.h>
 #include <taglib/mp4file.h>
 #include <taglib/mp4properties.h>
+#if __has_include(<taglib/mp4chapter.h>)
 #include <taglib/mp4chapter.h>
+#endif
 #include <taglib/xiphcomment.h>
 
 namespace {

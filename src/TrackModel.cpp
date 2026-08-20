@@ -55,7 +55,9 @@
 #include <taglib/textidentificationframe.h>
 #include <taglib/mp4properties.h>
 #include <taglib/mp4file.h>
+#if __has_include(<taglib/mp4chapter.h>)
 #include <taglib/mp4chapter.h>
+#endif
 #include <taglib/mpegfile.h>
 #if __has_include(<taglib/shortenproperties.h>)
 #include <taglib/shortenproperties.h>

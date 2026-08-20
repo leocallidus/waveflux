@@ -156,9 +156,9 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          location: 'C:\msys64'
           msystem: UCRT64
           update: true
+          path-type: inherit
           install: >-
             git
             mingw-w64-ucrt-x86_64-toolchain

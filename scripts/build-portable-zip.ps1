@@ -140,8 +140,10 @@ $zipPath = Join-Path $distDir "$packageBaseName.zip"
 
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 Ensure-CleanDirectory -Path $stageRoot
-if (Test-Path -LiteralPath $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
+if (-not $SkipZip) {
+    if (Test-Path -LiteralPath $zipPath) {
+        Remove-Item -LiteralPath $zipPath -Force
+    }
 }
 
 $rootFiles = Get-ChildItem -LiteralPath $buildDir -File | Where-Object {

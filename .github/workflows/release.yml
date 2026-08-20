@@ -54,7 +54,7 @@ jobs:
   build-deb:
     name: Build Debian Package
     runs-on: ubuntu-latest
-    container: debian:testing
+    container: debian:sid
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -65,9 +65,13 @@ jobs:
           apt-get install -y \
             build-essential cmake ninja-build pkgconf dpkg-dev git \
             qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-base-dev-tools \
-            extra-cmake-modules libkf6kirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
+            extra-cmake-modules libkf6coreaddons-dev libkf6i18n-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libopenmpt-dev libtag1-dev
+          KIRIGAMI_DEV=$(apt-cache search --names-only 'kirigami.*dev' | awk '{print $1}' | tr '\n' ' ')
+          if [ -n "$KIRIGAMI_DEV" ]; then
+            apt-get install -y $KIRIGAMI_DEV
+          fi
           git config --global --add safe.directory '*'
 
       - name: Build DEB package
@@ -176,8 +180,8 @@ jobs:
       - name: Install WiX Toolset
         shell: pwsh
         run: |
-          dotnet tool install --global wix
-          wix extension add --global WixToolset.UI.wixext
+          dotnet tool install --global wix --version "5.0.2"
+          wix extension add --global WixToolset.UI.wixext/5.0.2
 
       - name: Build Windows Portable ZIP & MSI
         shell: pwsh

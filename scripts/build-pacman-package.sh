@@ -137,7 +137,6 @@ depends=(
   'qt6-base'
   'qt6-declarative'
   'qt6-multimedia'
-  'qt6-quickcontrols2'
   'kirigami'
   'kcoreaddons'
   'ki18n'

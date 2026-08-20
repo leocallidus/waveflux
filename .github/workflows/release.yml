@@ -1,0 +1,265 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v1.4.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-appimage:
+    name: Build AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkgconf \
+            qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-tools-dev-tools qt6-base-dev-tools \
+            libqt6core6t64 libqt6gui6 libqt6widgets6 libqt6qml6 libqt6quick6 libqt6multimedia6 libqt6sql6 libqt6dbus6 \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates qml6-module-qtcore qml6-module-org-kde-kirigami \
+            extra-cmake-modules libkirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            libopenmpt-dev libtag1-dev patchelf file desktop-file-utils zsync wget
+          echo "/usr/lib/qt6/bin" >> $GITHUB_PATH
+
+      - name: Install appimagetool
+        run: |
+          sudo wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
+          sudo chmod +x /usr/local/bin/appimagetool
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          bash scripts/build-appimage.sh
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-package
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  build-deb:
+    name: Build Debian Package
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkgconf dpkg-dev \
+            qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-base-dev-tools \
+            extra-cmake-modules libkirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libopenmpt-dev libtag1-dev
+          echo "/usr/lib/qt6/bin" >> $GITHUB_PATH
+
+      - name: Build DEB package
+        run: |
+          bash scripts/build-debian-package.sh
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: dist/debian/*.deb
+          if-no-files-found: error
+
+  build-pacman:
+    name: Build Pacman (Arch) Package
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git cmake ninja gcc pkgconf \
+            qt6-base qt6-declarative qt6-multimedia qt6-quickcontrols2 \
+            kirigami kcoreaddons ki18n \
+            gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
+            libopenmpt taglib sudo tar gzip awk
+
+      - name: Build Pacman package
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          git config --global --add safe.directory '*'
+          chown -R builder:builder .
+          su builder -c "bash scripts/build-pacman-package.sh"
+
+      - name: Upload Pacman artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacman-package
+          path: dist/pacman/*.pkg.tar.zst
+          if-no-files-found: error
+
+  build-rpm:
+    name: Build RPM (Fedora) Package
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            cmake gcc-c++ ninja-build pkgconf-pkg-config rpm-build \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel \
+            kf6-kirigami-devel kf6-kcoreaddons-devel kf6-ki18n-devel \
+            gstreamer1-devel gstreamer1-plugins-base-devel \
+            libopenmpt-devel taglib-devel tar sed git
+
+      - name: Build RPM package
+        run: |
+          git config --global --add safe.directory '*'
+          bash scripts/build-rpm-package.sh
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: dist/rpm/*.rpm
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows (Portable & MSI)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-declarative
+            mingw-w64-ucrt-x86_64-qt6-multimedia
+            mingw-w64-ucrt-x86_64-qt6-quickcontrols2
+            mingw-w64-ucrt-x86_64-kf6-kirigami
+            mingw-w64-ucrt-x86_64-kf6-kcoreaddons
+            mingw-w64-ucrt-x86_64-kf6-ki18n
+            mingw-w64-ucrt-x86_64-gstreamer
+            mingw-w64-ucrt-x86_64-gst-plugins-base
+            mingw-w64-ucrt-x86_64-gst-plugins-good
+            mingw-w64-ucrt-x86_64-gst-plugins-bad
+            mingw-w64-ucrt-x86_64-libopenmpt
+            mingw-w64-ucrt-x86_64-taglib
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          wix extension add --global WixToolset.UI.wixext
+
+      - name: Build Windows Portable ZIP & MSI
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "C:\msys64\ucrt64"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "C:\msys64\ucrt64" -SkipBuild
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            dist/windows/*.zip
+            dist/windows/*.msi
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - build-appimage
+      - build-deb
+      - build-pacman
+      - build-rpm
+      - build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all built packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Prepare Release Notes & Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.event.inputs.tag_name }}"
+          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "main" ] || [ "$TAG_NAME" = "master" ]; then
+            if [ -n "${{ github.ref_name }}" ] && [ "${{ github.ref_type }}" = "tag" ]; then
+              TAG_NAME="${{ github.ref_name }}"
+            else
+              PROJ_VER="$(sed -nE 's/^[[:space:]]*project\([^)]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -n1)"
+              TAG_NAME="v${PROJ_VER:-1.4.0}"
+            fi
+          fi
+          VERSION="${TAG_NAME#v}"
+          echo "Processing Release for Tag: $TAG_NAME (Version: $VERSION)"
+
+          python3 -c "
+          import re
+          version = '''$VERSION'''.strip()
+          with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
+              content = f.read()
+          pattern = rf'##\s*\[{re.escape(version)}\][^\n]*\n([\s\S]*?)(?=\n##\s*\[|\Z)'
+          match = re.search(pattern, content)
+          if match:
+              notes = match.group(1).strip()
+          else:
+              notes = f'Release WaveFlux {version}'
+          with open('release_notes.md', 'w', encoding='utf-8') as f:
+              f.write(f'## WaveFlux {version}\n\n' + notes + '\n')
+          "
+
+          echo "Generated Release Notes:"
+          cat release_notes.md
+          echo "=== Release Assets ==="
+          ls -lh release-assets/
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME already exists, updating notes and uploading assets..."
+            gh release edit "$TAG_NAME" --title "WaveFlux $VERSION" --notes-file release_notes.md
+            gh release upload "$TAG_NAME" release-assets/* --clobber
+          else
+            echo "Creating release $TAG_NAME..."
+            gh release create "$TAG_NAME" \
+              --title "WaveFlux $VERSION" \
+              --notes-file release_notes.md \
+              release-assets/*
+          fi

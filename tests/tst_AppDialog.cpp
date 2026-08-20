@@ -12,6 +12,7 @@
 #include <QWheelEvent>
 
 #include "AppSettingsManager.h"
+#include "DspSettingsManager.h"
 #include "ThemeManager.h"
 #include "UiMetrics.h"
 
@@ -54,6 +55,9 @@ private slots:
     void qmlSourcesDoNotUseEmojiGlyphs();
     void qmlSourcesDoNotUseHardcodedPixelSizes();
     void dialogLayoutBoundsScaleWithThemeMetrics();
+    void dspManagerUsesValidUiMetricsTokens();
+    void dspManagerExposesFiveTabsAndOpaqueShell();
+    void equalizerCompatibilityOpensEqTab();
 };
 
 void AppDialogTest::initTestCase()
@@ -850,6 +854,162 @@ void AppDialogTest::dialogLayoutBoundsScaleWithThemeMetrics()
     const qreal scaledImplicitHeight = dialogObject->property("implicitHeight").toReal();
     QVERIFY(scaledImplicitWidth >= initialImplicitWidth);
     QVERIFY(scaledImplicitHeight >= initialImplicitHeight);
+}
+
+void AppDialogTest::dspManagerUsesValidUiMetricsTokens()
+{
+    const QRegularExpression invalidToken(
+        QStringLiteral(R"(UiMetrics\.(spacingSmall|spacingMedium|spacingLarge|cardRadius|iconSmall)\b)"));
+
+    QStringList failures;
+    const QStringList relativePaths = {
+        QStringLiteral("DspManagerDialog.qml"),
+        QStringLiteral("EqualizerDialog.qml"),
+        QStringLiteral("dsp/DspGeneralPage.qml"),
+        QStringLiteral("dsp/DspEqualizerPage.qml"),
+        QStringLiteral("dsp/DspVolumePage.qml"),
+        QStringLiteral("dsp/DspMixPage.qml"),
+        QStringLiteral("dsp/DspSilenceRemovalPage.qml"),
+        QStringLiteral("components/DspParameterSlider.qml"),
+        QStringLiteral("components/DspSection.qml"),
+        QStringLiteral("components/DspAvailabilityNotice.qml"),
+    };
+
+    for (const QString &relativePath : relativePaths) {
+        const QString path = QDir(qmlDirPath()).filePath(relativePath);
+        QFile file(path);
+        QVERIFY2(file.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(path));
+        const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+        for (qsizetype lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
+            if (invalidToken.match(lines.at(lineIndex)).hasMatch()) {
+                failures.push_back(QStringLiteral("%1:%2: %3")
+                                       .arg(relativePath)
+                                       .arg(lineIndex + 1)
+                                       .arg(lines.at(lineIndex).trimmed()));
+            }
+        }
+    }
+
+    QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QLatin1Char('\n'))));
+}
+
+void AppDialogTest::dspManagerExposesFiveTabsAndOpaqueShell()
+{
+    AppSettingsManager appSettings;
+    ThemeManager themeManager;
+    UiMetrics uiMetrics(&themeManager);
+    DspSettingsManager dspSettings;
+
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
+    engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
+    engine.rootContext()->setContextProperty(QStringLiteral("dspSettings"), &dspSettings);
+    engine.rootContext()->setContextProperty(QStringLiteral("audioEngine"), QVariant());
+    engine.rootContext()->setContextProperty(QStringLiteral("equalizerPresetManager"), QVariant());
+
+    const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
+    const QByteArray wrapper = QStringLiteral(
+                                   "import QtQuick\n"
+                                   "import QtQuick.Controls\n"
+                                   "import \"%1\" as WaveFlux\n"
+                                   "ApplicationWindow {\n"
+                                   "    width: 1100\n"
+                                   "    height: 800\n"
+                                   "    visible: true\n"
+                                   "    WaveFlux.DspManagerDialog {\n"
+                                   "        id: dialog\n"
+                                   "        objectName: \"dspManagerDialog\"\n"
+                                   "    }\n"
+                                   "}\n")
+                                   .arg(qmlImportUrl)
+                                   .toUtf8();
+
+    QQmlComponent component(&engine);
+    component.setData(wrapper, QUrl::fromLocalFile(qmlDirPath() + QStringLiteral("/")));
+    QVERIFY2(component.isReady(), qPrintable(componentErrorString(component)));
+
+    QScopedPointer<QObject> windowObject(component.create(engine.rootContext()));
+    QVERIFY2(windowObject, qPrintable(componentErrorString(component)));
+    QObject *dialogObject = windowObject->findChild<QObject *>(QStringLiteral("dspManagerDialog"));
+    QVERIFY(dialogObject);
+
+    QCOMPARE(dialogObject->property("title").toString(), appSettings.translate(QStringLiteral("dsp.managerTitle")));
+    if (QQuickItem *headerItem = dialogObject->property("header").value<QQuickItem *>()) {
+        QVERIFY(headerItem->implicitHeight() <= 1.0);
+    }
+    QVERIFY(dialogObject->property("implicitWidth").toReal() >= 800.0);
+    QVERIFY(dialogObject->property("implicitHeight").toReal() >= 600.0);
+
+    QVERIFY(QMetaObject::invokeMethod(dialogObject, "open"));
+    QTRY_VERIFY(dialogObject->property("visible").toBool());
+
+    QStringList tabIds;
+    for (int index = 0; index < 5; ++index) {
+        QVariant tabId;
+        QVERIFY(QMetaObject::invokeMethod(dialogObject, "tabIdFromIndex",
+                                          Q_RETURN_ARG(QVariant, tabId),
+                                          Q_ARG(QVariant, QVariant(index))));
+        tabIds.push_back(tabId.toString());
+    }
+    QCOMPARE(tabIds, (QStringList{
+                         QStringLiteral("general"),
+                         QStringLiteral("eq"),
+                         QStringLiteral("volume"),
+                         QStringLiteral("mix"),
+                         QStringLiteral("silenceRemoval")}));
+
+    QVERIFY(QMetaObject::invokeMethod(dialogObject, "close"));
+    QTRY_VERIFY(!dialogObject->property("visible").toBool());
+}
+
+void AppDialogTest::equalizerCompatibilityOpensEqTab()
+{
+    AppSettingsManager appSettings;
+    ThemeManager themeManager;
+    UiMetrics uiMetrics(&themeManager);
+    DspSettingsManager dspSettings;
+    dspSettings.setLastSelectedTab(QStringLiteral("volume"));
+
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("appSettings"), &appSettings);
+    engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &themeManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("UiMetrics"), &uiMetrics);
+    engine.rootContext()->setContextProperty(QStringLiteral("dspSettings"), &dspSettings);
+    engine.rootContext()->setContextProperty(QStringLiteral("audioEngine"), QVariant());
+    engine.rootContext()->setContextProperty(QStringLiteral("equalizerPresetManager"), QVariant());
+
+    const QString qmlImportUrl = QUrl::fromLocalFile(qmlDirPath()).toString();
+    const QByteArray wrapper = QStringLiteral(
+                                   "import QtQuick\n"
+                                   "import QtQuick.Controls\n"
+                                   "import \"%1\" as WaveFlux\n"
+                                   "ApplicationWindow {\n"
+                                   "    width: 1100\n"
+                                   "    height: 800\n"
+                                   "    visible: true\n"
+                                   "    WaveFlux.EqualizerDialog {\n"
+                                   "        id: dialog\n"
+                                   "        objectName: \"equalizerDialog\"\n"
+                                   "    }\n"
+                                   "}\n")
+                                   .arg(qmlImportUrl)
+                                   .toUtf8();
+
+    QQmlComponent component(&engine);
+    component.setData(wrapper, QUrl::fromLocalFile(qmlDirPath() + QStringLiteral("/")));
+    QVERIFY2(component.isReady(), qPrintable(componentErrorString(component)));
+
+    QScopedPointer<QObject> windowObject(component.create(engine.rootContext()));
+    QVERIFY2(windowObject, qPrintable(componentErrorString(component)));
+    QObject *dialogObject = windowObject->findChild<QObject *>(QStringLiteral("equalizerDialog"));
+    QVERIFY(dialogObject);
+
+    QVERIFY(QMetaObject::invokeMethod(dialogObject, "open"));
+    QTRY_VERIFY(dialogObject->property("visible").toBool());
+    QTRY_COMPARE(dialogObject->property("currentTabIndex").toInt(), 1);
+    QVERIFY(QMetaObject::invokeMethod(dialogObject, "close"));
+    QTRY_VERIFY(!dialogObject->property("visible").toBool());
 }
 
 QTEST_MAIN(AppDialogTest)

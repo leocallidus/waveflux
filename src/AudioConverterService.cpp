@@ -38,11 +38,11 @@ constexpr AudioConverterService::FormatProfile kFormatProfiles[] = {
     {"wav", "WAV", "wav", "RIFF/WAVE", "PCM", "wavenc", "identity",
      false, false, true, true, false, 0, 44100},
     {"ogg", "Ogg Vorbis", "ogg", "Ogg", "Vorbis", "oggmux", "vorbisenc",
-     true, true, true, true, false, 192, 44100},
+     true, true, true, true, false, 224, 44100},
     {"opus", "Ogg Opus", "opus", "Ogg", "Opus", "oggmux", "opusenc",
-     true, true, true, true, false, 192, 48000},
+     true, true, true, true, false, 256, 48000},
     {"webm", "WebM Opus", "webm", "WebM", "Opus", "webmmux", "opusenc",
-     true, true, true, true, false, 192, 48000},
+     true, true, true, true, false, 256, 48000},
 };
 
 QVariantList bitrateValuesForProfile(const AudioConverterService::FormatProfile &profile)
@@ -470,6 +470,16 @@ AudioConverterService::AudioConverterService(QObject *parent)
     connect(&m_progressTimer, &QTimer::timeout, this, [this]() {
         updateProgressFromPipeline();
     });
+
+    m_previewPollTimer.setInterval(50);
+    connect(&m_previewPollTimer, &QTimer::timeout, this, &AudioConverterService::pollPreviewProgress);
+}
+
+AudioConverterService::~AudioConverterService()
+{
+    stopPreview();
+    teardownConversionPipeline();
+    cleanupTemporaryTrackerSource();
 }
 
 void AudioConverterService::initialize(TrackModel *trackModel)
@@ -535,6 +545,7 @@ QVariantMap AudioConverterService::errorPresentation() const
 
 bool AudioConverterService::startConversion()
 {
+    stopPreview();
     resetLastConversionMetrics();
     m_lastConversionStartedAtMs = QDateTime::currentMSecsSinceEpoch();
     m_lastConversionSourceBytes = QFileInfo(m_sourceFile).exists()
@@ -653,6 +664,41 @@ bool AudioConverterService::startConversion()
     return true;
 }
 
+bool AudioConverterService::pauseConversion()
+{
+    if (!m_isRunning || m_isPaused || !m_pipeline) {
+        return false;
+    }
+    const GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        return false;
+    }
+    m_isPaused = true;
+    setStatusPresentation(QStringLiteral("audioConverter.statePaused"), {}, QStringLiteral("Conversion paused."));
+    emit isPausedChanged();
+    return true;
+}
+
+bool AudioConverterService::resumeConversion()
+{
+    if (!m_isRunning || !m_isPaused || !m_pipeline) {
+        return false;
+    }
+    const GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        return false;
+    }
+    m_isPaused = false;
+    setStatusPresentation(QStringLiteral("audioConverter.stateRunning"), {}, QStringLiteral("Converting audio..."));
+    emit isPausedChanged();
+    return true;
+}
+
+bool AudioConverterService::togglePauseConversion()
+{
+    return m_isPaused ? resumeConversion() : pauseConversion();
+}
+
 void AudioConverterService::cancelConversion()
 {
     if (!m_isRunning) {
@@ -684,6 +730,7 @@ void AudioConverterService::cancelConversion()
 
 void AudioConverterService::resetTransientState()
 {
+    stopPreview();
     if (m_isRunning) {
         return;
     }
@@ -693,9 +740,94 @@ void AudioConverterService::resetTransientState()
     setStatusPresentation(QString(), {}, QString());
     setOverwriteExisting(false);
     resetLastConversionMetrics();
+    resetPreviewRange();
+    setPreviewLoop(false);
     m_cancelRequested = false;
     m_completionHandled = false;
     emit preflightChanged();
+}
+
+void AudioConverterService::resetDspSettings()
+{
+    setPlaybackRate(1.0);
+    setPitchSemitones(0);
+    setSpeed(1.0);
+    setTempo(1.0);
+    setTonalitySemitones(0.0);
+    setEchoMix(0.0);
+    setChorusMix(0.0);
+    setFlangerMix(0.0);
+    setReverbMix(0.0);
+    setBass(1.0);
+    setStereoWidth(1.0);
+    setVoiceSuppression(false);
+    setApplyEqualizer(false);
+    setApplyReverb(false);
+}
+
+void AudioConverterService::resetParameter(const QString &paramId)
+{
+    const QString id = paramId.trimmed().toLower();
+    if (id == QStringLiteral("speed")) {
+        setSpeed(1.0);
+    } else if (id == QStringLiteral("tempo")) {
+        setTempo(1.0);
+    } else if (id == QStringLiteral("tonality") || id == QStringLiteral("tonalitysemitones")) {
+        setTonalitySemitones(0.0);
+    } else if (id == QStringLiteral("pitch") || id == QStringLiteral("pitchsemitones")) {
+        setPitchSemitones(0);
+    } else if (id == QStringLiteral("playbackrate") || id == QStringLiteral("rate")) {
+        setPlaybackRate(1.0);
+    } else if (id == QStringLiteral("echo") || id == QStringLiteral("echomix")) {
+        setEchoMix(0.0);
+    } else if (id == QStringLiteral("chorus") || id == QStringLiteral("chorusmix")) {
+        setChorusMix(0.0);
+    } else if (id == QStringLiteral("flanger") || id == QStringLiteral("flangermix")) {
+        setFlangerMix(0.0);
+    } else if (id == QStringLiteral("reverb") || id == QStringLiteral("reverbmix")) {
+        setReverbMix(0.0);
+    } else if (id == QStringLiteral("bass")) {
+        setBass(1.0);
+    } else if (id == QStringLiteral("stereowidth")) {
+        setStereoWidth(1.0);
+    } else if (id == QStringLiteral("voicesuppression")) {
+        setVoiceSuppression(false);
+    } else if (id == QStringLiteral("applyequalizer") || id == QStringLiteral("equalizer")) {
+        setApplyEqualizer(false);
+    } else if (id == QStringLiteral("applyreverb")) {
+        setApplyReverb(false);
+    } else if (id == QStringLiteral("reverbroomsize")) {
+        setReverbRoomSize(0.55);
+    } else if (id == QStringLiteral("reverbwetlevel")) {
+        setReverbWetLevel(0.28);
+    } else if (id == QStringLiteral("reverbdamping")) {
+        setReverbDamping(0.35);
+    } else if (id == QStringLiteral("samplerange") || id == QStringLiteral("sample")) {
+        resetPreviewRange();
+    } else if (id == QStringLiteral("samplestart")) {
+        setPreviewStartMs(m_trimEnabled ? m_trimStartMs : 0);
+    } else if (id == QStringLiteral("sampleend")) {
+        const qint64 totalDur = m_sourceDurationMs > 0 ? m_sourceDurationMs : 300000;
+        setPreviewEndMs(qMin(totalDur, m_previewStartMs + 15000));
+    } else if (id == QStringLiteral("trim") || id == QStringLiteral("trimenabled")) {
+        setTrimEnabled(false);
+    } else if (id == QStringLiteral("trimstart")) {
+        setTrimStartMs(0);
+    } else if (id == QStringLiteral("trimend")) {
+        setTrimEndMs(m_sourceDurationMs);
+    } else if (id == QStringLiteral("format")) {
+        setFormat(QStringLiteral("mp3"));
+    } else if (id == QStringLiteral("channelmode") || id == QStringLiteral("channels")) {
+        setChannelMode(QStringLiteral("stereo"));
+    } else if (id == QStringLiteral("bitrate")) {
+        const FormatProfile *profile = findFormatProfile(m_format);
+        setBitrate(profile ? profile->defaultBitrateKbps : 320);
+    } else if (id == QStringLiteral("samplerate")) {
+        const FormatProfile *profile = findFormatProfile(m_format);
+        setSampleRate(profile ? profile->defaultSampleRateHz : 44100);
+    } else if (id == QStringLiteral("previewloop") || id == QStringLiteral("loop") || id == QStringLiteral("repeat")) {
+        setPreviewLoop(false);
+    }
 }
 
 QString AudioConverterService::suggestOutputFilePath(const QString &directoryOverride) const
@@ -756,7 +888,10 @@ void AudioConverterService::setSourceFile(const QString &sourceFile)
     }
 
     m_sourceFile = normalized;
+    m_sourceDurationMs = probeMetadataDurationMs(m_sourceFile);
+    resetPreviewRange();
     emit sourceFileChanged();
+    emit sourceDurationMsChanged();
 
     if (m_outputFile.isEmpty() && !m_sourceFile.isEmpty()) {
         const QString suggested = suggestOutputFilePath();
@@ -793,6 +928,9 @@ void AudioConverterService::setFormat(const QString &format)
     const FormatProfile *profile = findFormatProfile(m_format);
     m_bitrate = normalizeBitrateForFormat(profile ? profile->defaultBitrateKbps : m_bitrate, m_format);
     m_sampleRate = normalizeSampleRate(profile ? profile->defaultSampleRateHz : m_sampleRate, m_format);
+    m_previewQualitySimulator.setFormat(m_format, profile ? profile->lossy : true);
+    m_previewQualitySimulator.setTargetBitrate(m_bitrate);
+    m_previewQualitySimulator.setTargetSampleRate(m_sampleRate);
     if (!m_outputFile.isEmpty()) {
         m_outputFile = replaceExtension(m_outputFile, findFormatProfile(m_format)->extension);
         emit outputFileChanged();
@@ -818,6 +956,7 @@ void AudioConverterService::setBitrate(int bitrate)
     }
 
     m_bitrate = normalized;
+    m_previewQualitySimulator.setTargetBitrate(m_bitrate);
     emit bitrateChanged();
     emit preflightChanged();
 }
@@ -830,6 +969,7 @@ void AudioConverterService::setSampleRate(int sampleRate)
     }
 
     m_sampleRate = normalized;
+    m_previewQualitySimulator.setTargetSampleRate(m_sampleRate);
     emit sampleRateChanged();
     emit preflightChanged();
 }
@@ -842,6 +982,7 @@ void AudioConverterService::setChannelMode(const QString &channelMode)
     }
 
     m_channelMode = normalized;
+    m_previewQualitySimulator.setChannelMode(m_channelMode);
     emit channelModeChanged();
     emit preflightChanged();
 }
@@ -854,6 +995,7 @@ void AudioConverterService::setPlaybackRate(double playbackRate)
     }
 
     m_playbackRate = normalized;
+    applyPreviewPitchParameters();
     emit playbackRateChanged();
     emit preflightChanged();
 }
@@ -866,6 +1008,7 @@ void AudioConverterService::setPitchSemitones(int pitchSemitones)
     }
 
     m_pitchSemitones = normalized;
+    applyPreviewPitchParameters();
     emit pitchSemitonesChanged();
     emit preflightChanged();
 }
@@ -877,6 +1020,7 @@ void AudioConverterService::setApplyEqualizer(bool applyEqualizer)
     }
 
     m_applyEqualizer = applyEqualizer;
+    m_previewQualitySimulator.setApplyEqualizer(m_applyEqualizer);
     emit applyEqualizerChanged();
     emit preflightChanged();
 }
@@ -898,6 +1042,12 @@ void AudioConverterService::setEqualizerBandGains(const QVariantList &gains)
     }
 
     m_equalizerBandGains = normalized;
+    std::vector<double> gainsDb;
+    gainsDb.reserve(m_equalizerBandGains.size());
+    for (const QVariant &v : m_equalizerBandGains) {
+        gainsDb.push_back(v.toDouble());
+    }
+    m_previewQualitySimulator.setEqualizerBandGains(gainsDb);
     emit equalizerBandGainsChanged();
 }
 
@@ -991,6 +1141,161 @@ void AudioConverterService::setOverwriteExisting(bool overwriteExisting)
     emit preflightChanged();
 }
 
+void AudioConverterService::setSpeed(double speed)
+{
+    const double clamped = qBound(0.25, speed, 3.0);
+    if (qFuzzyCompare(m_speed, clamped)) {
+        return;
+    }
+    m_speed = clamped;
+    applyPreviewPitchParameters();
+    emit speedChanged();
+}
+
+void AudioConverterService::setTempo(double tempo)
+{
+    const double clamped = qBound(0.5, tempo, 3.0);
+    if (qFuzzyCompare(m_tempo, clamped)) {
+        return;
+    }
+    m_tempo = clamped;
+    applyPreviewPitchParameters();
+    emit tempoChanged();
+}
+
+void AudioConverterService::setTonalitySemitones(double tonalitySemitones)
+{
+    const double clamped = qBound(-10.0, tonalitySemitones, 10.0);
+    if (qFuzzyCompare(m_tonalitySemitones, clamped)) {
+        return;
+    }
+    m_tonalitySemitones = clamped;
+    applyPreviewPitchParameters();
+    emit tonalitySemitonesChanged();
+}
+
+void AudioConverterService::setEchoMix(double echoMix)
+{
+    const double clamped = qBound(0.0, echoMix, 100.0);
+    if (qFuzzyCompare(m_echoMix, clamped)) {
+        return;
+    }
+    m_echoMix = clamped;
+    emit echoMixChanged();
+}
+
+void AudioConverterService::setChorusMix(double chorusMix)
+{
+    const double clamped = qBound(0.0, chorusMix, 100.0);
+    if (qFuzzyCompare(m_chorusMix, clamped)) {
+        return;
+    }
+    m_chorusMix = clamped;
+    emit chorusMixChanged();
+}
+
+void AudioConverterService::setFlangerMix(double flangerMix)
+{
+    const double clamped = qBound(0.0, flangerMix, 100.0);
+    if (qFuzzyCompare(m_flangerMix, clamped)) {
+        return;
+    }
+    m_flangerMix = clamped;
+    emit flangerMixChanged();
+}
+
+void AudioConverterService::setReverbMix(double reverbMix)
+{
+    const double clamped = qBound(0.0, reverbMix, 100.0);
+    if (qFuzzyCompare(m_reverbMix, clamped)) {
+        return;
+    }
+    m_reverbMix = clamped;
+    emit reverbMixChanged();
+}
+
+void AudioConverterService::setBass(double bass)
+{
+    const double clamped = qBound(0.0, bass, 2.0);
+    if (qFuzzyCompare(m_bass, clamped)) {
+        return;
+    }
+    m_bass = clamped;
+    emit bassChanged();
+}
+
+void AudioConverterService::setStereoWidth(double stereoWidth)
+{
+    const double clamped = qBound(1.0, stereoWidth, 5.0);
+    if (qFuzzyCompare(m_stereoWidth, clamped)) {
+        return;
+    }
+    m_stereoWidth = clamped;
+    emit stereoWidthChanged();
+}
+
+void AudioConverterService::setVoiceSuppression(bool voiceSuppression)
+{
+    if (m_voiceSuppression == voiceSuppression) {
+        return;
+    }
+    m_voiceSuppression = voiceSuppression;
+    emit voiceSuppressionChanged();
+}
+
+void AudioConverterService::setPreviewStartMs(qint64 startMs)
+{
+    const qint64 safeStart = qMax<qint64>(0, startMs);
+    if (m_previewStartMs == safeStart) {
+        return;
+    }
+    m_previewStartMs = safeStart;
+    if (m_previewEndMs <= m_previewStartMs) {
+        m_previewEndMs = m_previewStartMs + 15000;
+        emit previewEndMsChanged();
+    }
+    emit previewStartMsChanged();
+}
+
+void AudioConverterService::setPreviewEndMs(qint64 endMs)
+{
+    const qint64 safeEnd = qMax<qint64>(m_previewStartMs + 500, endMs);
+    if (m_previewEndMs == safeEnd) {
+        return;
+    }
+    m_previewEndMs = safeEnd;
+    emit previewEndMsChanged();
+}
+
+void AudioConverterService::setPreviewLoop(bool previewLoop)
+{
+    if (m_previewLoop == previewLoop) {
+        return;
+    }
+    m_previewLoop = previewLoop;
+    emit previewLoopChanged();
+}
+
+void AudioConverterService::resetPreviewRange()
+{
+    const qint64 defaultStart = m_trimEnabled ? m_trimStartMs : 0;
+    const qint64 totalDuration = probeMetadataDurationMs(m_sourceFile);
+    qint64 defaultEnd = defaultStart + 15000;
+    if (m_trimEnabled && m_trimEndMs > defaultStart) {
+        defaultEnd = m_trimEndMs;
+    } else if (totalDuration > defaultStart) {
+        defaultEnd = qMin(totalDuration, defaultStart + 15000);
+    }
+    if (m_previewStartMs != defaultStart) {
+        m_previewStartMs = defaultStart;
+        emit previewStartMsChanged();
+    }
+    if (m_previewEndMs != defaultEnd) {
+        m_previewEndMs = defaultEnd;
+        emit previewEndMsChanged();
+    }
+}
+
 void AudioConverterService::teardownConversionPipeline()
 {
     m_busPollTimer.stop();
@@ -998,6 +1303,15 @@ void AudioConverterService::teardownConversionPipeline()
 
     if (m_pipeline) {
         gst_element_set_state(m_pipeline, GST_STATE_NULL);
+    }
+
+    if (m_dspProbeId != 0 && m_dspIdentityElement) {
+        GstPad *pad = gst_element_get_static_pad(m_dspIdentityElement, "src");
+        if (pad) {
+            gst_pad_remove_probe(pad, m_dspProbeId);
+            gst_object_unref(pad);
+        }
+        m_dspProbeId = 0;
     }
 
     if (m_bus) {
@@ -1020,11 +1334,685 @@ void AudioConverterService::teardownConversionPipeline()
     m_reverbElement = nullptr;
     m_equalizerElement = nullptr;
     m_postConvertElement = nullptr;
+    m_dspCapsFilterElement = nullptr;
+    m_dspIdentityElement = nullptr;
     m_finalConvertElement = nullptr;
     m_capsFilterElement = nullptr;
     m_encoderElement = nullptr;
     m_muxerElement = nullptr;
     m_sinkElement = nullptr;
+}
+
+void AudioConverterService::teardownPreviewPipeline()
+{
+    m_previewPollTimer.stop();
+    if (m_previewPipeline) {
+        gst_element_set_state(m_previewPipeline, GST_STATE_NULL);
+    }
+    if (m_previewDspProbeId != 0 && m_previewDspIdentityElement) {
+        GstPad *pad = gst_element_get_static_pad(m_previewDspIdentityElement, "src");
+        if (pad) {
+            gst_pad_remove_probe(pad, m_previewDspProbeId);
+            gst_object_unref(pad);
+        }
+        m_previewDspProbeId = 0;
+    }
+    if (m_previewBus) {
+        gst_object_unref(m_previewBus);
+        m_previewBus = nullptr;
+    }
+    if (m_previewPipeline) {
+        gst_object_unref(m_previewPipeline);
+        m_previewPipeline = nullptr;
+    }
+    m_previewPitchElement = nullptr;
+    m_previewDspIdentityElement = nullptr;
+    m_previewPendingSeekMs = -1;
+}
+
+void AudioConverterService::applyPreviewPitchParameters()
+{
+    if (!m_previewPitchElement) {
+        return;
+    }
+    if (hasElementProperty(m_previewPitchElement, "rate")) {
+        g_object_set(m_previewPitchElement, "rate", static_cast<float>(m_speed), nullptr);
+    }
+    if (hasElementProperty(m_previewPitchElement, "tempo")) {
+        g_object_set(m_previewPitchElement, "tempo", static_cast<float>(m_tempo * m_playbackRate), nullptr);
+    }
+    if (hasElementProperty(m_previewPitchElement, "pitch")) {
+        const double combinedSemitones = m_tonalitySemitones + static_cast<double>(m_pitchSemitones);
+        const double pitchRatio = std::pow(2.0, combinedSemitones / 12.0);
+        g_object_set(m_previewPitchElement, "pitch", static_cast<float>(pitchRatio), nullptr);
+    }
+}
+
+void AudioConverterService::stopPreview()
+{
+    teardownPreviewPipeline();
+    if (m_isPreviewPlaying) {
+        m_isPreviewPlaying = false;
+        m_previewProgress = 0.0;
+        emit isPreviewPlayingChanged();
+        emit previewProgressChanged();
+        emit previewPositionMsChanged();
+    }
+}
+
+void AudioConverterService::togglePreview()
+{
+    if (m_isPreviewPlaying) {
+        stopPreview();
+    } else {
+        startPreview();
+    }
+}
+
+bool AudioConverterService::pausePreview()
+{
+    if (!m_isPreviewPlaying || m_isPreviewPaused || !m_previewPipeline) {
+        return false;
+    }
+    const GstStateChangeReturn ret = gst_element_set_state(m_previewPipeline, GST_STATE_PAUSED);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        return false;
+    }
+    m_isPreviewPaused = true;
+    emit isPreviewPausedChanged();
+    return true;
+}
+
+bool AudioConverterService::resumePreview()
+{
+    if (!m_isPreviewPlaying || !m_isPreviewPaused || !m_previewPipeline) {
+        return false;
+    }
+    const GstStateChangeReturn ret = gst_element_set_state(m_previewPipeline, GST_STATE_PLAYING);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        return false;
+    }
+    m_isPreviewPaused = false;
+    emit isPreviewPausedChanged();
+    return true;
+}
+
+bool AudioConverterService::togglePreviewPause()
+{
+    return m_isPreviewPaused ? resumePreview() : pausePreview();
+}
+
+bool AudioConverterService::seekPreview(qint64 positionMs)
+{
+    const qint64 startMs = (m_previewActualStartMs >= 0) ? m_previewActualStartMs : (m_previewStartMs >= 0 ? m_previewStartMs : 0);
+    const qint64 endMs = (m_previewActualEndMs > startMs) ? m_previewActualEndMs : (m_previewEndMs > startMs ? m_previewEndMs : startMs + 15000);
+    const qint64 clampedMs = qBound(startMs, positionMs, endMs);
+
+    m_previewPositionMs = clampedMs;
+    const qint64 durationMs = qMax<qint64>(500, endMs - startMs);
+    const qint64 elapsedMs = qMax<qint64>(0, clampedMs - startMs);
+    m_previewProgress = qBound(0.0, static_cast<double>(elapsedMs) / static_cast<double>(durationMs), 1.0);
+    emit previewPositionMsChanged();
+    emit previewProgressChanged();
+
+    if (!m_previewPipeline) {
+        return true;
+    }
+
+    const gint64 startPosNs = clampedMs * GST_MSECOND;
+    const gint64 stopPosNs = (endMs > startMs) ? (endMs * GST_MSECOND) : GST_CLOCK_TIME_NONE;
+    const GstSeekType stopType = (endMs > startMs) ? GST_SEEK_TYPE_SET : GST_SEEK_TYPE_NONE;
+
+    bool ok = gst_element_seek(m_previewPipeline,
+                               1.0,
+                               GST_FORMAT_TIME,
+                               static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                               GST_SEEK_TYPE_SET,
+                               startPosNs,
+                               stopType,
+                               stopPosNs);
+    if (!ok) {
+        ok = gst_element_seek_simple(m_previewPipeline,
+                                     GST_FORMAT_TIME,
+                                     static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH),
+                                     startPosNs);
+    }
+    if (ok) {
+        m_previewPendingSeekMs = -1;
+    }
+    return ok;
+}
+
+bool AudioConverterService::seekPreviewProgress(double progress)
+{
+    const qint64 startMs = (m_previewActualStartMs >= 0) ? m_previewActualStartMs : (m_previewStartMs >= 0 ? m_previewStartMs : 0);
+    const qint64 endMs = (m_previewActualEndMs > startMs) ? m_previewActualEndMs : (m_previewEndMs > startMs ? m_previewEndMs : startMs + 15000);
+    const qint64 durationMs = qMax<qint64>(500, endMs - startMs);
+    const qint64 targetMs = startMs + static_cast<qint64>(qBound(0.0, progress, 1.0) * durationMs);
+    return seekPreview(targetMs);
+}
+
+bool AudioConverterService::startPreview(qint64 startMs, qint64 endMs)
+{
+    stopPreview();
+    if (m_sourceFile.isEmpty()) {
+        return false;
+    }
+
+    QString pipelineSourcePath;
+    QString errorMessage;
+    if (!prepareTrackerSourceForConversion(&pipelineSourcePath, &errorMessage)) {
+        return false;
+    }
+
+    const QString sourceUri = localFileUri(pipelineSourcePath);
+    if (sourceUri.isEmpty()) {
+        return false;
+    }
+
+    m_previewPipeline = gst_element_factory_make("playbin3", "waveflux-audio-converter-preview");
+    if (!m_previewPipeline) {
+        m_previewPipeline = gst_element_factory_make("playbin", "waveflux-audio-converter-preview");
+    }
+    if (!m_previewPipeline) {
+        return false;
+    }
+
+    const guint kGstPlayFlagAudio = (1 << 1);
+    const guint kGstPlayFlagSoftVolume = (1 << 4);
+    const guint kGstPlayFlagForceFilters = (1 << 11);
+    if (hasElementProperty(m_previewPipeline, "flags")) {
+        g_object_set(m_previewPipeline, "flags", kGstPlayFlagAudio | kGstPlayFlagSoftVolume | kGstPlayFlagForceFilters, nullptr);
+    }
+
+    GstElement *audioSinkBin = gst_bin_new("preview-audio-sink-bin");
+    GstElement *convert1 = gst_element_factory_make("audioconvert", "preview-convert1");
+    GstElement *resample = gst_element_factory_make("audioresample", "preview-resample");
+    GstElement *capsFilter = gst_element_factory_make("capsfilter", "preview-caps");
+    GstElement *dspIdentity = gst_element_factory_make("identity", "preview-dsp");
+    GstElement *pitch = gst_element_factory_make("pitch", "preview-pitch");
+    GstElement *convert2 = gst_element_factory_make("audioconvert", "preview-convert2");
+    GstElement *sink = gst_element_factory_make("autoaudiosink", "preview-sink");
+    if (!sink) {
+        sink = gst_element_factory_make("pulsesink", "preview-sink");
+    }
+    if (!sink) {
+        sink = gst_element_factory_make("pipewiresink", "preview-sink");
+    }
+    if (!sink) {
+        sink = gst_element_factory_make("alsasink", "preview-sink");
+    }
+
+    if (!audioSinkBin || !convert1 || !resample || !capsFilter || !dspIdentity || !convert2 || !sink) {
+        if (audioSinkBin) {
+            gst_object_unref(audioSinkBin);
+        }
+        gst_object_unref(m_previewPipeline);
+        m_previewPipeline = nullptr;
+        return false;
+    }
+
+    m_previewPitchElement = pitch;
+    applyPreviewPitchParameters();
+
+    GstCaps *caps = gst_caps_new_simple("audio/x-raw",
+                                        "format", G_TYPE_STRING, "F32LE",
+                                        "layout", G_TYPE_STRING, "interleaved",
+                                        nullptr);
+    g_object_set(capsFilter, "caps", caps, nullptr);
+    gst_caps_unref(caps);
+
+    std::vector<GstElement *> chain;
+    chain.push_back(convert1);
+    chain.push_back(resample);
+    chain.push_back(capsFilter);
+    chain.push_back(dspIdentity);
+    if (pitch) {
+        chain.push_back(pitch);
+    }
+    chain.push_back(convert2);
+    chain.push_back(sink);
+
+    for (GstElement *element : chain) {
+        gst_bin_add(GST_BIN(audioSinkBin), element);
+    }
+
+    bool linkOk = true;
+    for (size_t i = 0; i + 1 < chain.size(); ++i) {
+        if (!gst_element_link(chain[i], chain[i + 1])) {
+            linkOk = false;
+            break;
+        }
+    }
+    if (!linkOk) {
+        gst_object_unref(audioSinkBin);
+        gst_object_unref(m_previewPipeline);
+        m_previewPipeline = nullptr;
+        return false;
+    }
+
+    GstPad *sinkPad = gst_element_get_static_pad(convert1, "sink");
+    GstPad *ghostPad = gst_ghost_pad_new("sink", sinkPad);
+    gst_pad_set_active(ghostPad, TRUE);
+    gst_element_add_pad(audioSinkBin, ghostPad);
+    gst_object_unref(sinkPad);
+
+    g_object_set(m_previewPipeline, "audio-sink", audioSinkBin, nullptr);
+    g_object_set(m_previewPipeline, "uri", sourceUri.toUtf8().constData(), nullptr);
+
+    m_previewDspIdentityElement = dspIdentity;
+    GstPad *dspPad = gst_element_get_static_pad(m_previewDspIdentityElement, "src");
+    if (dspPad) {
+        m_previewDspProbeId = gst_pad_add_probe(dspPad,
+                                                GST_PAD_PROBE_TYPE_BUFFER,
+                                                previewDspPadProbe,
+                                                this,
+                                                nullptr);
+        gst_object_unref(dspPad);
+    }
+
+    m_previewBassFilter.setBassMultiplier(m_bass);
+    m_previewEchoEffect.setParameters(350.0, 0.35, m_echoMix * 0.01);
+    m_previewChorusEffect.setParameters(20.0, 1.5, 3.0, m_chorusMix * 0.01);
+    m_previewFlangerEffect.setParameters(3.0, 0.25, 2.0, m_flangerMix * 0.01);
+    const double effectiveReverb = m_reverbMix > 0.001 ? m_reverbMix : (m_applyReverb ? m_reverbWetLevel * 100.0 : 0.0);
+    const double roomSize = m_applyReverb ? m_reverbRoomSize : 0.85;
+    const double damping = m_applyReverb ? m_reverbDamping : 0.5;
+    m_previewReverbEffect.setParameters(roomSize, damping, effectiveReverb * 0.01);
+
+    const FormatProfile *profile = findFormatProfile(m_format);
+    m_previewQualitySimulator.setFormat(m_format, profile ? profile->lossy : true);
+    m_previewQualitySimulator.setTargetBitrate(m_bitrate);
+    m_previewQualitySimulator.setTargetSampleRate(m_sampleRate);
+    m_previewQualitySimulator.setChannelMode(m_channelMode);
+    m_previewQualitySimulator.setApplyEqualizer(m_applyEqualizer);
+    std::vector<double> gainsDb;
+    gainsDb.reserve(m_equalizerBandGains.size());
+    for (const QVariant &v : m_equalizerBandGains) {
+        gainsDb.push_back(v.toDouble());
+    }
+    m_previewQualitySimulator.setEqualizerBandGains(gainsDb);
+    m_previewQualitySimulator.reset();
+
+    const qint64 effectiveStart = (startMs >= 0)
+        ? startMs
+        : (m_previewStartMs >= 0 ? m_previewStartMs : (m_trimEnabled ? m_trimStartMs : 0));
+    const qint64 effectiveEnd = (endMs > effectiveStart)
+        ? endMs
+        : (m_previewEndMs > effectiveStart ? m_previewEndMs : (effectiveStart + 15000));
+
+    m_previewActualStartMs = effectiveStart;
+    m_previewActualEndMs = effectiveEnd;
+    m_previewDurationMs = qMax<qint64>(500, effectiveEnd - effectiveStart);
+    m_previewPendingSeekMs = (m_previewActualStartMs > 0) ? m_previewActualStartMs : -1;
+
+    m_previewBus = gst_pipeline_get_bus(GST_PIPELINE(m_previewPipeline));
+
+    GstStateChangeReturn stateRet = gst_element_set_state(m_previewPipeline, GST_STATE_PAUSED);
+    if (stateRet == GST_STATE_CHANGE_FAILURE) {
+        stopPreview();
+        return false;
+    }
+
+    gst_element_get_state(m_previewPipeline, nullptr, nullptr, 300 * GST_MSECOND);
+
+    if (m_previewActualStartMs > 0) {
+        const gint64 startPosNs = m_previewActualStartMs * GST_MSECOND;
+        const gint64 stopPosNs = (m_previewActualEndMs > m_previewActualStartMs) ? (m_previewActualEndMs * GST_MSECOND) : GST_CLOCK_TIME_NONE;
+        const GstSeekType stopType = (m_previewActualEndMs > m_previewActualStartMs) ? GST_SEEK_TYPE_SET : GST_SEEK_TYPE_NONE;
+
+        bool ok = gst_element_seek(m_previewPipeline,
+                                   1.0,
+                                   GST_FORMAT_TIME,
+                                   static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                                   GST_SEEK_TYPE_SET,
+                                   startPosNs,
+                                   stopType,
+                                   stopPosNs);
+        if (!ok) {
+            ok = gst_element_seek_simple(m_previewPipeline,
+                                         GST_FORMAT_TIME,
+                                         static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH),
+                                         startPosNs);
+        }
+        if (ok) {
+            m_previewPendingSeekMs = -1;
+        }
+    }
+
+    stateRet = gst_element_set_state(m_previewPipeline, GST_STATE_PLAYING);
+    if (stateRet == GST_STATE_CHANGE_FAILURE) {
+        stopPreview();
+        return false;
+    }
+
+    m_isPreviewPlaying = true;
+    m_previewProgress = 0.0;
+    m_previewPositionMs = m_previewActualStartMs;
+    emit isPreviewPlayingChanged();
+    emit previewProgressChanged();
+    emit previewPositionMsChanged();
+
+    m_previewPollTimer.start(25);
+    return true;
+}
+
+void AudioConverterService::pollPreviewProgress()
+{
+    if (!m_isPreviewPlaying || !m_previewPipeline) {
+        return;
+    }
+
+    if (m_previewBus && GST_IS_BUS(m_previewBus)) {
+        while (GstMessage *msg = gst_bus_pop(m_previewBus)) {
+            const GstMessageType type = GST_MESSAGE_TYPE(msg);
+            if (type == GST_MESSAGE_ASYNC_DONE) {
+                if (m_previewPendingSeekMs > 0 && m_previewPipeline) {
+                    const gint64 startPosNs = m_previewPendingSeekMs * GST_MSECOND;
+                    const gint64 stopPosNs = (m_previewActualEndMs > m_previewActualStartMs) ? (m_previewActualEndMs * GST_MSECOND) : GST_CLOCK_TIME_NONE;
+                    const GstSeekType stopType = (m_previewActualEndMs > m_previewActualStartMs) ? GST_SEEK_TYPE_SET : GST_SEEK_TYPE_NONE;
+
+                    bool ok = gst_element_seek(m_previewPipeline,
+                                               1.0,
+                                               GST_FORMAT_TIME,
+                                               static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                                               GST_SEEK_TYPE_SET,
+                                               startPosNs,
+                                               stopType,
+                                               stopPosNs);
+                    if (!ok) {
+                        ok = gst_element_seek_simple(m_previewPipeline,
+                                                     GST_FORMAT_TIME,
+                                                     static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH),
+                                                     startPosNs);
+                    }
+                    if (ok) {
+                        m_previewPendingSeekMs = -1;
+                    }
+                }
+            } else if (type == GST_MESSAGE_EOS) {
+                gst_message_unref(msg);
+                if (m_previewLoop) {
+                    seekPreview(m_previewActualStartMs);
+                    return;
+                }
+                stopPreview();
+                return;
+            } else if (type == GST_MESSAGE_ERROR) {
+                gst_message_unref(msg);
+                stopPreview();
+                return;
+            }
+            gst_message_unref(msg);
+        }
+    }
+
+    if (m_previewPendingSeekMs > 0 && m_previewPipeline) {
+        bool ok = gst_element_seek_simple(m_previewPipeline,
+                                          GST_FORMAT_TIME,
+                                          static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                                          m_previewPendingSeekMs * GST_MSECOND);
+        if (!ok) {
+            ok = gst_element_seek_simple(m_previewPipeline,
+                                         GST_FORMAT_TIME,
+                                         static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH),
+                                         m_previewPendingSeekMs * GST_MSECOND);
+        }
+        if (ok) {
+            m_previewPendingSeekMs = -1;
+        }
+    }
+
+    gint64 currentPosNs = 0;
+    if (gst_element_query_position(m_previewPipeline, GST_FORMAT_TIME, &currentPosNs) && currentPosNs >= 0) {
+        const qint64 currentPosMs = currentPosNs / GST_MSECOND;
+        if (m_previewPendingSeekMs > 0 && currentPosMs < m_previewPendingSeekMs) {
+            return;
+        }
+        m_previewPositionMs = qMax<qint64>(m_previewActualStartMs, currentPosMs);
+        if (currentPosMs >= m_previewActualEndMs || (m_trimEnabled && m_trimEndMs > 0 && currentPosMs >= m_trimEndMs)) {
+            if (m_previewLoop) {
+                seekPreview(m_previewActualStartMs);
+                return;
+            }
+            stopPreview();
+            return;
+        }
+        const qint64 elapsedMs = qMax<qint64>(0, currentPosMs - m_previewActualStartMs);
+        if (elapsedMs >= m_previewDurationMs) {
+            if (m_previewLoop) {
+                seekPreview(m_previewActualStartMs);
+                return;
+            }
+            stopPreview();
+            return;
+        }
+        m_previewProgress = qBound(0.0, static_cast<double>(elapsedMs) / static_cast<double>(m_previewDurationMs), 1.0);
+        emit previewProgressChanged();
+        emit previewPositionMsChanged();
+    }
+}
+
+GstPadProbeReturn AudioConverterService::converterDspPadProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData)
+{
+    auto *self = static_cast<AudioConverterService *>(userData);
+    if (self && (GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER)) {
+        GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+        if (buffer) {
+            self->processConverterDspBuffer(pad, buffer);
+        }
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+GstPadProbeReturn AudioConverterService::previewDspPadProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData)
+{
+    auto *self = static_cast<AudioConverterService *>(userData);
+    if (self && (GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER)) {
+        if (self->m_previewPendingSeekMs > 0) {
+            return GST_PAD_PROBE_DROP;
+        }
+        GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+        if (buffer) {
+            self->processPreviewDspBuffer(pad, buffer);
+        }
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+void AudioConverterService::processConverterDspBuffer(GstPad *pad, GstBuffer *buffer)
+{
+    if (!buffer || !pad) {
+        return;
+    }
+
+    const bool hasDsp = m_echoMix > 0.001
+        || m_chorusMix > 0.001
+        || m_flangerMix > 0.001
+        || m_reverbMix > 0.001
+        || std::abs(m_bass - 1.0) > 0.001
+        || std::abs(m_stereoWidth - 1.0) > 0.001
+        || m_voiceSuppression;
+
+    if (!hasDsp) {
+        return;
+    }
+
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    if (!caps) {
+        return;
+    }
+
+    GstStructure *structure = gst_caps_get_structure(caps, 0);
+    int rate = 44100;
+    int channels = 2;
+    if (structure) {
+        gst_structure_get_int(structure, "rate", &rate);
+        gst_structure_get_int(structure, "channels", &channels);
+    }
+    gst_caps_unref(caps);
+
+    if (rate <= 0 || channels != 2) {
+        return;
+    }
+
+    if (rate != m_dspSampleRate) {
+        m_dspSampleRate = rate;
+        m_bassFilter.setSampleRate(rate);
+        m_echoEffect.setSampleRate(rate);
+        m_chorusEffect.setSampleRate(rate);
+        m_flangerEffect.setSampleRate(rate);
+        m_reverbEffect.setSampleRate(rate);
+    }
+
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READWRITE)) {
+        return;
+    }
+
+    auto *samples = reinterpret_cast<float *>(map.data);
+    const size_t totalSamples = map.size / sizeof(float);
+    const size_t frames = totalSamples / channels;
+
+    if (frames > 0) {
+        if (std::abs(m_bass - 1.0) > 0.001) {
+            m_bassFilter.setBassMultiplier(m_bass);
+            m_bassFilter.processInterleaved(samples, frames, channels);
+        }
+        if (m_voiceSuppression) {
+            WaveFlux::Dsp::StereoProcessor::applyVoiceSuppression(samples, frames, true);
+        }
+        if (std::abs(m_stereoWidth - 1.0) > 0.001) {
+            WaveFlux::Dsp::StereoProcessor::applyStereoWidth(samples, frames, m_stereoWidth);
+        }
+        if (m_echoMix > 0.001) {
+            m_echoEffect.setParameters(350.0, 0.35, m_echoMix * 0.01);
+            m_echoEffect.processInterleaved(samples, frames, channels);
+        }
+        if (m_chorusMix > 0.001) {
+            m_chorusEffect.setParameters(20.0, 1.5, 3.0, m_chorusMix * 0.01);
+            m_chorusEffect.processInterleaved(samples, frames, channels);
+        }
+        if (m_flangerMix > 0.001) {
+            m_flangerEffect.setParameters(3.0, 0.25, 2.0, m_flangerMix * 0.01);
+            m_flangerEffect.processInterleaved(samples, frames, channels);
+        }
+        if (m_reverbMix > 0.001) {
+            m_reverbEffect.setParameters(0.85, 0.5, m_reverbMix * 0.01);
+            m_reverbEffect.processInterleaved(samples, frames, channels);
+        }
+        WaveFlux::Dsp::StereoProcessor::applyPeakLimiter(samples, frames, channels);
+    }
+
+    gst_buffer_unmap(buffer, &map);
+}
+
+void AudioConverterService::processPreviewDspBuffer(GstPad *pad, GstBuffer *buffer)
+{
+    if (!buffer || !pad) {
+        return;
+    }
+
+    if (m_previewPendingSeekMs > 0) {
+        GstMapInfo map;
+        if (gst_buffer_map(buffer, &map, GST_MAP_READWRITE)) {
+            std::memset(map.data, 0, map.size);
+            gst_buffer_unmap(buffer, &map);
+        }
+        return;
+    }
+
+    const bool hasDsp = m_echoMix > 0.001
+        || m_chorusMix > 0.001
+        || m_flangerMix > 0.001
+        || m_reverbMix > 0.001
+        || (m_applyReverb && m_reverbWetLevel > 0.001)
+        || std::abs(m_bass - 1.0) > 0.001
+        || std::abs(m_stereoWidth - 1.0) > 0.001
+        || m_voiceSuppression;
+
+    const bool isMono = (m_channelMode == QStringLiteral("mono") || m_channelMode == QStringLiteral("1"));
+    const bool hasQualitySimulation = isMono
+        || (m_sampleRate > 0 && m_sampleRate < 44100)
+        || m_previewQualitySimulator.isLossy()
+        || m_applyEqualizer;
+
+    if (!hasDsp && !hasQualitySimulation) {
+        return;
+    }
+
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    if (!caps) {
+        return;
+    }
+
+    GstStructure *structure = gst_caps_get_structure(caps, 0);
+    int rate = 44100;
+    int channels = 2;
+    if (structure) {
+        gst_structure_get_int(structure, "rate", &rate);
+        gst_structure_get_int(structure, "channels", &channels);
+    }
+    gst_caps_unref(caps);
+
+    if (rate <= 0 || channels != 2) {
+        return;
+    }
+
+    if (rate != m_previewDspSampleRate) {
+        m_previewDspSampleRate = rate;
+        m_previewBassFilter.setSampleRate(rate);
+        m_previewEchoEffect.setSampleRate(rate);
+        m_previewChorusEffect.setSampleRate(rate);
+        m_previewFlangerEffect.setSampleRate(rate);
+        m_previewReverbEffect.setSampleRate(rate);
+        m_previewQualitySimulator.setSinkSampleRate(rate);
+    }
+
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READWRITE)) {
+        return;
+    }
+
+    auto *samples = reinterpret_cast<float *>(map.data);
+    const size_t totalSamples = map.size / sizeof(float);
+    const size_t frames = totalSamples / channels;
+
+    if (frames > 0) {
+        if (std::abs(m_bass - 1.0) > 0.001) {
+            m_previewBassFilter.setBassMultiplier(m_bass);
+            m_previewBassFilter.processInterleaved(samples, frames, channels);
+        }
+        if (m_voiceSuppression) {
+            WaveFlux::Dsp::StereoProcessor::applyVoiceSuppression(samples, frames, true);
+        }
+        if (std::abs(m_stereoWidth - 1.0) > 0.001) {
+            WaveFlux::Dsp::StereoProcessor::applyStereoWidth(samples, frames, m_stereoWidth);
+        }
+        if (m_echoMix > 0.001) {
+            m_previewEchoEffect.setParameters(350.0, 0.35, m_echoMix * 0.01);
+            m_previewEchoEffect.processInterleaved(samples, frames, channels);
+        }
+        if (m_chorusMix > 0.001) {
+            m_previewChorusEffect.setParameters(20.0, 1.5, 3.0, m_chorusMix * 0.01);
+            m_previewChorusEffect.processInterleaved(samples, frames, channels);
+        }
+        if (m_flangerMix > 0.001) {
+            m_previewFlangerEffect.setParameters(3.0, 0.25, 2.0, m_flangerMix * 0.01);
+            m_previewFlangerEffect.processInterleaved(samples, frames, channels);
+        }
+        const double effectiveReverb = m_reverbMix > 0.001 ? m_reverbMix : (m_applyReverb ? m_reverbWetLevel * 100.0 : 0.0);
+        if (effectiveReverb > 0.001) {
+            const double roomSize = m_applyReverb ? m_reverbRoomSize : 0.85;
+            const double damping = m_applyReverb ? m_reverbDamping : 0.5;
+            m_previewReverbEffect.setParameters(roomSize, damping, effectiveReverb * 0.01);
+            m_previewReverbEffect.processInterleaved(samples, frames, channels);
+        }
+        m_previewQualitySimulator.processInterleaved(samples, frames, channels);
+        WaveFlux::Dsp::StereoProcessor::applyPeakLimiter(samples, frames, channels);
+    }
+
+    gst_buffer_unmap(buffer, &map);
 }
 
 void AudioConverterService::handleBusMessage(GstMessage *message)
@@ -1115,6 +2103,7 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
         || !ensureFactory("audioresample", QStringLiteral("audioresample"))
         || !ensureFactory("pitch", QStringLiteral("pitch"))
         || !ensureFactory("capsfilter", QStringLiteral("capsfilter"))
+        || !ensureFactory("identity", QStringLiteral("identity"))
         || !ensureFactory("audioconvert", QStringLiteral("post-audioconvert"))
         || (m_applyReverb && !ensureFactory("freeverb", QStringLiteral("freeverb")))
         || (m_applyEqualizer && !ensureFactory("equalizer-nbands", QStringLiteral("equalizer-nbands")))
@@ -1148,6 +2137,8 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
         ? gst_element_factory_make("equalizer-nbands", "converter-equalizer")
         : nullptr;
     m_postConvertElement = gst_element_factory_make("audioconvert", "converter-post-convert");
+    m_dspCapsFilterElement = gst_element_factory_make("capsfilter", "converter-dsp-caps");
+    m_dspIdentityElement = gst_element_factory_make("identity", "converter-dsp");
     m_finalConvertElement = gst_element_factory_make("audioconvert", "converter-final-convert");
     m_capsFilterElement = gst_element_factory_make("capsfilter", "converter-caps");
     m_muxerElement = QString::fromLatin1(profile->gstreamerMuxer).isEmpty()
@@ -1162,7 +2153,8 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     }
 
     if (!m_pipeline || !m_decodeBin || !m_convertElement || !m_resampleElement
-        || !m_pitchElement || !m_postConvertElement || !m_finalConvertElement
+        || !m_pitchElement || !m_postConvertElement || !m_dspCapsFilterElement
+        || !m_dspIdentityElement || !m_finalConvertElement
         || !m_capsFilterElement || !m_sinkElement
         || (m_applyReverb && !m_reverbElement)
         || (m_applyEqualizer && !m_equalizerElement)
@@ -1179,12 +2171,16 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     g_object_set(m_decodeBin, "uri", sourceUri.toUtf8().constData(), nullptr);
     g_object_set(m_sinkElement, "location", m_pendingTempOutputFile.toUtf8().constData(), nullptr);
 
+    if (hasElementProperty(m_pitchElement, "rate")) {
+        g_object_set(m_pitchElement, "rate", static_cast<float>(m_speed), nullptr);
+    }
     if (hasElementProperty(m_pitchElement, "tempo")) {
-        g_object_set(m_pitchElement, "tempo", m_playbackRate, nullptr);
+        g_object_set(m_pitchElement, "tempo", static_cast<float>(m_tempo * m_playbackRate), nullptr);
     }
     if (hasElementProperty(m_pitchElement, "pitch")) {
-        const double pitchRatio = std::pow(2.0, m_pitchSemitones / 12.0);
-        g_object_set(m_pitchElement, "pitch", pitchRatio, nullptr);
+        const double combinedSemitones = m_tonalitySemitones + static_cast<double>(m_pitchSemitones);
+        const double pitchRatio = std::pow(2.0, combinedSemitones / 12.0);
+        g_object_set(m_pitchElement, "pitch", static_cast<float>(pitchRatio), nullptr);
     }
     if (m_equalizerElement) {
         g_object_set(m_equalizerElement, "num-bands", static_cast<guint>(m_equalizerBandGains.size()), nullptr);
@@ -1204,6 +2200,36 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                      "width", 1.0,
                      nullptr);
     }
+
+    GstCaps *dspCaps = gst_caps_new_simple("audio/x-raw",
+                                           "format", G_TYPE_STRING, "F32LE",
+                                           "channels", G_TYPE_INT, 2,
+                                           nullptr);
+    g_object_set(m_dspCapsFilterElement, "caps", dspCaps, nullptr);
+    gst_caps_unref(dspCaps);
+
+    GstPad *dspPad = gst_element_get_static_pad(m_dspIdentityElement, "src");
+    if (dspPad) {
+        m_dspProbeId = gst_pad_add_probe(dspPad, GST_PAD_PROBE_TYPE_BUFFER, converterDspPadProbe, this, nullptr);
+        gst_object_unref(dspPad);
+    }
+
+    m_dspSampleRate = m_sampleRate > 0 ? m_sampleRate : 44100;
+    m_bassFilter.setSampleRate(m_dspSampleRate);
+    m_bassFilter.setBassMultiplier(m_bass);
+    m_echoEffect.setSampleRate(m_dspSampleRate);
+    m_echoEffect.setParameters(350.0, 0.35, m_echoMix * 0.01);
+    m_chorusEffect.setSampleRate(m_dspSampleRate);
+    m_chorusEffect.setParameters(20.0, 1.5, 3.0, m_chorusMix * 0.01);
+    m_flangerEffect.setSampleRate(m_dspSampleRate);
+    m_flangerEffect.setParameters(3.0, 0.25, 2.0, m_flangerMix * 0.01);
+    m_reverbEffect.setSampleRate(m_dspSampleRate);
+    m_reverbEffect.setParameters(0.85, 0.5, m_reverbMix * 0.01);
+    m_bassFilter.reset();
+    m_echoEffect.reset();
+    m_chorusEffect.reset();
+    m_flangerEffect.reset();
+    m_reverbEffect.reset();
 
     GstCaps *caps = gst_caps_new_simple("audio/x-raw",
                                         "rate", G_TYPE_INT, m_sampleRate,
@@ -1244,13 +2270,15 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     gst_bin_add(GST_BIN(m_pipeline), m_convertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_resampleElement);
     gst_bin_add(GST_BIN(m_pipeline), m_pitchElement);
+    gst_bin_add(GST_BIN(m_pipeline), m_postConvertElement);
+    gst_bin_add(GST_BIN(m_pipeline), m_dspCapsFilterElement);
+    gst_bin_add(GST_BIN(m_pipeline), m_dspIdentityElement);
     if (m_reverbElement) {
         gst_bin_add(GST_BIN(m_pipeline), m_reverbElement);
     }
     if (m_equalizerElement) {
         gst_bin_add(GST_BIN(m_pipeline), m_equalizerElement);
     }
-    gst_bin_add(GST_BIN(m_pipeline), m_postConvertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_finalConvertElement);
     gst_bin_add(GST_BIN(m_pipeline), m_capsFilterElement);
     if (m_encoderElement) {
@@ -1274,14 +2302,22 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
                                QStringLiteral("Failed to link pitch -> post-convert"),
                                errorMessage)
         && linkWithDiagnostics(m_postConvertElement,
+                               m_dspCapsFilterElement,
+                               QStringLiteral("Failed to link post-convert -> dsp caps"),
+                               errorMessage)
+        && linkWithDiagnostics(m_dspCapsFilterElement,
+                               m_dspIdentityElement,
+                               QStringLiteral("Failed to link dsp caps -> dsp identity"),
+                               errorMessage)
+        && linkWithDiagnostics(m_dspIdentityElement,
                                m_applyReverb ? m_reverbElement
                                              : (m_applyEqualizer ? m_equalizerElement
                                                                  : m_finalConvertElement),
                                m_applyReverb
-                                   ? QStringLiteral("Failed to link post-convert -> reverb")
+                                   ? QStringLiteral("Failed to link dsp -> reverb")
                                    : (m_applyEqualizer
-                                      ? QStringLiteral("Failed to link post-convert -> equalizer")
-                                      : QStringLiteral("Failed to link post-convert -> final convert")),
+                                      ? QStringLiteral("Failed to link dsp -> equalizer")
+                                      : QStringLiteral("Failed to link dsp -> final convert")),
                                errorMessage)
         && (!m_applyReverb
             || linkWithDiagnostics(m_reverbElement,
@@ -1784,8 +2820,11 @@ int AudioConverterService::normalizeBitrateForFormat(int bitrate, const QString 
     const QString profileId = QString::fromLatin1(profile->id);
     if (profileId == QStringLiteral("ogg")) {
         static const int kAllowedBitrates[] = {64, 96, 128, 160, 192, 224};
-        int best = kAllowedBitrates[0];
-        int bestDistance = qAbs(kAllowedBitrates[0] - bitrate);
+        if (bitrate <= 0) {
+            return 224;
+        }
+        int best = kAllowedBitrates[sizeof(kAllowedBitrates)/sizeof(kAllowedBitrates[0]) - 1];
+        int bestDistance = qAbs(best - bitrate);
         for (int candidate : kAllowedBitrates) {
             const int distance = qAbs(candidate - bitrate);
             if (distance < bestDistance) {
@@ -1798,8 +2837,11 @@ int AudioConverterService::normalizeBitrateForFormat(int bitrate, const QString 
 
     if (profileId == QStringLiteral("opus") || profileId == QStringLiteral("webm")) {
         static const int kAllowedBitrates[] = {64, 96, 128, 160, 192, 256};
-        int best = kAllowedBitrates[0];
-        int bestDistance = qAbs(kAllowedBitrates[0] - bitrate);
+        if (bitrate <= 0) {
+            return 256;
+        }
+        int best = kAllowedBitrates[sizeof(kAllowedBitrates)/sizeof(kAllowedBitrates[0]) - 1];
+        int bestDistance = qAbs(best - bitrate);
         for (int candidate : kAllowedBitrates) {
             const int distance = qAbs(candidate - bitrate);
             if (distance < bestDistance) {
@@ -1811,8 +2853,11 @@ int AudioConverterService::normalizeBitrateForFormat(int bitrate, const QString 
     }
 
     static const int kAllowedBitrates[] = {64, 96, 128, 160, 192, 224, 256, 320};
-    int best = kAllowedBitrates[0];
-    int bestDistance = qAbs(kAllowedBitrates[0] - bitrate);
+    if (bitrate <= 0) {
+        return 320;
+    }
+    int best = kAllowedBitrates[sizeof(kAllowedBitrates)/sizeof(kAllowedBitrates[0]) - 1];
+    int bestDistance = qAbs(best - bitrate);
     for (int candidate : kAllowedBitrates) {
         const int distance = qAbs(candidate - bitrate);
         if (distance < bestDistance) {
@@ -1833,8 +2878,11 @@ int AudioConverterService::normalizeSampleRate(int sampleRate, const QString &fo
 
     if (profileId == QStringLiteral("mp3")) {
         static const int kAllowedRates[] = {22050, 32000, 44100, 48000};
-        int best = kAllowedRates[0];
-        int bestDistance = qAbs(kAllowedRates[0] - sampleRate);
+        if (sampleRate <= 0) {
+            return 44100;
+        }
+        int best = 44100;
+        int bestDistance = qAbs(best - sampleRate);
         for (int candidate : kAllowedRates) {
             const int distance = qAbs(candidate - sampleRate);
             if (distance < bestDistance) {
@@ -1846,8 +2894,11 @@ int AudioConverterService::normalizeSampleRate(int sampleRate, const QString &fo
     }
 
     static const int kAllowedRates[] = {22050, 32000, 44100, 48000, 88200, 96000, 192000};
-    int best = kAllowedRates[0];
-    int bestDistance = qAbs(kAllowedRates[0] - sampleRate);
+    if (sampleRate <= 0) {
+        return 44100;
+    }
+    int best = 44100;
+    int bestDistance = qAbs(best - sampleRate);
     for (int candidate : kAllowedRates) {
         const int distance = qAbs(candidate - sampleRate);
         if (distance < bestDistance) {

@@ -49,7 +49,7 @@ Rectangle {
     }
 
     function formatVolume(value) {
-        const volume = Math.max(0, Math.min(1.25, Number(value) || 0))
+        const volume = Math.max(0, Math.min(2.0, Number(value) || 0))
         if (appSettings.displayVolumeInDecibels) {
             if (volume <= 0.000001) {
                 return "-∞ dB"
@@ -410,12 +410,10 @@ Rectangle {
                              ? "qrc:/WaveFlux/resources/icons/equalizer-dark.svg"
                              : "qrc:/WaveFlux/resources/icons/equalizer-light.svg"
                 display: AbstractButton.IconOnly
-                enabled: audioEngine && audioEngine.equalizerAvailable
-                opacity: enabled ? 1.0 : 0.45
+                enabled: true
+                opacity: 1.0
                 onClicked: root.equalizerRequested()
-                ToolTip.text: (audioEngine && audioEngine.equalizerAvailable)
-                              ? tr("player.equalizer")
-                              : tr("player.equalizerUnavailable")
+                ToolTip.text: tr("player.dspManager")
                 ToolTip.visible: hovered
             }
 
@@ -513,7 +511,7 @@ Rectangle {
                 resetText: "1x"
                 resetTooltip: root.tr("player.resetSpeed")
                 minimumValue: 0.25
-                maximumValue: 2.0
+                maximumValue: 3.0
                 neutralValue: 1.0
                 stepSize: 0.05
                 stripWidth: root.compactButtons ? 60 : 82
@@ -546,8 +544,8 @@ Rectangle {
                 valueText: (value >= 0 ? "+" : "") + Math.round(value)
                 resetText: "0"
                 resetTooltip: root.tr("player.resetPitch")
-                minimumValue: -6
-                maximumValue: 6
+                minimumValue: -10
+                maximumValue: 10
                 neutralValue: 0
                 stepSize: 1
                 stripWidth: root.compactButtons ? 60 : 82
@@ -586,9 +584,7 @@ Rectangle {
         MenuSeparator {}
 
         MenuItem {
-            text: (audioEngine && audioEngine.equalizerAvailable)
-                  ? root.tr("player.equalizer")
-                  : root.tr("player.equalizerUnavailable")
+            text: root.tr("player.dspManager")
             icon.source: themeManager.darkMode
                          ? "qrc:/WaveFlux/resources/icons/equalizer-dark.svg"
                          : "qrc:/WaveFlux/resources/icons/equalizer-light.svg"

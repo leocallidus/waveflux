@@ -64,7 +64,7 @@ AppDialog {
         case "library":
             return root.tr("menu.library")
         case "equalizer":
-            return root.tr("player.equalizer")
+            return root.tr("player.dspManager")
         case "profiler":
             return root.tr("help.shortcutsGroupProfiler")
         case "help":

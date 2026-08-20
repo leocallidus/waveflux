@@ -24,7 +24,7 @@ Item {
     }
 
     function formatVolume(value) {
-        const volume = Math.max(0, Math.min(1.25, Number(value) || 0))
+        const volume = Math.max(0, Math.min(2.0, Number(value) || 0))
         if (appSettings.displayVolumeInDecibels) {
             if (volume <= 0.000001) {
                 return "-∞ dB"
@@ -112,7 +112,7 @@ Item {
                         resetText: "1x"
                         resetTooltip: root.tr("player.resetSpeed")
                         minimumValue: 0.25
-                        maximumValue: 2.0
+                        maximumValue: 3.0
                         neutralValue: 1.0
                         stepSize: 0.05
                         stripWidth: root.compactMode ? 84 : 112
@@ -134,8 +134,8 @@ Item {
                         valueText: (value >= 0 ? "+" : "") + Math.round(value)
                         resetText: "0"
                         resetTooltip: root.tr("player.resetPitch")
-                        minimumValue: -6
-                        maximumValue: 6
+                        minimumValue: -10
+                        maximumValue: 10
                         neutralValue: 0
                         stepSize: 1
                         stripWidth: root.compactMode ? 84 : 112

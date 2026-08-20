@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
-import WaveFlux 1.2
+import WaveFlux
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -33,6 +33,13 @@ Item {
     property string debouncedSearchQuery: ""
     property string pendingSearchText: ""
     property var selectedFilePaths: []
+    readonly property var selectedPathsSet: {
+        const set = {}
+        for (let i = 0; i < selectedFilePaths.length; ++i) {
+            set[selectedFilePaths[i]] = true
+        }
+        return set
+    }
     property int selectionAnchorIndex: -1
     property bool ctrlDragSelecting: false
     property int ctrlDragAnchorIndex: -1
@@ -293,7 +300,7 @@ Item {
     }
 
     function formatVolume(value) {
-        const volume = Math.max(0, Math.min(1.25, Number(value) || 0))
+        const volume = Math.max(0, Math.min(2.0, Number(value) || 0))
         if (appSettings.displayVolumeInDecibels) {
             if (volume <= 0.000001) {
                 return "-∞ dB"
@@ -770,7 +777,10 @@ Item {
     }
 
     function isFileSelected(filePath) {
-        return selectedFilePaths.indexOf(filePath) >= 0
+        if (!filePath || filePath.length === 0) {
+            return false
+        }
+        return Boolean(selectedPathsSet[filePath])
     }
 
     function normalizeSelectedFilePaths() {
@@ -922,18 +932,31 @@ Item {
         ctrlDragConsumeClick = false
     }
 
-    function updateCtrlDragSelectionAt(index) {
-        if (!ctrlDragSelecting || index < 0) {
+    function updateCtrlDragSelectionAt(sourceIndex) {
+        if (!ctrlDragSelecting || sourceIndex < 0) {
             return
         }
-        if (index !== ctrlDragAnchorIndex) {
+        if (sourceIndex !== ctrlDragAnchorIndex) {
             ctrlDragMoved = true
         }
         if (!ctrlDragMoved) {
             return
         }
-        addIndexToSelection(ctrlDragAnchorIndex)
-        addIndexToSelection(index)
+        const anchorProxy = filteredTrackModel.proxyIndexForSource(ctrlDragAnchorIndex)
+        const currentProxy = filteredTrackModel.proxyIndexForSource(sourceIndex)
+        if (anchorProxy >= 0 && currentProxy >= 0) {
+            const fromProxy = Math.min(anchorProxy, currentProxy)
+            const toProxy = Math.max(anchorProxy, currentProxy)
+            for (let p = fromProxy; p <= toProxy; ++p) {
+                const srcIdx = filteredTrackModel.sourceIndexAt(p)
+                if (srcIdx >= 0) {
+                    addIndexToSelection(srcIdx)
+                }
+            }
+        } else {
+            addIndexToSelection(ctrlDragAnchorIndex)
+            addIndexToSelection(sourceIndex)
+        }
     }
 
     function endCtrlDragSelection() {
@@ -954,22 +977,25 @@ Item {
         return true
     }
 
-    function selectRangeToIndex(index) {
-        const anchor = selectionAnchorIndex >= 0 ? selectionAnchorIndex : index
-        const from = Math.min(anchor, index)
-        const to = Math.max(anchor, index)
+    function selectRangeToIndex(sourceIndex) {
+        const anchorSource = selectionAnchorIndex >= 0 ? selectionAnchorIndex : sourceIndex
+        const anchorProxy = filteredTrackModel.proxyIndexForSource(anchorSource)
+        const targetProxy = filteredTrackModel.proxyIndexForSource(sourceIndex)
+        const fromProxy = (anchorProxy >= 0 && targetProxy >= 0) ? Math.min(anchorProxy, targetProxy) : 0
+        const toProxy = (anchorProxy >= 0 && targetProxy >= 0) ? Math.max(anchorProxy, targetProxy) : 0
+
         const next = []
         const seen = {}
-        for (let i = from; i <= to; ++i) {
-            const filePath = trackModel.getFilePath(i)
-            if (!filePath || seen[filePath]) {
-                continue
-            }
+        for (let p = fromProxy; p <= toProxy; ++p) {
+            const srcIdx = filteredTrackModel.sourceIndexAt(p)
+            if (srcIdx < 0) continue
+            const filePath = trackModel.getFilePath(srcIdx)
+            if (!filePath || seen[filePath]) continue
             next.push(filePath)
             seen[filePath] = true
         }
         selectedFilePaths = next
-        selectionAnchorIndex = anchor
+        selectionAnchorIndex = anchorSource
     }
 
     function selectedFilePathsSnapshot() {
@@ -1649,6 +1675,14 @@ Item {
                             }
 
                             AccentMenuItem {
+                                text: root.tr("main.refreshPlaylist")
+                                icon.source: IconResolver.themed("view-refresh", themeManager.darkMode)
+                                icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                                enabled: trackModel.count > 0
+                                onTriggered: trackModel.refreshPlaylist()
+                            }
+
+                            AccentMenuItem {
                                 text: root.tr("main.exportPlaylist")
                                 icon.source: IconResolver.themed("document-save", themeManager.darkMode)
                                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
@@ -1723,13 +1757,11 @@ Item {
                             AccentMenuSeparator {}
 
                             AccentMenuItem {
-                                text: audioEngine.equalizerAvailable
-                                      ? root.tr("player.equalizer")
-                                      : root.tr("player.equalizerUnavailable")
+                                text: root.tr("player.dspManager")
                                 icon.source: themeManager.darkMode
                                              ? "qrc:/WaveFlux/resources/icons/equalizer-dark.svg"
                                              : "qrc:/WaveFlux/resources/icons/equalizer-light.svg"
-                                enabled: audioEngine.equalizerAvailable
+                                enabled: true
                                 onTriggered: root.equalizerRequested()
                             }
 
@@ -2295,9 +2327,9 @@ Item {
                                                              !root.isFileSelected(filePath)
 
                     color: {
-                        if (trackDelegate.activeTrack) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.18)
-                        if (trackDelegate.pendingTrack) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.10)
-                        if (root.isFileSelected(trackDelegate.filePath)) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.24)
+                        if (root.isFileSelected(trackDelegate.filePath)) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, trackDelegate.activeTrack ? 0.28 : 0.22)
+                        if (trackDelegate.activeTrack) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.14)
+                        if (trackDelegate.pendingTrack) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.08)
                         if (delegateMouseArea.containsMouse) return Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.06)
                         return "transparent"
                     }
@@ -2345,10 +2377,10 @@ Item {
                                     "hasChapters": trackDelegate.hasChapters
                                 })
                                 alignment: String(desc.alignment || "left")
-                                isHighlighted: trackDelegate.activeTrack
+                                isHighlighted: trackDelegate.activeTrack || root.isFileSelected(trackDelegate.filePath)
                                 isPlaying: trackDelegate.activeTrack && root.isPlaying
                                 isCueSegment: false
-                                textColor: trackDelegate.activeTrack
+                                textColor: (trackDelegate.activeTrack || root.isFileSelected(trackDelegate.filePath))
                                            ? themeManager.primaryColor
                                            : (colId === "artist" || colId === "duration" ? themeManager.textSecondaryColor : (colId === "album" || colId === "format" || colId === "bitrate" ? themeManager.textMutedColor : themeManager.textColor))
                                 Layout.preferredWidth: Number(modelData.computedWidth || modelData.width || (desc ? desc.defaultWidth : 100))
@@ -2368,7 +2400,9 @@ Item {
                             if (mouse.button !== Qt.LeftButton) {
                                 return
                             }
-                            if ((mouse.modifiers & Qt.ControlModifier) === 0) {
+                            const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0 ||
+                                           (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0
+                            if (!isCtrl) {
                                 return
                             }
                             root.beginCtrlDragSelection(trackDelegate.sourceIndex)
@@ -2379,7 +2413,9 @@ Item {
                             }
                             const pointInList = delegateMouseArea.mapToItem(compactPlaylist.contentItem, mouse.x, mouse.y)
                             const targetProxyIndex = compactPlaylist.indexAt(8, pointInList.y)
-                            root.updateCtrlDragSelectionAt(filteredTrackModel.sourceIndexAt(targetProxyIndex))
+                            if (targetProxyIndex >= 0) {
+                                root.updateCtrlDragSelectionAt(filteredTrackModel.sourceIndexAt(targetProxyIndex))
+                            }
                         }
                         onReleased: function(mouse) {
                             if (mouse.button === Qt.LeftButton) {
@@ -2390,10 +2426,15 @@ Item {
 
                         onClicked: (mouse) => {
                             if (mouse.button === Qt.LeftButton) {
-                                if (mouse.modifiers & Qt.ShiftModifier) {
+                                const isShift = (mouse.modifiers & Qt.ShiftModifier) !== 0 ||
+                                                (Qt.application.keyboardModifiers & Qt.ShiftModifier) !== 0
+                                const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0 ||
+                                               (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0
+
+                                if (isShift) {
                                     root.selectRangeToIndex(trackDelegate.sourceIndex)
                                     return
-                                } else if (mouse.modifiers & Qt.ControlModifier) {
+                                } else if (isCtrl) {
                                     if (root.consumeCtrlDragClick()) {
                                         return
                                     }
@@ -2626,6 +2667,14 @@ Item {
                     icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                     enabled: trackModel.canResetPlaylist
                     onTriggered: root.resetPlaylistRequested()
+                }
+
+                AccentMenuItem {
+                    text: root.tr("playlist.refreshPlaylist")
+                    icon.source: IconResolver.themed("view-refresh", themeManager.darkMode)
+                    icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+                    enabled: trackModel.count > 0
+                    onTriggered: trackModel.refreshPlaylist()
                 }
             }
         }

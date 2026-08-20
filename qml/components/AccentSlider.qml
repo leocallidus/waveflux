@@ -52,7 +52,7 @@ Slider {
                    : parent.width
             height: control.orientation === Qt.Horizontal
                      ? parent.height
-                     : Math.max(parent.width, control.visualPosition * parent.height)
+                     : Math.max(parent.width, control.position * parent.height)
         }
     }
 
@@ -72,7 +72,7 @@ Slider {
            : control.leftPadding + (control.availableWidth - width) * 0.5
         y: control.orientation === Qt.Horizontal
            ? control.topPadding + (control.availableHeight - height) * 0.5
-           : control.topPadding + (1.0 - control.visualPosition) * (control.availableHeight - height)
+           : control.topPadding + (1.0 - control.position) * (control.availableHeight - height)
 
         Behavior on implicitWidth {
             NumberAnimation { duration: 90 }

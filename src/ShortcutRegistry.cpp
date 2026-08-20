@@ -15,6 +15,7 @@ const QVector<Definition> &definitionStorage()
         {QStringLiteral("file.importUrl"), QStringLiteral("menu.importUrl"), QStringLiteral("file"), QStringLiteral("window"), QStringLiteral("Ctrl+Shift+U"), true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("file.showUrlImportSession"), QStringLiteral("ytDlpImport.showSession"), QStringLiteral("file"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("file.resetPlaylist"), QStringLiteral("menu.resetPlaylist"), QStringLiteral("file"), QStringLiteral("window"), QStringLiteral("Ctrl+Alt+R"), true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
+        {QStringLiteral("file.refreshPlaylist"), QStringLiteral("menu.refreshPlaylist"), QStringLiteral("file"), QStringLiteral("window"), QStringLiteral("F5"), true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("file.exportPlaylist"), QStringLiteral("menu.exportPlaylist"), QStringLiteral("file"), QStringLiteral("window"), QStringLiteral("Ctrl+E"), true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("file.clearPlaylist"), QStringLiteral("menu.clearPlaylist"), QStringLiteral("file"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("file.settings"), QStringLiteral("main.settings"), QStringLiteral("file"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
@@ -82,7 +83,7 @@ const QVector<Definition> &definitionStorage()
         {QStringLiteral("playback.openFragmentDialog"), QStringLiteral("shortcut.openFragmentDialog"), QStringLiteral("playback"), QStringLiteral("application"), QStringLiteral("Ctrl+Alt+F"), true, true, {}, QStringLiteral("qml/Main.qml Action + Shortcut"), {}},
         {QStringLiteral("playback.clearQueue"), QStringLiteral("playlist.clearQueue"), QStringLiteral("playback"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("playback.locateCurrent"), QStringLiteral("playlist.locateCurrent"), QStringLiteral("playback"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
-        {QStringLiteral("playback.openEqualizer"), QStringLiteral("player.equalizer"), QStringLiteral("playback"), QStringLiteral("application"), QStringLiteral("Ctrl+Shift+G"), true, true, {}, QStringLiteral("qml/Main.qml Action + Shortcut"), {}},
+        {QStringLiteral("playback.openEqualizer"), QStringLiteral("player.dspManager"), QStringLiteral("playback"), QStringLiteral("application"), QStringLiteral("Ctrl+Shift+G"), true, true, {}, QStringLiteral("qml/Main.qml Action + Shortcut"), {}},
         {QStringLiteral("playback.resetSpeed"), QStringLiteral("player.resetSpeed"), QStringLiteral("playback"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
         {QStringLiteral("playback.resetPitch"), QStringLiteral("player.resetPitch"), QStringLiteral("playback"), QStringLiteral("window"), {}, true, true, {}, QStringLiteral("qml/Main.qml Action"), {}},
 

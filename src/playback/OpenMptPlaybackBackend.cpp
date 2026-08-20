@@ -527,7 +527,7 @@ bool OpenMptPlaybackBackend::hasPreloadedNext() const
 
 void OpenMptPlaybackBackend::setVolume(double volume)
 {
-    m_volume = qBound(0.0, volume, 1.25);
+    m_volume = qBound(0.0, volume, 2.0);
     if (m_audioSink) {
         m_audioSink->setVolume(m_volume);
     }

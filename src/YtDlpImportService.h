@@ -23,6 +23,15 @@ class YtDlpImportService : public QObject
     Q_PROPERTY(QString namingPolicy READ namingPolicy WRITE setNamingPolicy NOTIFY namingPolicyChanged)
     Q_PROPERTY(QString conflictPolicy READ conflictPolicy WRITE setConflictPolicy NOTIFY conflictPolicyChanged)
     Q_PROPERTY(int parallelDownloads READ parallelDownloads WRITE setParallelDownloads NOTIFY parallelDownloadsChanged)
+    Q_PROPERTY(QString probeCustomArgs READ probeCustomArgs WRITE setProbeCustomArgs NOTIFY probeCustomArgsChanged)
+    Q_PROPERTY(QString downloadCustomArgs READ downloadCustomArgs WRITE setDownloadCustomArgs NOTIFY downloadCustomArgsChanged)
+    Q_PROPERTY(bool embedMetadata READ embedMetadata WRITE setEmbedMetadata NOTIFY embedMetadataChanged)
+    Q_PROPERTY(bool embedThumbnail READ embedThumbnail WRITE setEmbedThumbnail NOTIFY embedThumbnailChanged)
+    Q_PROPERTY(bool cropCoverArt READ cropCoverArt WRITE setCropCoverArt NOTIFY cropCoverArtChanged)
+    Q_PROPERTY(bool removeSourceMetadata READ removeSourceMetadata WRITE setRemoveSourceMetadata NOTIFY removeSourceMetadataChanged)
+    Q_PROPERTY(bool useAria2c READ useAria2c WRITE setUseAria2c NOTIFY useAria2cChanged)
+    Q_PROPERTY(int aria2cMaxConnections READ aria2cMaxConnections WRITE setAria2cMaxConnections NOTIFY aria2cMaxConnectionsChanged)
+    Q_PROPERTY(int aria2cMinSplitSizeMb READ aria2cMinSplitSizeMb WRITE setAria2cMinSplitSizeMb NOTIFY aria2cMinSplitSizeMbChanged)
     Q_PROPERTY(QVariantList recentSourceUrls READ recentSourceUrls NOTIFY recentSourceUrlsChanged)
     Q_PROPERTY(QVariantList recentCanonicalSourceUrls READ recentCanonicalSourceUrls NOTIFY recentCanonicalSourceUrlsChanged)
     Q_PROPERTY(QVariantList recentOutputDirectories READ recentOutputDirectories NOTIFY recentOutputDirectoriesChanged)
@@ -204,6 +213,15 @@ public:
     QString namingPolicy() const { return m_namingPolicy; }
     QString conflictPolicy() const { return m_conflictPolicy; }
     int parallelDownloads() const { return m_parallelDownloads; }
+    QString probeCustomArgs() const { return m_probeCustomArgs; }
+    QString downloadCustomArgs() const { return m_downloadCustomArgs; }
+    bool embedMetadata() const { return m_embedMetadata; }
+    bool embedThumbnail() const { return m_embedThumbnail; }
+    bool cropCoverArt() const { return m_cropCoverArt; }
+    bool removeSourceMetadata() const { return m_removeSourceMetadata; }
+    bool useAria2c() const { return m_useAria2c; }
+    int aria2cMaxConnections() const { return m_aria2cMaxConnections; }
+    int aria2cMinSplitSizeMb() const { return m_aria2cMinSplitSizeMb; }
     QVariantList recentSourceUrls() const { return m_recentSourceUrls; }
     QVariantList recentCanonicalSourceUrls() const { return m_recentCanonicalSourceUrls; }
     QVariantList recentOutputDirectories() const { return m_recentOutputDirectories; }
@@ -235,6 +253,8 @@ public:
     static QVariantMap conflictResolutionToVariantMap(const ImportItem::ConflictResolutionInfo &info);
     static QVariantMap importItemToVariantMap(const ImportItem &item);
 
+    QStringList probeArgumentsForSourceUrl(const QString &sourceUrl) const;
+
 public slots:
     void setSourceUrl(const QString &sourceUrl);
     void setOutputDirectory(const QString &outputDirectory);
@@ -242,6 +262,15 @@ public slots:
     void setNamingPolicy(const QString &namingPolicy);
     void setConflictPolicy(const QString &conflictPolicy);
     void setParallelDownloads(int parallelDownloads);
+    void setProbeCustomArgs(const QString &probeCustomArgs);
+    void setDownloadCustomArgs(const QString &downloadCustomArgs);
+    void setEmbedMetadata(bool embedMetadata);
+    void setEmbedThumbnail(bool embedThumbnail);
+    void setCropCoverArt(bool cropCoverArt);
+    void setRemoveSourceMetadata(bool removeSourceMetadata);
+    void setUseAria2c(bool useAria2c);
+    void setAria2cMaxConnections(int aria2cMaxConnections);
+    void setAria2cMinSplitSizeMb(int aria2cMinSplitSizeMb);
 
     Q_INVOKABLE bool probeSource();
     Q_INVOKABLE bool probeSourceUrl(const QString &sourceUrl);
@@ -291,6 +320,15 @@ signals:
     void namingPolicyChanged();
     void conflictPolicyChanged();
     void parallelDownloadsChanged();
+    void probeCustomArgsChanged();
+    void downloadCustomArgsChanged();
+    void embedMetadataChanged();
+    void embedThumbnailChanged();
+    void cropCoverArtChanged();
+    void removeSourceMetadataChanged();
+    void useAria2cChanged();
+    void aria2cMaxConnectionsChanged();
+    void aria2cMinSplitSizeMbChanged();
     void recentSourceUrlsChanged();
     void recentCanonicalSourceUrlsChanged();
     void recentOutputDirectoriesChanged();
@@ -383,6 +421,15 @@ private:
     QString m_namingPolicy = QStringLiteral("auto");
     QString m_conflictPolicy = QStringLiteral("auto-rename");
     int m_parallelDownloads = 1;
+    QString m_probeCustomArgs;
+    QString m_downloadCustomArgs;
+    bool m_embedMetadata = true;
+    bool m_embedThumbnail = true;
+    bool m_cropCoverArt = false;
+    bool m_removeSourceMetadata = false;
+    bool m_useAria2c = false;
+    int m_aria2cMaxConnections = 16;
+    int m_aria2cMinSplitSizeMb = 20;
     QString m_statusText;
     QString m_lastError;
     ProbeResult m_probeResultData;

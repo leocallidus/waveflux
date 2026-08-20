@@ -3,37 +3,25 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
+import "IconResolver.js" as IconResolver
 
 AppDialog {
     id: root
 
-    readonly property int preferredDialogWidth: Math.round(680 * UiMetrics.fontScale)
-    readonly property int preferredDialogHeight: Math.round(720 * UiMetrics.fontScale)
-    readonly property int minimumDialogWidth: Math.round(460 * UiMetrics.fontScale)
-    readonly property int minimumDialogHeight: Math.round(520 * UiMetrics.fontScale)
+    readonly property int preferredDialogWidth: Math.round(780 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(700 * UiMetrics.fontScale)
+    readonly property int minimumDialogWidth: Math.round(520 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(480 * UiMetrics.fontScale)
+    readonly property int dialogMargin: UiMetrics.spaceL
     readonly property var currentProfile: audioConverterService.currentFormatProfile
     readonly property var preflight: audioConverterService.preflight
     readonly property var statusPresentation: audioConverterService.statusPresentation
     readonly property var errorPresentation: audioConverterService.errorPresentation
-    readonly property bool compactLayout: width < UiMetrics.breakpoint(720)
-    readonly property color cardBorderColor: Qt.rgba(themeManager.borderColor.r,
-                                                     themeManager.borderColor.g,
-                                                     themeManager.borderColor.b,
-                                                     0.88)
-    readonly property color cardFillColor: Qt.rgba(themeManager.surfaceColor.r,
-                                                   themeManager.surfaceColor.g,
-                                                   themeManager.surfaceColor.b,
-                                                   themeManager.darkMode ? 0.64 : 0.94)
-    readonly property color footerFillColor: Qt.rgba(themeManager.backgroundColor.r,
-                                                     themeManager.backgroundColor.g,
-                                                     themeManager.backgroundColor.b,
-                                                     themeManager.darkMode ? 0.96 : 0.98)
-    readonly property int sectionPadding: appSettings.skinMode === "compact" ? UiMetrics.spaceS : UiMetrics.spaceM
-    readonly property int sectionSpacing: appSettings.skinMode === "compact" ? UiMetrics.spaceS : UiMetrics.spaceM
     readonly property bool rawOutputPathLooksInvalid: String(outputPathField.text || "").trim().length > 0
                                                   && !outputPathField.activeFocus
                                                   && String(audioConverterService.outputFile || "").trim().length === 0
 
+    property int activeTabIndex: 0
     property string sourceFile: ""
     property string sourceDisplayName: ""
     property string sourceMetaText: ""
@@ -45,6 +33,7 @@ AppDialog {
     property bool followSuggestedOutputPath: true
     property string terminalState: "none"
     property bool awaitingOverwriteConfirmation: false
+
     readonly property string summaryFormatText: currentFormatSummary()
     readonly property string summaryTransformText: currentTransformSummary()
     readonly property string summaryOutputName: fileNameFromPath(completedOutputPath.length > 0
@@ -53,9 +42,10 @@ AppDialog {
     readonly property string statusTone: dialogTone()
     readonly property string statusBadgeText: dialogBadgeText()
     readonly property string statusTitleText: dialogTitleText()
-    readonly property string primaryActionHintText: !convertButton.enabled && !audioConverterService.isRunning
-                                                  ? root.statusSummaryText()
-                                                  : ""
+    readonly property bool hasPreflightConflict: Boolean(preflight && preflight.requiresOverwriteConfirmation)
+    readonly property bool preflightCanAttempt: Boolean(preflight && (preflight.canStart || preflight.requiresOverwriteConfirmation))
+                                               && !rawOutputPathLooksInvalid
+
     readonly property string dialogState: {
         if (audioConverterService.isRunning) {
             return "running"
@@ -69,16 +59,19 @@ AppDialog {
         if (terminalState === "canceled") {
             return "canceled"
         }
-        if (awaitingOverwriteConfirmation) {
+        if (awaitingOverwriteConfirmation || hasPreflightConflict) {
             return "conflict-detected"
         }
-        if (Boolean(preflight.canStart) && !rawOutputPathLooksInvalid) {
+        if (preflightCanAttempt) {
             return "idle-valid"
         }
         return "idle-invalid"
     }
-    readonly property bool canAttemptStart: dialogState === "idle-valid"
-                                        || dialogState === "conflict-detected"
+    readonly property bool canAttemptStart: preflightCanAttempt
+
+    readonly property string primaryActionHintText: !convertButton.enabled && !audioConverterService.isRunning
+                                                  ? root.statusSummaryText()
+                                                  : ""
 
     signal browseOutputRequested(string defaultName)
     signal showResultInPlaylistRequested(string outputPath)
@@ -87,6 +80,33 @@ AppDialog {
     function tr(key) {
         const _translationRevision = appSettings.translationRevision
         return appSettings.translate(key)
+    }
+
+    function prepareForSource(source) {
+        if (!source || !audioConverterService) {
+            return
+        }
+        root.sourceFile = String(source.sourceFile || "")
+        root.sourceDisplayName = String(source.sourceDisplayName || "")
+        root.sourceMetaText = String(source.sourceMetaText || "")
+        root.sourceFormatText = String(source.sourceFormatText || "")
+        root.sourceBitrateKbps = Number(source.sourceBitrateKbps) || 0
+        root.sourceSampleRateHz = Number(source.sourceSampleRateHz) || 0
+        root.sourceDurationMs = Number(source.sourceDurationMs) || 0
+
+        audioConverterService.sourceFile = root.sourceFile
+        audioConverterService.trimStartMs = 0
+        audioConverterService.trimEndMs = root.sourceDurationMs > 0 ? root.sourceDurationMs : 0
+        audioConverterService.trimEnabled = false
+        audioConverterService.previewStartMs = 0
+        audioConverterService.previewEndMs = Math.min(root.sourceDurationMs > 0 ? root.sourceDurationMs : 15000, 15000)
+
+        root.followSuggestedOutputPath = true
+        root.setSuggestedOutputPath()
+        root.terminalState = "none"
+        root.completedOutputPath = ""
+        root.awaitingOverwriteConfirmation = false
+        root.open()
     }
 
     function boundedDialogSize(preferred, minimum, available) {
@@ -104,11 +124,11 @@ AppDialog {
     }
 
     function formatDuration(durationMs) {
-        const totalMs = Math.max(0, Number(durationMs) || 0)
-        if (totalMs <= 0) {
+        if (durationMs === undefined || durationMs === null || isNaN(durationMs)) {
             return root.tr("audioConverter.notAvailable")
         }
 
+        const totalMs = Math.max(0, Number(durationMs) || 0)
         const totalSeconds = Math.floor(totalMs / 1000)
         const hours = Math.floor(totalSeconds / 3600)
         const minutes = Math.floor((totalSeconds % 3600) / 60)
@@ -117,31 +137,21 @@ AppDialog {
         if (hours > 0) {
             return hours + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0")
         }
-        return minutes + ":" + String(seconds).padStart(2, "0")
-    }
-
-    function parseDurationText(text) {
-        const normalized = String(text || "").trim()
-        if (normalized.length === 0) {
-            return 0
-        }
-        const parts = normalized.split(":")
-        let seconds = 0
-        if (parts.length === 1) {
-            seconds = Number(parts[0])
-        } else if (parts.length === 2) {
-            seconds = Number(parts[0]) * 60 + Number(parts[1])
-        } else {
-            seconds = Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2])
-        }
-        if (!isFinite(seconds) || seconds < 0) {
-            return 0
-        }
-        return Math.round(seconds * 1000)
+        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0")
     }
 
     function sourceTrimDurationMs() {
-        return Math.max(0, Number(root.sourceDurationMs) || 0)
+        const direct = Math.max(0, Number(root.sourceDurationMs) || 0)
+        if (direct > 0) {
+            return direct
+        }
+        if (audioConverterService && audioConverterService.sourceDurationMs > 0) {
+            return audioConverterService.sourceDurationMs
+        }
+        if (audioConverterService && audioConverterService.trimEndMs > 0) {
+            return audioConverterService.trimEndMs
+        }
+        return 0
     }
 
     function clampTrimStart(value) {
@@ -176,6 +186,52 @@ AppDialog {
         audioConverterService.trimEndMs = root.clampTrimEnd(value)
     }
 
+    function clampSampleStart(value) {
+        const duration = root.sourceTrimDurationMs()
+        const safeValue = Math.max(0, Math.round(Number(value) || 0))
+        if (duration <= 0) {
+            return safeValue
+        }
+        return Math.min(safeValue, Math.max(0, duration - 500))
+    }
+
+    function clampSampleEnd(value) {
+        const duration = root.sourceTrimDurationMs()
+        const fallbackEnd = duration > 0 ? duration : Math.max(1000, audioConverterService.previewStartMs + 15000)
+        const safeValue = Math.max(0, Math.round(Number(value) || fallbackEnd))
+        const minEnd = audioConverterService.previewStartMs + 500
+        if (duration <= 0) {
+            return Math.max(minEnd, safeValue)
+        }
+        return Math.max(minEnd, Math.min(safeValue, duration))
+    }
+
+    function setSampleStart(value) {
+        const start = root.clampSampleStart(value)
+        if (audioConverterService.previewStartMs !== start) {
+            audioConverterService.previewStartMs = start
+        }
+        if (audioConverterService.previewEndMs <= start) {
+            const minEnd = root.clampSampleEnd(start + 15000)
+            if (audioConverterService.previewEndMs !== minEnd) {
+                audioConverterService.previewEndMs = minEnd
+            }
+        }
+    }
+
+    function setSampleEnd(value) {
+        const end = root.clampSampleEnd(value)
+        if (audioConverterService.previewEndMs !== end) {
+            audioConverterService.previewEndMs = end
+        }
+    }
+
+    function pauseMainPlayer() {
+        if (typeof audioEngine !== "undefined" && audioEngine) {
+            audioEngine.pause()
+        }
+    }
+
     function formatBitrateLabel(kbps) {
         const value = Math.max(0, Number(kbps) || 0)
         return value > 0 ? value + " kbps" : root.tr("audioConverter.notAvailable")
@@ -184,12 +240,6 @@ AppDialog {
     function formatSampleRateLabel(rate) {
         const value = Math.max(0, Number(rate) || 0)
         return value > 0 ? value + " Hz" : root.tr("audioConverter.notAvailable")
-    }
-
-    function pitchLabel(value) {
-        const safeValue = Math.round(Number(value) || 0)
-        const prefix = safeValue > 0 ? "+" : ""
-        return prefix + safeValue + " " + root.tr("audioConverter.semitones")
     }
 
     function channelModeLabel(mode) {
@@ -201,6 +251,22 @@ AppDialog {
             return root.tr("audioConverter.channelStereo")
         }
         return normalized
+    }
+
+    function resetAllDsp() {
+        audioConverterService.speed = 1.0
+        audioConverterService.tempo = 1.0
+        audioConverterService.tonalitySemitones = 0.0
+        audioConverterService.pitchSemitones = 0
+        audioConverterService.echoMix = 0.0
+        audioConverterService.reverbMix = 0.0
+        audioConverterService.applyReverb = false
+        audioConverterService.chorusMix = 0.0
+        audioConverterService.flangerMix = 0.0
+        audioConverterService.bass = 1.0
+        audioConverterService.stereoWidth = 1.0
+        audioConverterService.voiceSuppression = false
+        audioConverterService.applyCurrentEqualizer = false
     }
 
     function bitrateOptions(profile) {
@@ -255,19 +321,6 @@ AppDialog {
         return result
     }
 
-    function formatAvailabilityText(profile) {
-        if (!profile || profile.available !== false) {
-            return ""
-        }
-
-        const label = profile.label ? String(profile.label) : String(profile.id || "").toUpperCase()
-        const missing = profile.missingGStreamerElements ? profile.missingGStreamerElements : []
-        if (missing.length > 0) {
-            return root.tr("audioConverter.formatUnavailableHint").arg(label).arg(missing.join(", "))
-        }
-        return root.tr("audioConverter.formatUnavailableGenericHint").arg(label)
-    }
-
     function findOptionIndex(options, expectedValue) {
         const normalizedExpected = String(expectedValue)
         for (let i = 0; i < options.length; ++i) {
@@ -276,7 +329,7 @@ AppDialog {
                 return i
             }
         }
-        return options.length > 0 ? 0 : -1
+        return options.length > 0 ? options.length - 1 : -1
     }
 
     function setSuggestedOutputPath() {
@@ -298,6 +351,7 @@ AppDialog {
         if (normalized.length === 0) {
             return
         }
+        terminalState = "none"
         followSuggestedOutputPath = false
         audioConverterService.outputFile = normalized
         outputPathField.text = normalized
@@ -351,24 +405,20 @@ AppDialog {
         return root.formatMessageFromState(root.preflight)
     }
 
-    function preflightNoticeColor() {
-        if (root.rawOutputPathLooksInvalid) {
-            return Kirigami.Theme.negativeTextColor
-        }
-
-        const severity = root.preflight && root.preflight.severity
-                         ? String(root.preflight.severity)
-                         : "none"
-        if (severity === "warning") {
-            return Kirigami.Theme.neutralTextColor
-        }
-        if (severity === "error") {
-            return Kirigami.Theme.negativeTextColor
-        }
-        return Kirigami.Theme.disabledTextColor
-    }
-
     function statusSummaryText() {
+        if (root.dialogState === "succeeded") {
+            return root.tr("audioConverter.stateSucceeded")
+        }
+        if (root.dialogState === "running") {
+            return root.tr("audioConverter.stateRunning")
+        }
+        if (root.dialogState === "failed") {
+            return root.formatMessageFromState(root.errorPresentation)
+                    || root.tr("audioConverter.stateFailed")
+        }
+        if (root.dialogState === "canceled") {
+            return root.tr("audioConverter.stateCanceled")
+        }
         const preflightText = root.preflightNoticeText()
         if ((root.dialogState === "idle-invalid" || root.dialogState === "conflict-detected")
                 && preflightText.length > 0) {
@@ -378,250 +428,76 @@ AppDialog {
         if (runtimeStatusText.length > 0) {
             return runtimeStatusText
         }
-        if (root.dialogState === "running") {
-            return root.tr("audioConverter.stateRunning")
-        }
-        if (root.dialogState === "succeeded") {
-            return root.tr("audioConverter.stateSucceeded")
-        }
-        if (root.dialogState === "canceled") {
-            return root.tr("audioConverter.stateCanceled")
-        }
-        if (root.dialogState === "failed") {
-            return root.tr("audioConverter.stateFailed")
-        }
-        return root.tr("audioConverter.readyHint")
-    }
-
-    function runtimeFailureText() {
-        const runtimeErrorText = root.formatMessageFromState(root.errorPresentation)
-        if (runtimeErrorText.length > 0) {
-            return runtimeErrorText
-        }
-        if (root.dialogState === "failed" && audioConverterService.lastError.length > 0) {
-            return root.tr("audioConverter.runtimeFailedGeneric")
-        }
         return ""
     }
 
-    function currentFormatSummary() {
-        const chunks = []
-        const sourceFormat = root.sourceFormatText.length > 0
-                ? root.sourceFormatText
-                : root.tr("audioConverter.notAvailable")
-        const targetLabel = root.currentProfile && root.currentProfile.label
-                ? root.currentProfile.label
-                : String(audioConverterService.format || "").toUpperCase()
-        chunks.push(sourceFormat + " -> " + targetLabel)
-
-        if (root.currentProfile && root.currentProfile.supportsBitrate && Number(audioConverterService.bitrate) > 0) {
-            chunks.push(Number(audioConverterService.bitrate) + " kbps")
-        }
-        if (root.currentProfile && root.currentProfile.supportsSampleRate && Number(audioConverterService.sampleRate) > 0) {
-            chunks.push(Number(audioConverterService.sampleRate) + " Hz")
-        }
-        if (root.currentProfile && root.currentProfile.supportsChannels) {
-            chunks.push(root.channelModeLabel(audioConverterService.channelMode))
-        }
-
-        return chunks.join(", ")
-    }
-
-    function currentTransformSummary() {
-        const chunks = [
-            root.tr("audioConverter.speed") + Number(audioConverterService.playbackRate).toFixed(2) + "x",
-            root.tr("audioConverter.pitch") + root.pitchLabel(audioConverterService.pitchSemitones)
-        ]
-        chunks.push(audioConverterService.applyEqualizer
-                    ? root.tr("audioConverter.equalizerCurrent")
-                    : root.tr("audioConverter.equalizerDisabled"))
-        chunks.push(audioConverterService.applyReverb
-                    ? root.tr("audioConverter.reverbEnabled")
-                          .arg(Math.round(Number(audioConverterService.reverbWetLevel) * 100))
-                    : root.tr("audioConverter.reverbDisabled"))
-        chunks.push(audioConverterService.trimEnabled
-                    ? root.tr("audioConverter.trimRange")
-                          .arg(root.formatDuration(audioConverterService.trimStartMs))
-                          .arg(root.formatDuration(audioConverterService.trimEndMs))
-                    : root.tr("audioConverter.trimDisabled"))
-        return chunks.join(", ")
-    }
-
-    function syncEqualizerSettingsForConversion() {
-        if (!audioEngine || !audioConverterService.applyEqualizer) {
-            return
-        }
-        audioConverterService.equalizerBandGains = audioEngine.equalizerBandGains
-    }
-
     function dialogTone() {
-        if (root.dialogState === "succeeded") {
-            return "success"
-        }
-        if (root.dialogState === "failed") {
-            return "error"
-        }
-        if (root.dialogState === "running") {
-            return "progress"
-        }
-        if (root.dialogState === "canceled"
-                || root.dialogState === "conflict-detected"
-                || (root.preflight && String(root.preflight.severity || "") === "warning")) {
-            return "warning"
-        }
-        if (root.dialogState === "idle-invalid") {
-            return "error"
-        }
+        if (root.dialogState === "running") return "primary"
+        if (root.dialogState === "succeeded") return "positive"
+        if (root.dialogState === "failed") return "negative"
+        if (root.dialogState === "canceled" || root.dialogState === "conflict-detected") return "warning"
+        if (root.dialogState === "idle-invalid") return "warning"
         return "neutral"
     }
 
-    function toneTextColor(tone) {
-        if (tone === "success") {
-            return Kirigami.Theme.positiveTextColor
-        }
-        if (tone === "error") {
-            return Kirigami.Theme.negativeTextColor
-        }
-        if (tone === "warning") {
-            return Kirigami.Theme.neutralTextColor
-        }
-        if (tone === "progress") {
-            return Kirigami.Theme.highlightColor
-        }
-        return themeManager.textSecondaryColor
-    }
-
-    function toneFillColor(tone) {
-        const base = root.toneTextColor(tone)
-        return Qt.rgba(base.r, base.g, base.b, tone === "neutral" ? 0.12 : 0.16)
-    }
-
     function dialogBadgeText() {
-        if (root.dialogState === "running") {
-            return root.tr("audioConverter.badgeRunning")
-        }
-        if (root.dialogState === "succeeded") {
-            return root.tr("audioConverter.badgeSucceeded")
-        }
-        if (root.dialogState === "failed") {
-            return root.tr("audioConverter.badgeFailed")
-        }
-        if (root.dialogState === "canceled") {
-            return root.tr("audioConverter.badgeCanceled")
-        }
-        if (root.dialogState === "conflict-detected") {
-            return root.tr("audioConverter.badgeConflict")
-        }
-        if (root.dialogState === "idle-invalid") {
-            return root.tr("audioConverter.badgeAttention")
-        }
+        if (root.dialogState === "running") return root.tr("audioConverter.badgeRunning")
+        if (root.dialogState === "succeeded") return root.tr("audioConverter.badgeSucceeded")
+        if (root.dialogState === "failed") return root.tr("audioConverter.badgeFailed")
+        if (root.dialogState === "canceled") return root.tr("audioConverter.badgeCanceled")
+        if (root.dialogState === "conflict-detected") return root.tr("audioConverter.badgeConflict")
+        if (root.dialogState === "idle-invalid") return root.tr("audioConverter.badgeAttention")
         return root.tr("audioConverter.badgeReady")
     }
 
     function dialogTitleText() {
-        if (root.dialogState === "succeeded") {
-            return root.tr("audioConverter.statusTitleSucceeded")
-        }
-        if (root.dialogState === "failed") {
-            return root.tr("audioConverter.statusTitleFailed")
-        }
-        if (root.dialogState === "canceled") {
-            return root.tr("audioConverter.statusTitleCanceled")
-        }
-        if (root.dialogState === "running") {
-            return root.tr("audioConverter.statusTitleRunning")
-        }
-        if (root.dialogState === "conflict-detected") {
-            return root.tr("audioConverter.statusTitleConflict")
-        }
-        if (root.dialogState === "idle-invalid") {
-            return root.tr("audioConverter.statusTitleNeedsAttention")
-        }
+        if (root.dialogState === "running") return root.tr("audioConverter.statusTitleRunning")
+        if (root.dialogState === "succeeded") return root.tr("audioConverter.statusTitleSucceeded")
+        if (root.dialogState === "failed") return root.tr("audioConverter.statusTitleFailed")
+        if (root.dialogState === "canceled") return root.tr("audioConverter.statusTitleCanceled")
+        if (root.dialogState === "conflict-detected") return root.tr("audioConverter.statusTitleConflict")
+        if (root.dialogState === "idle-invalid") return root.tr("audioConverter.statusTitleNeedsAttention")
         return root.tr("audioConverter.statusTitleReady")
     }
 
-    function prepareForSource(config) {
-        const source = config || ({})
-        terminalState = "none"
-        awaitingOverwriteConfirmation = false
-        sourceFile = String(source.sourceFile || "")
-        sourceDisplayName = String(source.sourceDisplayName || fileNameFromPath(sourceFile))
-        sourceMetaText = String(source.sourceMetaText || "")
-        sourceFormatText = String(source.sourceFormatText || "")
-        sourceBitrateKbps = Math.max(0, Number(source.sourceBitrateKbps) || 0)
-        sourceSampleRateHz = Math.max(0, Number(source.sourceSampleRateHz) || 0)
-        sourceDurationMs = Math.max(0, Number(source.sourceDurationMs) || 0)
-        completedOutputPath = ""
-        followSuggestedOutputPath = true
-
-        audioConverterService.resetTransientState()
-        audioConverterService.sourceFile = sourceFile
-        audioConverterService.trimEnabled = false
-        audioConverterService.trimStartMs = 0
-        audioConverterService.trimEndMs = sourceDurationMs
-        if (source.format && String(source.format).trim().length > 0) {
-            audioConverterService.format = String(source.format).trim()
+    function currentFormatSummary() {
+        const parts = []
+        if (currentProfile && currentProfile.label) {
+            parts.push(currentProfile.label)
         }
-        setSuggestedOutputPath()
-        open()
+        if (audioConverterService.bitrateKbps > 0) {
+            parts.push(audioConverterService.bitrateKbps + " kbps")
+        }
+        if (audioConverterService.sampleRateHz > 0) {
+            parts.push(audioConverterService.sampleRateHz + " Hz")
+        }
+        if (audioConverterService.channelMode) {
+            parts.push(root.channelModeLabel(audioConverterService.channelMode))
+        }
+        return parts.join(" • ")
     }
 
-    function requestCloseFromKeyboard() {
-        if (audioConverterService.isRunning) {
-            cancelAndCloseDialog.open()
+    function currentTransformSummary() {
+        const parts = []
+        if (audioConverterService.trimEnabled) {
+            parts.push(root.tr("audioConverter.trimRange")
+                       .arg(root.formatDuration(audioConverterService.trimStartMs))
+                       .arg(root.formatDuration(audioConverterService.trimEndMs)))
+        }
+        if (audioConverterService.speed !== 1.0) {
+            parts.push(audioConverterService.speed.toFixed(2) + "x")
+        }
+        if (audioConverterService.pitchSemitones !== 0) {
+            parts.push((audioConverterService.pitchSemitones > 0 ? "+" : "") + audioConverterService.pitchSemitones + "st")
+        }
+        return parts.join(" • ")
+    }
+
+    function syncEqualizerSettingsForConversion() {
+        if (!audioEngine || !audioConverterService.applyCurrentEqualizer) {
             return
         }
-        root.close()
-    }
-
-    function firstFormatOptionControl() {
-        if (bitrateComboBox.visible) {
-            return bitrateComboBox
-        }
-        if (sampleRateComboBox.visible) {
-            return sampleRateComboBox
-        }
-        if (channelModeComboBox.visible) {
-            return channelModeComboBox
-        }
-        return speedSlider
-    }
-
-    function nextAfterBitrateControl() {
-        if (sampleRateComboBox.visible) {
-            return sampleRateComboBox
-        }
-        if (channelModeComboBox.visible) {
-            return channelModeComboBox
-        }
-        return speedSlider
-    }
-
-    function nextAfterSampleRateControl() {
-        if (channelModeComboBox.visible) {
-            return channelModeComboBox
-        }
-        return speedSlider
-    }
-
-    function firstSuccessActionControl() {
-        if (showInPlaylistButton.visible) {
-            return showInPlaylistButton
-        }
-        if (openResultFolderButton.visible) {
-            return openResultFolderButton
-        }
-        return convertButton
-    }
-
-    function lastSuccessActionControl() {
-        if (openResultFolderButton.visible) {
-            return openResultFolderButton
-        }
-        if (showInPlaylistButton.visible) {
-            return showInPlaylistButton
-        }
-        return trimEndSlider.visible ? trimEndSlider : equalizerCheckBox
+        audioConverterService.equalizerBandGains = audioEngine.equalizerBandGains
     }
 
     title: ""
@@ -629,904 +505,1091 @@ AppDialog {
     focus: true
     padding: 0
     standardButtons: Dialog.NoButton
-    closePolicy: Popup.NoAutoClose
+    header: null
 
     implicitWidth: preferredDialogWidth
     implicitHeight: preferredDialogHeight
 
     width: (root.isSeparateWindow && root.parent)
            ? root.parent.width
-           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - dialogMargin * 2) : preferredDialogWidth)
     height: (root.isSeparateWindow && root.parent)
             ? root.parent.height
-            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - dialogMargin * 2) : preferredDialogHeight)
 
     anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: {
-        terminalState = "none"
-        awaitingOverwriteConfirmation = false
-        completedOutputPath = ""
-        if (followSuggestedOutputPath) {
-            setSuggestedOutputPath()
-        } else {
-            syncOutputField()
+        root.followSuggestedOutputPath = true
+        root.terminalState = "none"
+        root.completedOutputPath = ""
+        root.awaitingOverwriteConfirmation = false
+        if (audioConverterService.outputFile.length === 0 || root.followSuggestedOutputPath) {
+            root.setSuggestedOutputPath()
         }
-        syncEqualizerSettingsForConversion()
-        Qt.callLater(function() {
-            if (outputPathField.enabled) {
-                outputPathField.forceActiveFocus()
-            }
-        })
     }
 
     onClosed: {
-        awaitingOverwriteConfirmation = false
-        if (audioConverterService.isRunning) {
-            audioConverterService.cancelConversion()
-        }
+        audioConverterService.stopPreview()
+        root.awaitingOverwriteConfirmation = false
     }
 
-    Shortcut {
-        sequence: "Escape"
-        enabled: root.visible
-        onActivated: root.requestCloseFromKeyboard()
+    background: Rectangle {
+        radius: themeManager.borderRadiusLarge
+        color: themeManager.surfaceColor
+        border.width: 1
+        border.color: themeManager.borderColor
     }
 
     contentItem: ColumnLayout {
-        width: parent ? parent.width : 0
-        height: parent ? parent.height : 0
+        anchors.fill: parent
         spacing: 0
 
-        ScrollView {
+        // Dialog Header
+        Rectangle {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            padding: Kirigami.Units.largeSpacing
-
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            contentWidth: availableWidth
+            implicitHeight: headerColumn.implicitHeight + UiMetrics.spaceM * 2
+            color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, themeManager.darkMode ? 0.42 : 0.62)
+            border.width: 1
+            border.color: themeManager.borderColor
 
             ColumnLayout {
-                width: parent.width
-                spacing: Kirigami.Units.largeSpacing
+                id: headerColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceS
 
-                Frame {
+                // Title row
+                RowLayout {
                     Layout.fillWidth: true
-                    padding: Kirigami.Units.largeSpacing
+                    spacing: UiMetrics.spaceM
 
-                    background: Rectangle {
-                        radius: 10
-                        gradient: Gradient {
-                            GradientStop {
-                                position: 0.0
-                                color: Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                               Kirigami.Theme.highlightColor.g,
-                                               Kirigami.Theme.highlightColor.b,
-                                               0.18)
-                            }
-                            GradientStop {
-                                position: 1.0
-                                color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
-                                               Kirigami.Theme.backgroundColor.g,
-                                               Kirigami.Theme.backgroundColor.b,
-                                               0.94)
-                            }
-                        }
-                        border.width: 1
-                        border.color: Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                              Kirigami.Theme.highlightColor.g,
-                                              Kirigami.Theme.highlightColor.b,
-                                              0.35)
+                    Image {
+                        Layout.preferredWidth: 22
+                        Layout.preferredHeight: 22
+                        source: IconResolver.themed("audio-x-generic", themeManager.darkMode)
+                        sourceSize.width: 22
+                        sourceSize.height: 22
+                        fillMode: Image.PreserveAspectFit
                     }
 
-                    contentItem: ColumnLayout {
-                        spacing: Kirigami.Units.smallSpacing + 2
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
 
                         Label {
                             text: root.tr("audioConverter.title")
-                            font.pointSize: UiMetrics.displayPointSize
-                            font.bold: true
+                            color: themeManager.textColor
+                            font.pointSize: UiMetrics.subtitlePointSize
+                            font.weight: Font.DemiBold
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
 
                         Label {
-                            text: root.tr("audioConverter.sourceSection")
-                            font.bold: true
-                            color: Kirigami.Theme.disabledTextColor
-                        }
-
-                        Label {
+                            text: root.sourceDisplayName.length > 0 ? root.sourceDisplayName : root.fileNameFromPath(root.sourceFile)
+                            color: themeManager.textMutedColor
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.fillWidth: true
-                            text: root.sourceDisplayName.length > 0
-                                  ? root.sourceDisplayName
-                                  : root.fileNameFromPath(root.sourceFile)
-                            wrapMode: Text.WordWrap
-                            font.pointSize: UiMetrics.titlePointSize
-                            font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            visible: root.sourceMetaText.length > 0
-                            text: root.sourceMetaText
-                            wrapMode: Text.WordWrap
-                            color: Kirigami.Theme.disabledTextColor
-                        }
-
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: root.compactLayout ? 1 : 2
-                            columnSpacing: Kirigami.Units.largeSpacing
-                            rowSpacing: Kirigami.Units.smallSpacing
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.tr("audioConverter.sourcePath") + root.sourceFile
-                                wrapMode: Text.WrapAnywhere
-                                maximumLineCount: root.compactLayout ? 3 : 2
-                                elide: Text.ElideMiddle
-                                color: Kirigami.Theme.textColor
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.tr("audioConverter.duration") + root.formatDuration(root.sourceDurationMs)
-                                horizontalAlignment: root.compactLayout ? Text.AlignLeft : Text.AlignRight
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.tr("audioConverter.originalFormat")
-                                      + (root.sourceFormatText.length > 0
-                                         ? root.sourceFormatText
-                                         : root.tr("audioConverter.notAvailable"))
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.tr("audioConverter.sourceSpec")
-                                      + root.formatBitrateLabel(root.sourceBitrateKbps)
-                                      + " / "
-                                      + root.formatSampleRateLabel(root.sourceSampleRateHz)
-                                horizontalAlignment: root.compactLayout ? Text.AlignLeft : Text.AlignRight
-                            }
-                        }
-                    }
-                }
-
-                Frame {
-                    Layout.fillWidth: true
-                    padding: root.sectionPadding
-
-                    background: Rectangle {
-                        radius: themeManager.borderRadiusLarge
-                        color: root.cardFillColor
-                        border.width: 1
-                        border.color: root.cardBorderColor
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: root.sectionSpacing
-
-                        Label {
-                            text: root.tr("audioConverter.outputSection")
-                            font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.outputSectionHint")
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: root.compactLayout ? 1 : 3
-                            columnSpacing: Kirigami.Units.smallSpacing
-                            rowSpacing: Kirigami.Units.smallSpacing
-
-                            TextField {
-                                id: outputPathField
-                                Layout.fillWidth: true
-                                placeholderText: root.tr("audioConverter.outputPlaceholder")
-                                selectByMouse: true
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: root.tr("audioConverter.outputSection")
-                                Accessible.description: root.preflightNoticeText().length > 0
-                                                        ? root.preflightNoticeText()
-                                                        : root.tr("audioConverter.outputSectionHint")
-                                KeyNavigation.tab: browseOutputButton
-                                KeyNavigation.backtab: closeButton
-                                onEditingFinished: {
-                                    followSuggestedOutputPath = false
-                                    audioConverterService.outputFile = text
-                                }
-                            }
-
-                            Button {
-                                id: browseOutputButton
-                                text: root.tr("audioConverter.browse")
-                                Layout.fillWidth: root.compactLayout
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: text
-                                Accessible.description: outputPathField.text
-                                KeyNavigation.tab: suggestedOutputButton
-                                KeyNavigation.backtab: outputPathField
-                                onClicked: {
-                                    root.browseOutputRequested(root.fileNameFromPath(
-                                                                   outputPathField.text.length > 0
-                                                                   ? outputPathField.text
-                                                                   : audioConverterService.suggestOutputFilePath()))
-                                }
-                            }
-
-                            Button {
-                                id: suggestedOutputButton
-                                text: root.tr("audioConverter.useSuggested")
-                                Layout.fillWidth: root.compactLayout
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: text
-                                Accessible.description: audioConverterService.suggestOutputFilePath()
-                                KeyNavigation.tab: formatComboBox
-                                KeyNavigation.backtab: browseOutputButton
-                                onClicked: {
-                                    followSuggestedOutputPath = true
-                                    setSuggestedOutputPath()
-                                }
-                            }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.outputHint")
-                                  + audioConverterService.suggestOutputFilePath()
                             elide: Text.ElideMiddle
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            visible: root.preflightNoticeText().length > 0
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Rectangle {
-                                Layout.alignment: Qt.AlignTop
-                                implicitWidth: noticeBadge.implicitWidth + 12
-                                implicitHeight: noticeBadge.implicitHeight + 4
-                                radius: height / 2
-                                color: Qt.rgba(root.preflightNoticeColor().r,
-                                               root.preflightNoticeColor().g,
-                                               root.preflightNoticeColor().b,
-                                               0.14)
-                                border.width: 1
-                                border.color: Qt.rgba(root.preflightNoticeColor().r,
-                                                      root.preflightNoticeColor().g,
-                                                      root.preflightNoticeColor().b,
-                                                      0.28)
-
-                                Label {
-                                    id: noticeBadge
-                                    anchors.centerIn: parent
-                                    text: root.dialogState === "conflict-detected"
-                                          ? root.tr("audioConverter.badgeConflict")
-                                          : root.tr("audioConverter.badgeAttention")
-                                    color: root.preflightNoticeColor()
-                                    font.pointSize: UiMetrics.captionPointSize
-                                    font.bold: true
-                                }
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.preflightNoticeText()
-                                wrapMode: Text.WordWrap
-                                color: root.preflightNoticeColor()
-                            }
                         }
                     }
-                }
 
-                Frame {
-                    Layout.fillWidth: true
-                    padding: root.sectionPadding
-
-                    background: Rectangle {
-                        radius: themeManager.borderRadiusLarge
-                        color: root.cardFillColor
+                    // Status pill badge
+                    Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        implicitWidth: statusBadgeLabel.implicitWidth + UiMetrics.spaceM * 2
+                        implicitHeight: 26
+                        radius: 13
+                        color: {
+                            if (root.statusTone === "positive") return Qt.rgba(0.2, 0.8, 0.3, themeManager.darkMode ? 0.25 : 0.15)
+                            if (root.statusTone === "negative") return Qt.rgba(0.9, 0.2, 0.2, themeManager.darkMode ? 0.25 : 0.15)
+                            if (root.statusTone === "warning") return Qt.rgba(0.95, 0.65, 0.15, themeManager.darkMode ? 0.25 : 0.15)
+                            if (root.statusTone === "primary") return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.25)
+                            return Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.6)
+                        }
                         border.width: 1
-                        border.color: root.cardBorderColor
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: root.sectionSpacing
+                        border.color: {
+                            if (root.statusTone === "positive") return Kirigami.Theme.positiveTextColor
+                            if (root.statusTone === "negative") return Kirigami.Theme.negativeTextColor
+                            if (root.statusTone === "warning") return Kirigami.Theme.neutralTextColor
+                            return themeManager.primaryColor
+                        }
 
                         Label {
-                            text: root.tr("audioConverter.formatSection")
+                            id: statusBadgeLabel
+                            anchors.centerIn: parent
+                            text: root.statusBadgeText
                             font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.formatSectionHint")
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: root.compactLayout ? 1 : 2
-                            columnSpacing: Kirigami.Units.largeSpacing
-                            rowSpacing: Kirigami.Units.smallSpacing
-
-                            Label { text: root.tr("audioConverter.format") }
-                            AccentComboBox {
-                                id: formatComboBox
-                                Layout.fillWidth: true
-                                model: root.formatOptions(audioConverterService.formatProfiles)
-                                textRole: "label"
-                                valueRole: "id"
-                                enabledRole: "available"
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: root.tr("audioConverter.format")
-                                Accessible.description: root.summaryFormatText
-                                KeyNavigation.tab: root.firstFormatOptionControl()
-                                KeyNavigation.backtab: suggestedOutputButton
-                                currentIndex: root.findOptionIndex(model, audioConverterService.format)
-                                onActivated: function(index) {
-                                    const entry = model[index]
-                                    if (entry && entry.id !== undefined) {
-                                        audioConverterService.format = entry.id
-                                    }
-                                }
-                            }
-
-                            Label {
-                                Layout.columnSpan: root.compactLayout ? 1 : 2
-                                Layout.fillWidth: true
-                                visible: root.formatAvailabilityText(root.currentProfile).length > 0
-                                text: root.formatAvailabilityText(root.currentProfile)
-                                wrapMode: Text.WordWrap
-                                color: Kirigami.Theme.neutralTextColor
-                            }
-
-                            Label { text: root.tr("audioConverter.codec") }
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.currentProfile && root.currentProfile.codecLabel
-                                      ? root.currentProfile.codecLabel
-                                      : root.tr("audioConverter.notAvailable")
-                            }
-
-                            Label { text: root.tr("audioConverter.container") }
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.currentProfile && root.currentProfile.containerLabel
-                                      ? root.currentProfile.containerLabel
-                                      : root.tr("audioConverter.notAvailable")
-                            }
-
-                            Label {
-                                visible: root.currentProfile && root.currentProfile.supportsBitrate
-                                text: root.tr("audioConverter.bitrate")
-                            }
-                            AccentComboBox {
-                                id: bitrateComboBox
-                                Layout.fillWidth: true
-                                visible: root.currentProfile && root.currentProfile.supportsBitrate
-                                model: root.bitrateOptions(root.currentProfile)
-                                textRole: "label"
-                                valueRole: "value"
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: root.tr("audioConverter.bitrate")
-                                Accessible.description: currentText
-                                KeyNavigation.tab: root.nextAfterBitrateControl()
-                                KeyNavigation.backtab: formatComboBox
-                                currentIndex: root.findOptionIndex(model, audioConverterService.bitrate)
-                                onActivated: function(index) {
-                                    const entry = model[index]
-                                    if (entry && entry.value !== undefined) {
-                                        audioConverterService.bitrate = Number(entry.value)
-                                    }
-                                }
-                            }
-
-                            Label {
-                                visible: root.currentProfile && root.currentProfile.supportsSampleRate
-                                text: root.tr("audioConverter.sampleRate")
-                            }
-                            AccentComboBox {
-                                id: sampleRateComboBox
-                                Layout.fillWidth: true
-                                visible: root.currentProfile && root.currentProfile.supportsSampleRate
-                                model: root.sampleRateOptions(root.currentProfile)
-                                textRole: "label"
-                                valueRole: "value"
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: root.tr("audioConverter.sampleRate")
-                                Accessible.description: currentText
-                                KeyNavigation.tab: root.nextAfterSampleRateControl()
-                                KeyNavigation.backtab: bitrateComboBox.visible ? bitrateComboBox : formatComboBox
-                                currentIndex: root.findOptionIndex(model, audioConverterService.sampleRate)
-                                onActivated: function(index) {
-                                    const entry = model[index]
-                                    if (entry && entry.value !== undefined) {
-                                        audioConverterService.sampleRate = Number(entry.value)
-                                    }
-                                }
-                            }
-
-                            Label {
-                                visible: root.currentProfile && root.currentProfile.supportsChannels
-                                text: root.tr("audioConverter.channels")
-                            }
-                            AccentComboBox {
-                                id: channelModeComboBox
-                                Layout.fillWidth: true
-                                visible: root.currentProfile && root.currentProfile.supportsChannels
-                                model: root.channelModeOptions(root.currentProfile)
-                                textRole: "label"
-                                valueRole: "value"
-                                enabled: !audioConverterService.isRunning
-                            Accessible.name: root.tr("audioConverter.channels")
-                            Accessible.description: currentText
-                            KeyNavigation.tab: speedSlider
-                                KeyNavigation.backtab: sampleRateComboBox.visible
-                                                        ? sampleRateComboBox
-                                                        : (bitrateComboBox.visible ? bitrateComboBox : formatComboBox)
-                                currentIndex: root.findOptionIndex(model, audioConverterService.channelMode)
-                                onActivated: function(index) {
-                                    const entry = model[index]
-                                    if (entry && entry.value !== undefined) {
-                                        audioConverterService.channelMode = String(entry.value)
-                                    }
-                                }
-                            }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.summaryFormatText
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-                    }
-                }
-
-                Frame {
-                    Layout.fillWidth: true
-                    padding: root.sectionPadding
-
-                    background: Rectangle {
-                        radius: themeManager.borderRadiusLarge
-                        color: root.cardFillColor
-                        border.width: 1
-                        border.color: root.cardBorderColor
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: root.sectionSpacing
-
-                        Label {
-                            text: root.tr("audioConverter.transformSection")
-                            font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.transformSectionHint")
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            Label {
-                                text: root.tr("audioConverter.speed")
-                                      + Number(audioConverterService.playbackRate).toFixed(2) + "x"
-                            }
-                            AccentSlider {
-                                id: speedSlider
-                                Layout.fillWidth: true
-                                from: 0.25
-                                to: 4.0
-                                stepSize: 0.05
-                                snapMode: Slider.SnapAlways
-                                enabled: !audioConverterService.isRunning
-                                Accessible.name: root.tr("audioConverter.speed")
-                                Accessible.description: Number(audioConverterService.playbackRate).toFixed(2) + "x"
-                                KeyNavigation.tab: resetTransformButton
-                                KeyNavigation.backtab: channelModeComboBox.visible
-                                                        ? channelModeComboBox
-                                                        : (sampleRateComboBox.visible
-                                                           ? sampleRateComboBox
-                                                           : (bitrateComboBox.visible ? bitrateComboBox : formatComboBox))
-                                value: audioConverterService.playbackRate
-                                onMoved: audioConverterService.playbackRate = value
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.tr("audioConverter.pitch")
-                                      + root.pitchLabel(audioConverterService.pitchSemitones)
-                            }
-
-                            Button {
-                                id: resetTransformButton
-                                text: root.tr("audioConverter.reset")
-                                enabled: !audioConverterService.isRunning
-                                         && (Math.abs(audioConverterService.playbackRate - 1.0) > 0.001
-                                             || audioConverterService.pitchSemitones !== 0)
-                                Accessible.name: root.tr("audioConverter.reset")
-                                Accessible.description: root.tr("audioConverter.transformSection")
-                                KeyNavigation.tab: pitchSlider
-                                KeyNavigation.backtab: speedSlider
-                                onClicked: {
-                                    audioConverterService.playbackRate = 1.0
-                                    audioConverterService.pitchSemitones = 0
-                                }
-                            }
-                        }
-
-                        AccentSlider {
-                            id: pitchSlider
-                            Layout.fillWidth: true
-                            from: -24
-                            to: 24
-                            stepSize: 1
-                            snapMode: Slider.SnapAlways
-                            enabled: !audioConverterService.isRunning
-                            Accessible.name: root.tr("audioConverter.pitch")
-                            Accessible.description: root.pitchLabel(audioConverterService.pitchSemitones)
-                            KeyNavigation.tab: equalizerCheckBox
-                            KeyNavigation.backtab: resetTransformButton
-                            value: audioConverterService.pitchSemitones
-                            onMoved: audioConverterService.pitchSemitones = Math.round(value)
-                        }
-
-                        AccentCheckBox {
-                            id: equalizerCheckBox
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.applyCurrentEqualizer")
-                            checked: audioConverterService.applyEqualizer
-                            enabled: !audioConverterService.isRunning
-                            Accessible.name: text
-                            Accessible.description: root.tr("audioConverter.applyCurrentEqualizerHint")
-                            KeyNavigation.tab: reverbCheckBox
-                            KeyNavigation.backtab: pitchSlider
-                            onToggled: {
-                                audioConverterService.applyEqualizer = checked
-                                root.syncEqualizerSettingsForConversion()
-                            }
-                        }
-
-                        AccentCheckBox {
-                            id: reverbCheckBox
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.applyReverb")
-                            checked: audioConverterService.applyReverb
-                            enabled: !audioConverterService.isRunning
-                            Accessible.name: text
-                            Accessible.description: root.tr("audioConverter.applyReverbHint")
-                            KeyNavigation.tab: reverbRoomSlider
-                            KeyNavigation.backtab: equalizerCheckBox
-                            onToggled: audioConverterService.applyReverb = checked
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            enabled: !audioConverterService.isRunning && audioConverterService.applyReverb
-
-                            Label {
-                                text: root.tr("audioConverter.reverbRoomSize")
-                                      + Math.round(Number(audioConverterService.reverbRoomSize) * 100) + "%"
-                            }
-                            AccentSlider {
-                                id: reverbRoomSlider
-                                Layout.fillWidth: true
-                                from: 0.0
-                                to: 1.0
-                                stepSize: 0.01
-                                enabled: parent.enabled
-                                Accessible.name: root.tr("audioConverter.reverbRoomSize")
-                                KeyNavigation.tab: reverbWetSlider
-                                KeyNavigation.backtab: reverbCheckBox
-                                value: audioConverterService.reverbRoomSize
-                                onMoved: audioConverterService.reverbRoomSize = value
-                            }
-
-                            Label {
-                                text: root.tr("audioConverter.reverbWetLevel")
-                                      + Math.round(Number(audioConverterService.reverbWetLevel) * 100) + "%"
-                            }
-                            AccentSlider {
-                                id: reverbWetSlider
-                                Layout.fillWidth: true
-                                from: 0.0
-                                to: 1.0
-                                stepSize: 0.01
-                                enabled: parent.enabled
-                                Accessible.name: root.tr("audioConverter.reverbWetLevel")
-                                KeyNavigation.tab: reverbDampingSlider
-                                KeyNavigation.backtab: reverbRoomSlider
-                                value: audioConverterService.reverbWetLevel
-                                onMoved: audioConverterService.reverbWetLevel = value
-                            }
-
-                            Label {
-                                text: root.tr("audioConverter.reverbDamping")
-                                      + Math.round(Number(audioConverterService.reverbDamping) * 100) + "%"
-                            }
-                            AccentSlider {
-                                id: reverbDampingSlider
-                                Layout.fillWidth: true
-                                from: 0.0
-                                to: 1.0
-                                stepSize: 0.01
-                                enabled: parent.enabled
-                                Accessible.name: root.tr("audioConverter.reverbDamping")
-                                KeyNavigation.tab: trimEnabledCheckBox
-                                KeyNavigation.backtab: reverbWetSlider
-                                value: audioConverterService.reverbDamping
-                                onMoved: audioConverterService.reverbDamping = value
-                            }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.summaryTransformText
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-                    }
-                }
-
-                Frame {
-                    Layout.fillWidth: true
-                    padding: root.sectionPadding
-
-                    background: Rectangle {
-                        radius: themeManager.borderRadiusLarge
-                        color: root.cardFillColor
-                        border.width: 1
-                        border.color: root.cardBorderColor
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: root.sectionSpacing
-
-                        Label {
-                            text: root.tr("audioConverter.trimSection")
-                            font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.trimSectionHint")
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        AccentCheckBox {
-                            id: trimEnabledCheckBox
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.enableTrim")
-                            checked: audioConverterService.trimEnabled
-                            enabled: !audioConverterService.isRunning && root.sourceTrimDurationMs() > 1000
-                            Accessible.name: text
-                            Accessible.description: root.tr("audioConverter.trimSectionHint")
-                            KeyNavigation.tab: trimStartField
-                            KeyNavigation.backtab: reverbDampingSlider
-                            onToggled: {
-                                audioConverterService.trimEnabled = checked
-                                if (checked && audioConverterService.trimEndMs <= audioConverterService.trimStartMs) {
-                                    audioConverterService.trimEndMs = root.sourceTrimDurationMs()
-                                }
-                            }
-                        }
-
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: root.compactLayout ? 1 : 3
-                            columnSpacing: Kirigami.Units.smallSpacing
-                            rowSpacing: Kirigami.Units.smallSpacing
-                            enabled: trimEnabledCheckBox.enabled && audioConverterService.trimEnabled
-                            opacity: enabled ? 1.0 : 0.55
-
-                            Label {
-                                text: root.tr("audioConverter.trimStart")
-                            }
-
-                            AccentSlider {
-                                id: trimStartSlider
-                                Layout.fillWidth: true
-                                from: 0
-                                to: Math.max(1000, root.sourceTrimDurationMs() - 1000)
-                                stepSize: 1000
-                                snapMode: Slider.SnapAlways
-                                enabled: parent.enabled
-                                Accessible.name: root.tr("audioConverter.trimStart")
-                                Accessible.description: root.formatDuration(audioConverterService.trimStartMs)
-                                KeyNavigation.tab: trimStartField
-                                KeyNavigation.backtab: trimEnabledCheckBox
-                                value: root.clampTrimStart(audioConverterService.trimStartMs)
-                                onMoved: root.setTrimStart(value)
-                            }
-
-                            TextField {
-                                id: trimStartField
-                                Layout.preferredWidth: 92
-                                text: root.formatDuration(audioConverterService.trimStartMs)
-                                selectByMouse: true
-                                enabled: parent.enabled
-                                horizontalAlignment: TextInput.AlignHCenter
-                                Accessible.name: root.tr("audioConverter.trimStart")
-                                KeyNavigation.tab: trimEndSlider
-                                KeyNavigation.backtab: trimStartSlider
-                                onEditingFinished: root.setTrimStart(root.parseDurationText(text))
-                            }
-
-                            Label {
-                                text: root.tr("audioConverter.trimEnd")
-                            }
-
-                            AccentSlider {
-                                id: trimEndSlider
-                                Layout.fillWidth: true
-                                from: Math.min(root.sourceTrimDurationMs(), audioConverterService.trimStartMs + 1000)
-                                to: Math.max(1000, root.sourceTrimDurationMs())
-                                stepSize: 1000
-                                snapMode: Slider.SnapAlways
-                                enabled: parent.enabled
-                                Accessible.name: root.tr("audioConverter.trimEnd")
-                                Accessible.description: root.formatDuration(audioConverterService.trimEndMs)
-                                KeyNavigation.tab: trimEndField
-                                KeyNavigation.backtab: trimStartField
-                                value: root.clampTrimEnd(audioConverterService.trimEndMs)
-                                onMoved: root.setTrimEnd(value)
-                            }
-
-                            TextField {
-                                id: trimEndField
-                                Layout.preferredWidth: 92
-                                text: root.formatDuration(audioConverterService.trimEndMs)
-                                selectByMouse: true
-                                enabled: parent.enabled
-                                horizontalAlignment: TextInput.AlignHCenter
-                                Accessible.name: root.tr("audioConverter.trimEnd")
-                                KeyNavigation.tab: root.firstSuccessActionControl()
-                                KeyNavigation.backtab: trimEndSlider
-                                onEditingFinished: root.setTrimEnd(root.parseDurationText(text))
-                            }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: audioConverterService.trimEnabled
-                                  ? root.tr("audioConverter.trimRange")
-                                        .arg(root.formatDuration(audioConverterService.trimStartMs))
-                                        .arg(root.formatDuration(audioConverterService.trimEndMs))
-                                  : root.tr("audioConverter.trimDisabled")
-                            wrapMode: Text.WordWrap
-                            color: themeManager.textSecondaryColor
-                        }
-                    }
-                }
-
-                Frame {
-                    Layout.fillWidth: true
-                    padding: root.sectionPadding
-
-                    background: Rectangle {
-                        radius: themeManager.borderRadiusLarge
-                        color: root.cardFillColor
-                        border.width: 1
-                        border.color: root.cardBorderColor
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: root.sectionSpacing
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Rectangle {
-                                implicitWidth: stateBadgeLabel.implicitWidth + 16
-                                implicitHeight: stateBadgeLabel.implicitHeight + 6
-                                radius: height / 2
-                                color: root.toneFillColor(root.statusTone)
-                                border.width: 1
-                                border.color: Qt.rgba(root.toneTextColor(root.statusTone).r,
-                                                      root.toneTextColor(root.statusTone).g,
-                                                      root.toneTextColor(root.statusTone).b,
-                                                      0.28)
-
-                                Label {
-                                    id: stateBadgeLabel
-                                    anchors.centerIn: parent
-                                    text: root.statusBadgeText
-                                    font.pointSize: UiMetrics.captionPointSize
-                                    font.bold: true
-                                    color: root.toneTextColor(root.statusTone)
-                                }
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: root.statusTitleText
-                                font.bold: true
-                            }
-                        }
-
-                        AccentProgressBar {
-                            id: conversionProgressBar
-                            Layout.fillWidth: true
-                            from: 0
-                            to: 1
-                            value: audioConverterService.progress
-                            visible: audioConverterService.isRunning || audioConverterService.progress > 0
-                            Accessible.name: root.tr("audioConverter.progressAccessibleName")
-                            Accessible.description: Math.round((Number(value) || 0) * 100) + "%, " + root.statusSummaryText()
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.statusSummaryText()
-                            wrapMode: Text.WordWrap
+                            font.pointSize: UiMetrics.captionPointSize
                             color: themeManager.textColor
                         }
+                    }
+                }
 
-                        Label {
-                            Layout.fillWidth: true
-                            visible: root.dialogState === "failed"
-                                     && root.runtimeFailureText().length > 0
-                            text: root.runtimeFailureText()
-                            wrapMode: Text.WordWrap
-                            color: Kirigami.Theme.negativeTextColor
-                        }
+                // Tab Bar
+                RowLayout {
+                    id: tabsLayout
+                    Layout.fillWidth: true
+                    spacing: UiMetrics.spaceS
 
-                        Label {
-                            Layout.fillWidth: true
-                            visible: root.completedOutputPath.length > 0
-                            text: root.tr("audioConverter.resultPath") + root.completedOutputPath
-                            wrapMode: Text.WordWrap
-                            color: Kirigami.Theme.positiveTextColor
-                        }
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("audioConverter.tabFormat")
+                        highlighted: root.activeTabIndex === 0
+                        icon.source: IconResolver.themed("audio-x-generic", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 0
+                    }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            visible: root.completedOutputPath.length > 0
-                            spacing: Kirigami.Units.smallSpacing
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("audioConverter.tabProcessing")
+                        highlighted: root.activeTabIndex === 1
+                        icon.source: IconResolver.themed("equalizer", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 1
+                    }
 
-                            Button {
-                                id: showInPlaylistButton
-                                text: root.tr("audioConverter.showInPlaylist")
-                                enabled: root.completedOutputPath.length > 0
-                                Accessible.name: text
-                                Accessible.description: root.completedOutputPath
-                                KeyNavigation.tab: openResultFolderButton.visible ? openResultFolderButton : convertButton
-                                KeyNavigation.backtab: pitchSlider
-                                onClicked: root.showResultInPlaylistRequested(root.completedOutputPath)
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("audioConverter.tabPreview")
+                        highlighted: root.activeTabIndex === 2
+                        icon.source: IconResolver.themed("media-playback-start", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 2
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("audioConverter.tabInfo")
+                        highlighted: root.activeTabIndex === 3
+                        icon.source: IconResolver.themed("dialog-information", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 3
+                    }
+                }
+            }
+        }
+
+        // Tab Content Container
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+
+            // TAB 0: Format & Quality
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 0
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    // Target Format & Encoding Parameters Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: formatCardCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: formatCardCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("audioConverter.formatSection")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
                             }
 
-                            Button {
-                                id: openResultFolderButton
-                                text: root.tr("playlist.openInFileManager")
-                                enabled: root.completedOutputPath.length > 0
-                                Accessible.name: text
-                                Accessible.description: root.completedOutputPath
-                                KeyNavigation.tab: convertButton
-                                KeyNavigation.backtab: showInPlaylistButton.visible ? showInPlaylistButton : pitchSlider
-                                onClicked: root.openResultInFileManagerRequested(root.completedOutputPath)
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: UiMetrics.spaceM
+                                rowSpacing: UiMetrics.spaceM
+                                Layout.fillWidth: true
+
+                                // Format Selector
+                                Label {
+                                    text: root.tr("audioConverter.format")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    id: formatCombo
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "id"
+                                    model: root.formatOptions(audioConverterService.formatProfiles)
+                                    currentIndex: root.findOptionIndex(model, audioConverterService.format)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.id) {
+                                            root.terminalState = "none"
+                                            audioConverterService.format = entry.id
+                                            if (root.followSuggestedOutputPath) {
+                                                root.setSuggestedOutputPath()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Bitrate
+                                Label {
+                                    text: root.tr("audioConverter.bitrate")
+                                    Layout.alignment: Qt.AlignVCenter
+                                    visible: bitrateCombo.visible
+                                }
+                                AccentComboBox {
+                                    id: bitrateCombo
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    visible: currentProfile && currentProfile.supportsBitrate
+                                    model: root.bitrateOptions(currentProfile)
+                                    currentIndex: root.findOptionIndex(model, audioConverterService.bitrateKbps)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            audioConverterService.bitrateKbps = entry.value
+                                        }
+                                    }
+                                }
+
+                                // Sample Rate
+                                Label {
+                                    text: root.tr("audioConverter.sampleRate")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    id: sampleRateCombo
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.sampleRateOptions(currentProfile)
+                                    currentIndex: root.findOptionIndex(model, audioConverterService.sampleRateHz)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            audioConverterService.sampleRateHz = entry.value
+                                        }
+                                    }
+                                }
+
+                                // Channel Mode
+                                Label {
+                                    text: root.tr("audioConverter.channels")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    id: channelModeCombo
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.channelModeOptions(currentProfile)
+                                    currentIndex: root.findOptionIndex(model, audioConverterService.channelMode)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            audioConverterService.channelMode = entry.value
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Target Output Path Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: outputCardCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: outputCardCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("audioConverter.outputSection")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceS
+
+                                TextField {
+                                    id: outputPathField
+                                    Layout.fillWidth: true
+                                    placeholderText: root.tr("audioConverter.outputPlaceholder")
+                                    text: audioConverterService.outputFile
+                                    onTextChanged: {
+                                        if (activeFocus) {
+                                            root.terminalState = "none"
+                                            root.followSuggestedOutputPath = false
+                                            audioConverterService.outputFile = text
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    text: root.tr("audioConverter.browse")
+                                    icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                                    onClicked: root.browseOutputRequested(root.fileNameFromPath(audioConverterService.outputFile))
+                                }
+
+                                Button {
+                                    text: root.tr("audioConverter.useSuggested")
+                                    icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+                                    onClicked: {
+                                        root.followSuggestedOutputPath = true
+                                        root.setSuggestedOutputPath()
+                                    }
+                                }
+                            }
+
+                            // Notice / Warning banner
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: noticeTextLabel.implicitHeight + UiMetrics.spaceS * 2
+                                radius: themeManager.borderRadius
+                                visible: root.preflightNoticeText().length > 0
+                                color: Qt.rgba(0.95, 0.65, 0.15, themeManager.darkMode ? 0.18 : 0.12)
+                                border.width: 1
+                                border.color: Qt.rgba(0.95, 0.65, 0.15, 0.6)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: UiMetrics.spaceS
+                                    spacing: UiMetrics.spaceS
+
+                                    Image {
+                                        Layout.preferredWidth: 16
+                                        Layout.preferredHeight: 16
+                                        source: IconResolver.themed("dialog-warning", themeManager.darkMode)
+                                        sourceSize.width: 16
+                                        sourceSize.height: 16
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+
+                                    Label {
+                                        id: noticeTextLabel
+                                        text: root.preflightNoticeText()
+                                        color: themeManager.textColor
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 1: Trim & DSP Processing
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 1
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    // Trim Range Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: trimCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: trimCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("audioConverter.trimSection")
+                                    font.weight: Font.DemiBold
+                                    font.pointSize: UiMetrics.captionPointSize + 1
+                                    color: themeManager.primaryColor
+                                    Layout.fillWidth: true
+                                }
+
+                                AccentSwitch {
+                                    checked: audioConverterService.trimEnabled
+                                    onToggled: audioConverterService.trimEnabled = checked
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceL
+                                enabled: audioConverterService.trimEnabled
+                                opacity: enabled ? 1.0 : 0.45
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        text: root.tr("audioConverter.trimStart") + " (" + root.formatDuration(audioConverterService.trimStartMs) + ")"
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        color: themeManager.textMutedColor
+                                    }
+
+                                    SpinBox {
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: Math.max(1, Math.floor(root.sourceTrimDurationMs() / 1000))
+                                        stepSize: 1
+                                        editable: true
+                                        value: Math.floor(audioConverterService.trimStartMs / 1000)
+                                        onValueModified: root.setTrimStart(value * 1000)
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        text: root.tr("audioConverter.trimEnd") + " (" + root.formatDuration(audioConverterService.trimEndMs) + ")"
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        color: themeManager.textMutedColor
+                                    }
+
+                                    SpinBox {
+                                        Layout.fillWidth: true
+                                        from: 1
+                                        to: Math.max(1, Math.floor(root.sourceTrimDurationMs() / 1000))
+                                        stepSize: 1
+                                        editable: true
+                                        value: Math.floor(audioConverterService.trimEndMs / 1000)
+                                        onValueModified: root.setTrimEnd(value * 1000)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Speed, Tempo & Pitch Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: transformCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: transformCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("audioConverter.transformSection")
+                                    font.weight: Font.DemiBold
+                                    font.pointSize: UiMetrics.captionPointSize + 1
+                                    color: themeManager.primaryColor
+                                    Layout.fillWidth: true
+                                }
+
+                                Button {
+                                    text: root.tr("dsp.resetAll")
+                                    icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+                                    onClicked: root.resetAllDsp()
+                                }
+                            }
+
+                            // Speed Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.speed") + ": " + audioConverterService.speed.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0.25
+                                    to: 3.0
+                                    stepSize: 0.05
+                                    value: audioConverterService.speed
+                                    onMoved: audioConverterService.speed = value
+                                }
+                            }
+
+                            // Tempo Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.tempo") + ": " + audioConverterService.tempo.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0.5
+                                    to: 3.0
+                                    stepSize: 0.05
+                                    value: audioConverterService.tempo
+                                    onMoved: audioConverterService.tempo = value
+                                }
+                            }
+
+                            // Tonality / Pitch Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.tonality") + ": " + (audioConverterService.tonalitySemitones > 0 ? "+" : "") + audioConverterService.tonalitySemitones.toFixed(1) + " st"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: -10.0
+                                    to: 10.0
+                                    stepSize: 0.5
+                                    value: audioConverterService.tonalitySemitones
+                                    onMoved: {
+                                        audioConverterService.tonalitySemitones = value
+                                        audioConverterService.pitchSemitones = Math.round(value)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Space & Modulation Card (Echo, Reverb, Chorus, Flanger)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: modulationCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: modulationCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("dsp.generalTitle")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            // Echo Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.echo") + ": " + Math.round(audioConverterService.echoMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: audioConverterService.echoMix
+                                    onMoved: audioConverterService.echoMix = value
+                                }
+                            }
+
+                            // Reverb Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.reverb") + ": " + Math.round(audioConverterService.reverbMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: audioConverterService.reverbMix
+                                    onMoved: {
+                                        audioConverterService.reverbMix = value
+                                        audioConverterService.applyReverb = (value > 0)
+                                    }
+                                }
+                            }
+
+                            // Chorus Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.chorus") + ": " + Math.round(audioConverterService.chorusMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: audioConverterService.chorusMix
+                                    onMoved: audioConverterService.chorusMix = value
+                                }
+                            }
+
+                            // Flanger Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.flanger") + ": " + Math.round(audioConverterService.flangerMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: audioConverterService.flangerMix
+                                    onMoved: audioConverterService.flangerMix = value
+                                }
+                            }
+                        }
+                    }
+
+                    // Dynamics, Bass, Stereobase & EQ Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: dspCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: dspCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("dsp.general.adjustments")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            // Bass Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.bass") + ": " + audioConverterService.bass.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0.0
+                                    to: 2.0
+                                    stepSize: 0.05
+                                    value: audioConverterService.bass
+                                    onMoved: audioConverterService.bass = value
+                                }
+                            }
+
+                            // Stereobase (Stereo Width) Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.stereoWidth") + ": " + audioConverterService.stereoWidth.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 1.0
+                                    to: 5.0
+                                    stepSize: 0.05
+                                    value: audioConverterService.stereoWidth
+                                    onMoved: audioConverterService.stereoWidth = value
+                                }
+                            }
+
+                            // Voice suppression switch
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("dsp.general.voiceSuppression")
+                                    Layout.fillWidth: true
+                                }
+
+                                AccentSwitch {
+                                    checked: audioConverterService.voiceSuppression
+                                    onToggled: audioConverterService.voiceSuppression = checked
+                                }
+                            }
+
+                            // Equalizer switch
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("audioConverter.applyCurrentEqualizer")
+                                    Layout.fillWidth: true
+                                }
+
+                                AccentSwitch {
+                                    checked: audioConverterService.applyCurrentEqualizer
+                                    onToggled: audioConverterService.applyCurrentEqualizer = checked
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 2: Live Acoustic Simulation & Preview
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 2
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    // Simulation Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: simCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: simCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceL
+                            Layout.alignment: Qt.AlignHCenter
+
+                            // Transport Card
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: transCol.implicitHeight + UiMetrics.spaceM * 2
+                                radius: themeManager.borderRadiusLarge
+                                color: Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.7)
+                                border.width: 1
+                                border.color: themeManager.borderColor
+
+                                ColumnLayout {
+                                    id: transCol
+                                    anchors.fill: parent
+                                    anchors.margins: UiMetrics.spaceM
+                                    spacing: UiMetrics.spaceM
+
+                                    Label {
+                                        text: root.summaryFormatText
+                                        font.weight: Font.DemiBold
+                                        font.pointSize: UiMetrics.bodyPointSize
+                                        color: themeManager.primaryColor
+                                        horizontalAlignment: Text.AlignHCenter
+                                        Layout.fillWidth: true
+                                    }
+
+                                    // Progress bar & Time
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.spaceM
+
+                                        Label {
+                                            text: root.formatDuration(audioConverterService.previewPositionMs)
+                                            font.family: "Monospace"
+                                            font.pointSize: UiMetrics.captionPointSize
+                                        }
+
+                                        AccentSlider {
+                                            Layout.fillWidth: true
+                                            from: audioConverterService.previewStartMs
+                                            to: Math.max(audioConverterService.previewStartMs + 1000, audioConverterService.previewEndMs)
+                                            value: audioConverterService.previewPositionMs
+                                            onMoved: audioConverterService.seekPreview(value)
+                                        }
+
+                                        Label {
+                                            text: root.formatDuration(audioConverterService.previewEndMs)
+                                            font.family: "Monospace"
+                                            font.pointSize: UiMetrics.captionPointSize
+                                        }
+                                    }
+
+                                    // Play/Pause and Loop Controls
+                                    RowLayout {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        spacing: UiMetrics.spaceM
+
+                                        Button {
+                                            text: audioConverterService.previewPlaying ? root.tr("audioConverter.stopSample") : root.tr("audioConverter.listenSample")
+                                            highlighted: true
+                                            icon.source: audioConverterService.previewPlaying
+                                                         ? IconResolver.themed("media-playback-stop", themeManager.darkMode)
+                                                         : IconResolver.themed("media-playback-start", themeManager.darkMode)
+                                            onClicked: {
+                                                if (audioConverterService.previewPlaying) {
+                                                    audioConverterService.stopPreview()
+                                                } else {
+                                                    root.pauseMainPlayer()
+                                                    root.syncEqualizerSettingsForConversion()
+                                                    audioConverterService.startPreview()
+                                                }
+                                            }
+                                        }
+
+                                        Button {
+                                            text: audioConverterService.isPreviewPaused ? root.tr("batchAudioConverter.resume") : root.tr("batchAudioConverter.pause")
+                                            icon.source: IconResolver.themed(audioConverterService.isPreviewPaused ? "media-playback-start" : "media-playback-pause", themeManager.darkMode)
+                                            visible: audioConverterService.previewPlaying
+                                            onClicked: audioConverterService.togglePreviewPause()
+                                        }
+
+                                        Button {
+                                            text: root.tr("audioConverter.repeatSample")
+                                            highlighted: audioConverterService.previewLoop
+                                            icon.source: IconResolver.themed("repeat", themeManager.darkMode)
+                                            onClicked: audioConverterService.previewLoop = !audioConverterService.previewLoop
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Preview Fragment Boundaries
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceL
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        text: root.tr("audioConverter.sampleStart") + " (" + root.formatDuration(audioConverterService.previewStartMs) + ")"
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        color: themeManager.textMutedColor
+                                    }
+
+                                    SpinBox {
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: Math.max(1, Math.floor(root.sourceTrimDurationMs() / 1000))
+                                        stepSize: 1
+                                        editable: true
+                                        value: Math.floor(audioConverterService.previewStartMs / 1000)
+                                        onValueModified: root.setSampleStart(value * 1000)
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        text: root.tr("audioConverter.sampleEnd") + " (" + root.formatDuration(audioConverterService.previewEndMs) + ")"
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        color: themeManager.textMutedColor
+                                    }
+
+                                    SpinBox {
+                                        Layout.fillWidth: true
+                                        from: 1
+                                        to: Math.max(1, Math.floor(root.sourceTrimDurationMs() / 1000))
+                                        stepSize: 1
+                                        editable: true
+                                        value: Math.floor(audioConverterService.previewEndMs / 1000)
+                                        onValueModified: root.setSampleEnd(value * 1000)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 3: Source Specs & Info
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 3
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: infoCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: infoCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("tagEditor.sectionTech")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: UiMetrics.spaceL
+                                rowSpacing: UiMetrics.spaceM
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("audioConverter.originalFormat")
+                                    font.bold: true
+                                    color: themeManager.textMutedColor
+                                }
+                                Label {
+                                    text: root.sourceFormatText.length > 0 ? root.sourceFormatText : root.tr("audioConverter.notAvailable")
+                                    font.pointSize: UiMetrics.bodyPointSize
+                                    color: themeManager.textColor
+                                }
+
+                                Label {
+                                    text: root.tr("audioConverter.bitrate")
+                                    font.bold: true
+                                    color: themeManager.textMutedColor
+                                }
+                                Label {
+                                    text: root.formatBitrateLabel(root.sourceBitrateKbps)
+                                    font.pointSize: UiMetrics.bodyPointSize
+                                    color: themeManager.textColor
+                                }
+
+                                Label {
+                                    text: root.tr("audioConverter.sampleRate")
+                                    font.bold: true
+                                    color: themeManager.textMutedColor
+                                }
+                                Label {
+                                    text: root.formatSampleRateLabel(root.sourceSampleRateHz)
+                                    font.pointSize: UiMetrics.bodyPointSize
+                                    color: themeManager.textColor
+                                }
+
+                                Label {
+                                    text: root.tr("audioConverter.duration")
+                                    font.bold: true
+                                    color: themeManager.textMutedColor
+                                }
+                                Label {
+                                    text: root.formatDuration(root.sourceDurationMs)
+                                    font.pointSize: UiMetrics.bodyPointSize
+                                    color: themeManager.textColor
+                                }
+                            }
+
+                            // Path row
+                            Label {
+                                text: root.sourceFile
+                                color: themeManager.textColor
+                                font.family: "Monospace"
+                                font.pointSize: UiMetrics.captionPointSize
+                                wrapMode: Text.WrapAnywhere
+                                Layout.fillWidth: true
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Button {
+                                    text: root.tr("playlist.openInFileManager")
+                                    icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                                    onClicked: xdgPortalFilePicker.openInFileManager(root.sourceFile)
+                                }
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.copyReport")
+                                    icon.source: IconResolver.themed("edit-copy", themeManager.darkMode)
+                                    onClicked: xdgPortalFilePicker.copyTextToClipboard(root.sourceFile)
+                                }
                             }
                         }
                     }
@@ -1534,179 +1597,100 @@ AppDialog {
             }
         }
 
+        // Dialog Footer (Progress bar + Conversion actions)
         Rectangle {
             Layout.fillWidth: true
-            color: root.footerFillColor
+            implicitHeight: footerBox.implicitHeight + UiMetrics.spaceM * 2
+            color: Qt.rgba(themeManager.backgroundColor.r,
+                           themeManager.backgroundColor.g,
+                           themeManager.backgroundColor.b,
+                           themeManager.darkMode ? 0.62 : 0.88)
             border.width: 1
-            border.color: root.cardBorderColor
-
-            implicitHeight: footerLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
+            border.color: themeManager.borderColor
 
             ColumnLayout {
-                id: footerLayout
+                id: footerBox
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceS
 
-                Frame {
-                    Layout.fillWidth: true
-                    padding: root.compactLayout ? Kirigami.Units.smallSpacing : Kirigami.Units.smallSpacing + 2
-
-                    background: Rectangle {
-                        radius: themeManager.borderRadius
-                        color: Qt.rgba(themeManager.surfaceColor.r,
-                                       themeManager.surfaceColor.g,
-                                       themeManager.surfaceColor.b,
-                                       themeManager.darkMode ? 0.58 : 0.9)
-                        border.width: 1
-                        border.color: root.cardBorderColor
-                    }
-
-                    contentItem: GridLayout {
-                        columns: root.compactLayout ? 1 : 2
-                        columnSpacing: Kirigami.Units.largeSpacing
-                        rowSpacing: 4
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.summaryFormat")
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.summaryFormatText
-                            wrapMode: Text.WordWrap
-                            horizontalAlignment: root.compactLayout ? Text.AlignLeft : Text.AlignRight
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.summaryTransform")
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.summaryTransformText
-                            wrapMode: Text.WordWrap
-                            horizontalAlignment: root.compactLayout ? Text.AlignLeft : Text.AlignRight
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("audioConverter.summaryOutput")
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.summaryOutputName.length > 0
-                                  ? root.summaryOutputName
-                                  : root.tr("audioConverter.notAvailable")
-                            wrapMode: Text.WordWrap
-                            elide: Text.ElideMiddle
-                            horizontalAlignment: root.compactLayout ? Text.AlignLeft : Text.AlignRight
-                        }
-                    }
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    visible: root.primaryActionHintText.length > 0
-                    text: root.primaryActionHintText
-                    wrapMode: Text.WordWrap
-                    color: themeManager.textSecondaryColor
-                }
-
+                // Active Progress Bar Row
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
+                    visible: audioConverterService.isRunning
+                    spacing: UiMetrics.spaceM
 
-                    Item {
+                    AccentProgressBar {
                         Layout.fillWidth: true
+                        value: audioConverterService.progress
+                    }
+
+                    Label {
+                        text: Math.round(audioConverterService.progress * 100) + "%"
+                        font.family: "Monospace"
+                        font.bold: true
+                    }
+                }
+
+                // Action Buttons Row
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: UiMetrics.spaceM
+
+                    Label {
+                        text: root.statusSummaryText()
+                        color: themeManager.textMutedColor
+                        font.pointSize: UiMetrics.captionPointSize
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+
+                    Button {
+                        text: root.tr("audioConverter.showInPlaylist")
+                        icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
+                        visible: root.dialogState === "succeeded" && root.completedOutputPath.length > 0
+                        onClicked: root.showResultInPlaylistRequested(root.completedOutputPath)
+                    }
+
+                    Button {
+                        text: root.tr("playlist.openInFileManager")
+                        icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                        visible: root.dialogState === "succeeded" && root.completedOutputPath.length > 0
+                        onClicked: root.openResultInFileManagerRequested(root.completedOutputPath)
                     }
 
                     Button {
                         id: convertButton
-                        text: root.tr("audioConverter.convert")
-                        Layout.fillWidth: root.compactLayout
-                        enabled: root.canAttemptStart && !root.rawOutputPathLooksInvalid
-                        Accessible.name: text
-                        Accessible.description: root.primaryActionHintText.length > 0
-                                                ? root.primaryActionHintText
-                                                : root.summaryFormatText
-                        KeyNavigation.tab: cancelButton
-                        KeyNavigation.backtab: root.lastSuccessActionControl()
+                        text: root.dialogState === "conflict-detected"
+                              ? root.tr("audioConverter.replace")
+                              : root.tr("audioConverter.convert")
+                        highlighted: true
+                        enabled: root.canAttemptStart && !audioConverterService.isRunning
+                        visible: !audioConverterService.isRunning
+                        icon.source: IconResolver.themed("document-save", themeManager.darkMode)
                         onClicked: root.requestStartConversion()
                     }
 
                     Button {
-                        id: cancelButton
+                        text: audioConverterService.isPaused ? root.tr("batchAudioConverter.resume") : root.tr("batchAudioConverter.pause")
+                        icon.source: IconResolver.themed(audioConverterService.isPaused ? "media-playback-start" : "media-playback-pause", themeManager.darkMode)
+                        visible: audioConverterService.isRunning
+                        onClicked: audioConverterService.togglePauseConversion()
+                    }
+
+                    Button {
                         text: root.tr("audioConverter.cancel")
-                        Layout.fillWidth: root.compactLayout
-                        enabled: audioConverterService.isRunning
-                        Accessible.name: text
-                        Accessible.description: root.tr("audioConverter.stateRunning")
-                        KeyNavigation.tab: closeButton
-                        KeyNavigation.backtab: convertButton
+                        icon.source: IconResolver.themed("dialog-cancel", themeManager.darkMode)
+                        visible: audioConverterService.isRunning
                         onClicked: audioConverterService.cancelConversion()
                     }
 
                     Button {
-                        id: closeButton
-                        text: root.tr("audioConverter.close")
-                        Layout.fillWidth: root.compactLayout
-                        enabled: !audioConverterService.isRunning
-                        Accessible.name: text
-                        Accessible.description: audioConverterService.isRunning
-                                                ? root.tr("audioConverter.escapeRunningConfirmMessage")
-                                                : root.tr("audioConverter.closeAccessibleDescription")
-                        KeyNavigation.tab: outputPathField
-                        KeyNavigation.backtab: cancelButton
-                        onClicked: root.requestCloseFromKeyboard()
+                        text: root.tr("dialogs.close")
+                        icon.source: IconResolver.themed("dialog-close", themeManager.darkMode)
+                        visible: !audioConverterService.isRunning
+                        onClicked: root.close()
                     }
-                }
-            }
-        }
-    }
-
-    AppDialog {
-        id: cancelAndCloseDialog
-        modal: true
-        title: root.tr("audioConverter.escapeRunningConfirmTitle")
-        standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        onAccepted: root.close()
-
-        contentItem: Kirigami.SelectableLabel {
-            text: root.tr("audioConverter.escapeRunningConfirmMessage")
-            wrapMode: Text.WordWrap
-            color: Kirigami.Theme.textColor
-            padding: 8
-        }
-
-        footer: Rectangle {
-            implicitHeight: cancelAndCloseActions.implicitHeight + 16
-            color: themeManager.surfaceColor
-            border.width: 1
-            border.color: themeManager.borderColor
-
-            RowLayout {
-                id: cancelAndCloseActions
-                anchors.fill: parent
-                anchors.margins: 8
-                spacing: 8
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: root.tr("audioConverter.cancel")
-                    onClicked: cancelAndCloseDialog.reject()
-                }
-                Button {
-                    text: root.tr("audioConverter.close")
-                    accent: true
-                    onClicked: cancelAndCloseDialog.accept()
                 }
             }
         }
@@ -1714,52 +1698,56 @@ AppDialog {
 
     AppDialog {
         id: replaceConfirmDialog
+        parent: replaceConfirmDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
+        focus: true
         title: root.tr("audioConverter.confirmReplaceTitle")
         standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        anchors.centerIn: !replaceConfirmDialog.isSeparateWindow ? parent : undefined
+        width: replaceConfirmDialog.isSeparateWindow ? 440 : Math.min(440, root.width - 24)
 
-        onAccepted: {
-            awaitingOverwriteConfirmation = false
-            terminalState = "none"
-            audioConverterService.overwriteExisting = true
-            audioConverterService.startConversion()
-        }
-
-        onRejected: {
-            awaitingOverwriteConfirmation = false
-            audioConverterService.overwriteExisting = false
-        }
-
-        contentItem: Kirigami.SelectableLabel {
-            text: root.tr("audioConverter.confirmReplaceMessage")
-                  + "\n\n"
-                  + String(outputPathField.text || "").trim()
+        contentItem: Label {
+            text: root.tr("audioConverter.confirmReplaceMessage") + "\n\n" + outputPathField.text
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.textColor
-            padding: 8
+            width: replaceConfirmDialog.availableWidth
+            color: themeManager.textColor
         }
 
         footer: Rectangle {
-            implicitHeight: replaceConfirmActions.implicitHeight + 16
-            color: themeManager.surfaceColor
+            implicitHeight: confirmFooter.implicitHeight + UiMetrics.spaceM * 2
+            color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.92)
             border.width: 1
             border.color: themeManager.borderColor
 
             RowLayout {
-                id: replaceConfirmActions
+                id: confirmFooter
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 8
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: root.tr("audioConverter.cancel")
-                    onClicked: replaceConfirmDialog.reject()
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceM
+
+                Item {
+                    Layout.fillWidth: true
                 }
+
                 Button {
                     text: root.tr("audioConverter.replace")
-                    accent: true
-                    onClicked: replaceConfirmDialog.accept()
+                    highlighted: true
+                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                    onClicked: {
+                        replaceConfirmDialog.close()
+                        root.awaitingOverwriteConfirmation = false
+                        audioConverterService.overwriteExisting = true
+                        audioConverterService.startConversion()
+                    }
+                }
+
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    icon.source: IconResolver.themed("dialog-cancel", themeManager.darkMode)
+                    onClicked: {
+                        replaceConfirmDialog.close()
+                        root.awaitingOverwriteConfirmation = false
+                    }
                 }
             }
         }
@@ -1768,43 +1756,17 @@ AppDialog {
     Connections {
         target: audioConverterService
 
-        function onOutputFileChanged() {
-            root.syncOutputField()
-        }
-
-        function onConversionStarted() {
-            root.terminalState = "none"
-            root.awaitingOverwriteConfirmation = false
-            root.completedOutputPath = ""
-        }
-
         function onConversionFinished(outputPath) {
             root.terminalState = "succeeded"
-            root.awaitingOverwriteConfirmation = false
-            root.completedOutputPath = String(outputPath || "")
-            root.followSuggestedOutputPath = false
-            outputPathField.text = root.completedOutputPath
-            Qt.callLater(function() {
-                if (showInPlaylistButton.visible && showInPlaylistButton.enabled) {
-                    showInPlaylistButton.forceActiveFocus()
-                } else if (openResultFolderButton.visible && openResultFolderButton.enabled) {
-                    openResultFolderButton.forceActiveFocus()
-                } else if (closeButton.enabled) {
-                    closeButton.forceActiveFocus()
-                }
-            })
+            root.completedOutputPath = outputPath
         }
 
-        function onConversionFailed() {
+        function onConversionFailed(message) {
             root.terminalState = "failed"
-            root.awaitingOverwriteConfirmation = false
-            root.completedOutputPath = ""
         }
 
         function onConversionCanceled() {
             root.terminalState = "canceled"
-            root.awaitingOverwriteConfirmation = false
-            root.completedOutputPath = ""
         }
     }
 }

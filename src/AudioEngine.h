@@ -12,6 +12,8 @@
 #include <memory>
 #include <gst/gst.h>
 #include "playback/PlaybackBackendRouting.h"
+#include "dsp/DspProcessor.h"
+#include <mutex>
 
 namespace WaveFlux {
 class OpenMptPlaybackBackend;
@@ -72,6 +74,7 @@ class AudioEngine : public QObject
     Q_PROPERTY(bool remoteTrackerDownloadActive READ remoteTrackerDownloadActive NOTIFY remoteTrackerDownloadChanged)
     Q_PROPERTY(double remoteTrackerDownloadProgress READ remoteTrackerDownloadProgress NOTIFY remoteTrackerDownloadChanged)
     Q_PROPERTY(QString remoteTrackerDownloadStatus READ remoteTrackerDownloadStatus NOTIFY remoteTrackerDownloadChanged)
+    Q_PROPERTY(bool isTrackerActive READ usingOpenMptBackend NOTIFY playbackCapabilitiesChanged)
     
 public:
     enum PlaybackState {
@@ -155,6 +158,10 @@ public slots:
     void loadUrl(const QUrl &url);
     void setNextFile(const QString &filePath);
     void setNextFileWithTransition(const QString &filePath, quint64 transitionId);
+    Q_INVOKABLE void fadeIn(int durationMs = 500);
+    Q_INVOKABLE void fadeOut(int durationMs = 500);
+    void fadeOut(int durationMs, std::function<void()> onFinished);
+    void handleSilenceSkip();
     
 signals:
     void currentFileChanged(const QString &filePath);
@@ -194,12 +201,18 @@ private:
     void disableOpenMptIncompatibleFeatures();
     static PlaybackState mapBackendStateToEngineState(WaveFlux::PlaybackBackendState state);
     void performSeek(qint64 positionMs);
-    void applyPlaybackRateToPipeline();
+    void applyPlaybackRateToPipeline(bool reportErrors = true);
     void setState(PlaybackState state);
     void setupPipeline();
     void teardownPipeline();
     static QString normalizeAudioQualityProfile(const QString &profile);
     void applyAudioQualityProfileToPipeline();
+    void bindDspSettings();
+    void applyDspSettings();
+    void applyDspTransport();
+    void applyReplayGainFromDsp();
+    void processDspBuffer(GstPad *pad, GstBuffer *buffer);
+    static GstPadProbeReturn dspPadProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData);
     void applyDeferredSeekIfNeeded();
     void updatePosition();
     void handleBusMessage(GstMessage *message);
@@ -217,6 +230,7 @@ private:
     void applyPendingReverseStartIfNeeded();
     qint64 safeReverseStartPositionMs(qint64 durationMs) const;
     double effectivePlaybackRate() const;
+    bool requiresPipelineRateApplication() const;
     void enableGaplessBypass(const QString &reason,
                              quint64 transitionId,
                              const QVariantMap &extra = {});
@@ -247,6 +261,8 @@ private:
     GstElement *m_dynamicRangeElement = nullptr;
     GstElement *m_limiterElement = nullptr;
     GstElement *m_outputConvertElement = nullptr;
+    GstElement *m_dspIdentityElement = nullptr;
+    gulong m_dspProbeId = 0;
     GstBus *m_bus = nullptr;
     guint m_busWatchId = 0;
     
@@ -268,6 +284,9 @@ private:
     double m_volume = 1.0;
     double m_volumeBeforeMute = 1.0;
     double m_playbackRate = 1.0;
+    // Combined DSP speed * tempo factor, folded into the pipeline segment rate rather than
+    // into the soundtouch element so position/duration keep reporting the source timeline.
+    double m_dspRateFactor = 1.0;
     bool m_reversePlayback = false;
     QString m_audioQualityProfile = QStringLiteral("standard");
     int m_pitchSemitones = 0;
@@ -286,6 +305,7 @@ private:
     QTimer m_busPollTimer;
     QTimer m_gaplessEosDeferralTimer;
     QTimer m_seekCoalesceTimer;
+    QTimer m_dspRateApplyTimer;
     qint64 m_coalescedSeekPositionMs = -1;
     qint64 m_deferredSeekPositionMs = -1;
     qint64 m_lastSeekWallClockMs = 0;
@@ -334,6 +354,31 @@ private:
     QTimer m_equalizerApplyTimer;
     QTimer m_equalizerRampTimer;
 
+    struct DspRuntimeSnapshot {
+        double echoMix = 0.0;
+        double chorusMix = 0.0;
+        double reverbMix = 0.0;
+        double flangerMix = 0.0;
+        double bass = 1.0;
+        double stereoWidth = 1.0;
+        double balance = 0.0;
+        bool voiceSuppression = false;
+        bool silenceRemovalEnabled = false;
+        bool silenceTrimEdges = true;
+        int silenceMinDurationMs = 500;
+        double silenceThresholdDbfs = -60.0;
+        int sampleRate = 48000;
+    };
+    mutable std::mutex m_dspMutex;
+    DspRuntimeSnapshot m_dspSnapshot;
+    WaveFlux::Dsp::DelayEffect m_echoEffect;
+    WaveFlux::Dsp::ModulatedDelayEffect m_chorusEffect {WaveFlux::Dsp::ModulatedDelayEffect::Mode::Chorus};
+    WaveFlux::Dsp::ModulatedDelayEffect m_flangerEffect {WaveFlux::Dsp::ModulatedDelayEffect::Mode::Flanger};
+    WaveFlux::Dsp::SimpleReverb m_reverbEffect;
+    WaveFlux::Dsp::LowShelfFilter m_bassFilter;
+    WaveFlux::Dsp::GainRamp m_gainRamp;
+    WaveFlux::Dsp::SilenceDetector m_silenceDetector;
+
     static constexpr int kSeekCoalesceIntervalMs = 35;
     // Stability-first mode: rely on EOS/manual fallback transitions instead of
     // playbin about-to-finish URI handoff, which is unstable on some backends.
@@ -362,6 +407,15 @@ private:
     static constexpr int kEqualizerRampDurationMs = 32;
     static constexpr int kEqualizerRampStepMs = 8;
     static constexpr double kEqualizerRampThresholdDb = 5.0;
+    // DSP sliders emit continuously while dragged; coalesce the segment-rate updates.
+    static constexpr int kDspRateApplyCoalesceIntervalMs = 40;
+    static constexpr double kMinDspRateFactor = 0.05;
+    static constexpr double kMaxDspRateFactor = 10.0;
+    static constexpr double kMinEffectivePlaybackRate = 0.05;
+    static constexpr double kMaxEffectivePlaybackRate = 10.0;
+    // soundtouch "pitch" accepts [0.1, 10.0].
+    static constexpr double kMinPitchElementRatio = 0.1;
+    static constexpr double kMaxPitchElementRatio = 10.0;
 };
 
 #endif // AUDIOENGINE_H

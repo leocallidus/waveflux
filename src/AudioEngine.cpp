@@ -1,5 +1,7 @@
 #include "AudioEngine.h"
 #include "AppSettingsManager.h"
+#include "DspSettingsManager.h"
+#include "dsp/DspCapabilities.h"
 #include "TagLibPath.h"
 #include "playback/OpenMptPlaybackBackend.h"
 #include "playback/RemoteTrackerSourceCache.h"
@@ -529,6 +531,19 @@ AudioEngine::AudioEngine(QObject *parent)
         performSeek(pendingSeek);
     });
 
+    m_dspRateApplyTimer.setSingleShot(true);
+    connect(&m_dspRateApplyTimer, &QTimer::timeout, this, [this]() {
+        if (!m_pendingRateApplication) {
+            return;
+        }
+        if (usingOpenMptBackend() || !m_pipeline || m_state == StoppedState) {
+            return;
+        }
+        // Quiet: slider drags land here repeatedly, so a rejected rate change must not
+        // spam the user with error notifications (it is still logged as a warning).
+        applyPlaybackRateToPipeline(false);
+    });
+
     m_equalizerApplyTimer.setSingleShot(true);
     connect(&m_equalizerApplyTimer, &QTimer::timeout, this, [this]() {
         applyEqualizerBandSettings();
@@ -538,6 +553,8 @@ AudioEngine::AudioEngine(QObject *parent)
     connect(&m_equalizerRampTimer, &QTimer::timeout, this, [this]() {
         processEqualizerRampStep();
     });
+
+    bindDspSettings();
 }
 
 AudioEngine::~AudioEngine()
@@ -587,7 +604,13 @@ WaveFlux::PlaybackBackendCapabilities AudioEngine::currentBackendCapabilities() 
 QVariantMap AudioEngine::playbackCapabilities() const
 {
     const WaveFlux::PlaybackBackendCapabilities capabilities = currentBackendCapabilities();
-    return {
+    WaveFlux::Dsp::SourceAudioContext dspContext;
+    dspContext.backendKind = m_currentBackendKind;
+    dspContext.channelCount = 2;
+    dspContext.isLiveStream = QUrl(m_currentFile).scheme().startsWith(QStringLiteral("http")) && duration() <= 0;
+    const QVariantMap dspCaps = WaveFlux::Dsp::DspCapabilities::getCapabilitiesMap(dspContext);
+
+    QVariantMap result = {
         {QStringLiteral("seek"), capabilities.seek},
         {QStringLiteral("waveform"), capabilities.waveform},
         {QStringLiteral("spectrum"), capabilities.spectrum},
@@ -601,11 +624,21 @@ QVariantMap AudioEngine::playbackCapabilities() const
         {QStringLiteral("pitchShift"), capabilities.pitchShift},
         {QStringLiteral("remoteSources"), capabilities.remoteSources}
     };
+    for (auto it = dspCaps.constBegin(); it != dspCaps.constEnd(); ++it) {
+        result.insert(it.key(), it.value());
+    }
+    return result;
 }
 
 QVariantMap AudioEngine::playbackCapabilityReasons() const
 {
     const WaveFlux::PlaybackBackendCapabilities capabilities = currentBackendCapabilities();
+    WaveFlux::Dsp::SourceAudioContext dspContext;
+    dspContext.backendKind = m_currentBackendKind;
+    dspContext.channelCount = 2;
+    dspContext.isLiveStream = QUrl(m_currentFile).scheme().startsWith(QStringLiteral("http")) && duration() <= 0;
+    const QVariantMap dspReasons = WaveFlux::Dsp::DspCapabilities::getCapabilityReasonsMap(dspContext);
+
     QVariantMap reasons;
 
     if (!capabilities.spectrum) {
@@ -636,6 +669,10 @@ QVariantMap AudioEngine::playbackCapabilityReasons() const
     if (usingOpenMptBackend()) {
         reasons.insert(QStringLiteral("audioQualityProfile"),
                        QStringLiteral("settings.audioQualityProfileUnavailableDescription"));
+    }
+
+    for (auto it = dspReasons.constBegin(); it != dspReasons.constEnd(); ++it) {
+        reasons.insert(it.key(), it.value());
     }
 
     return reasons;
@@ -833,9 +870,8 @@ void AudioEngine::beginOpenMptLoad(const QString &displaySource,
     }
 
     m_openMptBackend->setVolume(m_volume);
-    m_openMptBackend->setPlaybackRate(m_playbackRate);
-    m_openMptBackend->setPitchSemitones(m_pitchSemitones);
     m_openMptBackend->setReversePlayback(m_reversePlayback);
+    applyDspTransport();
     m_openMptBackend->load(backendSource);
     m_isLoading = false;
     if (m_openMptBackend->state() == WaveFlux::PlaybackBackendState::Error) {
@@ -1042,6 +1078,10 @@ void AudioEngine::setupPipeline()
         if (m_equalizerElement) {
             processingChain.push_back(m_equalizerElement);
         }
+        GstElement *dspIdentityElement = gst_element_factory_make("identity", "waveflux-dsp");
+        if (dspIdentityElement) {
+            processingChain.push_back(dspIdentityElement);
+        }
         processingChain.push_back(pitchElement);
         if (dynamicElement) {
             processingChain.push_back(dynamicElement);
@@ -1066,7 +1106,19 @@ void AudioEngine::setupPipeline()
 
         if (linkOk) {
             m_pitchElement = pitchElement;
+            m_dspIdentityElement = dspIdentityElement;
             equalizerAvailableNow = (m_equalizerElement != nullptr);
+            if (m_dspIdentityElement) {
+                GstPad *dspPad = gst_element_get_static_pad(m_dspIdentityElement, "src");
+                if (dspPad) {
+                    m_dspProbeId = gst_pad_add_probe(dspPad,
+                                                     GST_PAD_PROBE_TYPE_BUFFER,
+                                                     dspPadProbe,
+                                                     this,
+                                                     nullptr);
+                    gst_object_unref(dspPad);
+                }
+            }
 
             // Create ghost pad for the bin
             GstPad *sinkPad = gst_element_get_static_pad(audioConvert1, "sink");
@@ -1078,8 +1130,16 @@ void AudioEngine::setupPipeline()
             // Set the custom audio sink on playbin
             g_object_set(m_pipeline, "audio-sink", audioSinkBin, nullptr);
 
-            // Apply initial pitch (0 semitones = pitch 1.0)
+            // Apply initial pitch (0 semitones = pitch 1.0). "rate"/"tempo" stay pinned at
+            // 1.0 for the lifetime of the pipeline: DSP speed/tempo go through the segment
+            // rate instead, so the reported stream duration is never rescaled.
             g_object_set(m_pitchElement, "pitch", 1.0, nullptr);
+            if (hasElementProperty(m_pitchElement, "rate")) {
+                g_object_set(m_pitchElement, "rate", 1.0, nullptr);
+            }
+            if (hasElementProperty(m_pitchElement, "tempo")) {
+                g_object_set(m_pitchElement, "tempo", 1.0, nullptr);
+            }
         } else {
             qWarning() << "Failed to link custom high-quality audio chain, falling back to base playback";
             m_equalizerElement = nullptr;
@@ -1088,6 +1148,8 @@ void AudioEngine::setupPipeline()
             m_dynamicRangeElement = nullptr;
             m_limiterElement = nullptr;
             m_outputConvertElement = nullptr;
+            m_dspIdentityElement = nullptr;
+            m_dspProbeId = 0;
             gst_object_unref(audioSinkBin);
         }
     } else {
@@ -1097,6 +1159,8 @@ void AudioEngine::setupPipeline()
         m_dynamicRangeElement = nullptr;
         m_limiterElement = nullptr;
         m_outputConvertElement = nullptr;
+        m_dspIdentityElement = nullptr;
+        m_dspProbeId = 0;
         if (audioSinkBin) gst_object_unref(audioSinkBin);
         if (audioConvert1) gst_object_unref(audioConvert1);
         if (audioResample) gst_object_unref(audioResample);
@@ -1145,6 +1209,7 @@ void AudioEngine::setupPipeline()
         qWarning() << "Failed to create spectrum element, dynamic analyzer disabled";
     }
     emitPlaybackCapabilitiesChanged();
+    applyDspSettings();
     
     // Set initial volume
     if (GST_IS_STREAM_VOLUME(m_pipeline)) {
@@ -1172,6 +1237,7 @@ void AudioEngine::setupPipeline()
 
 void AudioEngine::teardownPipeline()
 {
+    m_dspRateApplyTimer.stop();
     m_equalizerApplyTimer.stop();
     m_equalizerRampTimer.stop();
     m_equalizerPendingApplyAllowRamp = false;
@@ -1209,8 +1275,285 @@ void AudioEngine::teardownPipeline()
         m_dynamicRangeElement = nullptr;
         m_limiterElement = nullptr;
         m_outputConvertElement = nullptr;
+        m_dspIdentityElement = nullptr;
+        m_dspProbeId = 0;
     }
     ++m_callbackSerial;
+}
+
+void AudioEngine::bindDspSettings()
+{
+    auto *dsp = DspSettingsManager::instance();
+    if (!dsp) {
+        return;
+    }
+
+    const auto applyAll = [this]() { applyDspSettings(); };
+    connect(dsp, &DspSettingsManager::dspSettingsChanged, this, applyAll);
+    connect(dsp, &DspSettingsManager::bassChanged, this, [this]() { applyDspSettings(); });
+    connect(dsp, &DspSettingsManager::speedChanged, this, [this]() { applyDspTransport(); });
+    connect(dsp, &DspSettingsManager::tempoChanged, this, [this]() { applyDspTransport(); });
+    connect(dsp, &DspSettingsManager::tonalitySemitonesChanged, this, [this]() { applyDspTransport(); });
+    applyDspSettings();
+}
+
+void AudioEngine::applyDspSettings()
+{
+    applyDspTransport();
+    applyReplayGainFromDsp();
+    queueEqualizerApply(true, false);
+
+    auto *dsp = DspSettingsManager::instance();
+    std::lock_guard<std::mutex> lock(m_dspMutex);
+    if (!dsp) {
+        m_dspSnapshot = {};
+        m_echoEffect.reset();
+        m_chorusEffect.reset();
+        m_flangerEffect.reset();
+        m_reverbEffect.reset();
+        m_gainRamp.setGainInstant(1.0);
+        m_silenceDetector.reset();
+        return;
+    }
+
+    m_dspSnapshot.echoMix = dsp->echoMix();
+    m_dspSnapshot.chorusMix = dsp->chorusMix();
+    m_dspSnapshot.reverbMix = dsp->reverbMix();
+    m_dspSnapshot.flangerMix = dsp->flangerMix();
+    m_dspSnapshot.bass = dsp->bass();
+    m_dspSnapshot.stereoWidth = dsp->stereoWidth();
+    m_dspSnapshot.balance = dsp->balance();
+    m_dspSnapshot.voiceSuppression = dsp->voiceSuppression();
+    m_dspSnapshot.silenceRemovalEnabled = dsp->silenceRemovalEnabled();
+    m_dspSnapshot.silenceTrimEdges = dsp->silenceRemovalTrimEdges();
+    m_dspSnapshot.silenceMinDurationMs = dsp->silenceRemovalMinimumDurationMs();
+    m_dspSnapshot.silenceThresholdDbfs = dsp->silenceRemovalThresholdDbfs();
+
+    m_echoEffect.setParameters(350.0, 0.35, m_dspSnapshot.echoMix * 0.01);
+    m_chorusEffect.setParameters(20.0, 1.5, 3.0, m_dspSnapshot.chorusMix * 0.01);
+    m_flangerEffect.setParameters(3.0, 0.25, 2.0, m_dspSnapshot.flangerMix * 0.01);
+    m_reverbEffect.setParameters(0.85, 0.5, m_dspSnapshot.reverbMix * 0.01);
+    m_bassFilter.setBassMultiplier(m_dspSnapshot.bass);
+    m_silenceDetector.setThresholdDbfs(m_dspSnapshot.silenceThresholdDbfs);
+    m_silenceDetector.setMinimumDurationMs(m_dspSnapshot.silenceMinDurationMs);
+    m_silenceDetector.setTrimEdges(m_dspSnapshot.silenceTrimEdges);
+}
+
+void AudioEngine::applyDspTransport()
+{
+    auto *dsp = DspSettingsManager::instance();
+    const double speed = dsp ? dsp->speed() : 1.0;
+    const double tempo = dsp ? dsp->tempo() : 1.0;
+    const double tonality = dsp ? dsp->tonalitySemitones() : 0.0;
+
+    // Speed and tempo are realised through the pipeline segment rate, never through the
+    // soundtouch element's own "rate"/"tempo" properties. Those scale the element's stream
+    // time ratio, so GStreamer starts reporting a rescaled duration (and posts
+    // duration-changed), which makes the waveform playhead jump on every slider step and
+    // then drift, because the already-played part was traversed at the previous ratio.
+    // Kept current for both backends so it is right the moment playback switches back from
+    // a tracker module to the GStreamer pipeline.
+    const double dspRateFactor = qBound(kMinDspRateFactor, speed * tempo, kMaxDspRateFactor);
+    const bool dspRateFactorChanged = !qFuzzyCompare(m_dspRateFactor, dspRateFactor);
+    m_dspRateFactor = dspRateFactor;
+
+    if (usingOpenMptBackend()) {
+        if (m_openMptBackend) {
+            m_openMptBackend->setPlaybackRate(m_playbackRate * speed * tempo);
+            m_openMptBackend->setPitchSemitones(m_pitchSemitones + qRound(tonality));
+        }
+        return;
+    }
+
+    if (m_pitchElement && hasElementProperty(m_pitchElement, "pitch")) {
+        // Tempo must not change perceived pitch, so compensate the transposition the segment
+        // rate introduces. Speed intentionally keeps its varispeed pitch change.
+        const double combinedSemitones = static_cast<double>(m_pitchSemitones) + tonality;
+        double pitchRatio = std::pow(2.0, combinedSemitones / 12.0);
+        if (tempo > 0.0) {
+            pitchRatio /= tempo;
+        }
+        pitchRatio = qBound(kMinPitchElementRatio, pitchRatio, kMaxPitchElementRatio);
+        g_object_set(m_pitchElement, "pitch", static_cast<float>(pitchRatio), nullptr);
+    }
+
+    if (!dspRateFactorChanged) {
+        return;
+    }
+
+    m_pendingRateApplication = true;
+
+    if (!m_pipeline || m_state == StoppedState) {
+        // Applied when the pipeline reaches PLAYING (see requiresPipelineRateApplication).
+        return;
+    }
+
+    m_dspRateApplyTimer.start(kDspRateApplyCoalesceIntervalMs);
+}
+
+void AudioEngine::applyReplayGainFromDsp()
+{
+    if (!m_replayGainElement) {
+        return;
+    }
+
+    auto *dsp = DspSettingsManager::instance();
+    const bool enabled = dsp && dsp->replayGainEnabled();
+    const QString mode = dsp ? dsp->replayGainMode() : QStringLiteral("auto");
+    const double preamp = dsp ? dsp->replayGainPreampDb() : 0.0;
+    const double fallback = dsp ? dsp->replayGainFallbackDb() : 0.0;
+
+    if (hasElementProperty(m_replayGainElement, "album-mode")) {
+        g_object_set(m_replayGainElement, "album-mode", (mode != QStringLiteral("track")), nullptr);
+    }
+    if (hasElementProperty(m_replayGainElement, "pre-amp")) {
+        g_object_set(m_replayGainElement, "pre-amp", enabled ? preamp : 0.0, nullptr);
+    }
+    if (hasElementProperty(m_replayGainElement, "fallback-gain")) {
+        g_object_set(m_replayGainElement, "fallback-gain", enabled ? fallback : 0.0, nullptr);
+    }
+    if (hasElementProperty(m_replayGainElement, "enabled")) {
+        g_object_set(m_replayGainElement, "enabled", enabled, nullptr);
+    }
+}
+
+GstPadProbeReturn AudioEngine::dspPadProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData)
+{
+    auto *self = static_cast<AudioEngine *>(userData);
+    if (!self || (GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER) == 0) {
+        return GST_PAD_PROBE_OK;
+    }
+
+    GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+    if (!buffer) {
+        return GST_PAD_PROBE_OK;
+    }
+    if (!gst_buffer_is_writable(buffer)) {
+        buffer = gst_buffer_make_writable(buffer);
+        GST_PAD_PROBE_INFO_DATA(info) = buffer;
+    }
+    if (buffer) {
+        self->processDspBuffer(pad, buffer);
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+void AudioEngine::processDspBuffer(GstPad *pad, GstBuffer *buffer)
+{
+    if (!pad || !buffer) {
+        return;
+    }
+
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    if (!caps) {
+        return;
+    }
+    const GstStructure *structure = gst_caps_get_structure(caps, 0);
+    int channels = 0;
+    int rate = 0;
+    gst_structure_get_int(structure, "channels", &channels);
+    gst_structure_get_int(structure, "rate", &rate);
+    const gchar *format = gst_structure_get_string(structure, "format");
+    const bool isFloat32 = format && g_strcmp0(format, "F32LE") == 0;
+    gst_caps_unref(caps);
+    if (!isFloat32 || channels < 2 || rate <= 0) {
+        return;
+    }
+
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READWRITE)) {
+        return;
+    }
+    if (map.size < static_cast<gsize>(channels) * sizeof(float)) {
+        gst_buffer_unmap(buffer, &map);
+        return;
+    }
+
+    const std::size_t frames = map.size / (static_cast<std::size_t>(channels) * sizeof(float));
+    auto *samples = reinterpret_cast<float *>(map.data);
+
+    std::lock_guard<std::mutex> lock(m_dspMutex);
+    if (rate != m_dspSnapshot.sampleRate) {
+        m_dspSnapshot.sampleRate = rate;
+        m_bassFilter.setSampleRate(rate);
+        m_echoEffect.setSampleRate(rate);
+        m_chorusEffect.setSampleRate(rate);
+        m_flangerEffect.setSampleRate(rate);
+        m_reverbEffect.setSampleRate(rate);
+        m_gainRamp.setSampleRate(rate);
+        m_silenceDetector.setSampleRate(rate);
+    }
+
+    if (std::abs(m_dspSnapshot.bass - 1.0) > 0.001) {
+        m_bassFilter.processInterleaved(samples, frames, channels);
+    }
+    WaveFlux::Dsp::StereoProcessor::applyVoiceSuppression(samples, frames, m_dspSnapshot.voiceSuppression);
+    WaveFlux::Dsp::StereoProcessor::applyStereoWidth(samples, frames, m_dspSnapshot.stereoWidth);
+    m_echoEffect.processInterleaved(samples, frames, channels);
+    m_chorusEffect.processInterleaved(samples, frames, channels);
+    m_flangerEffect.processInterleaved(samples, frames, channels);
+    m_reverbEffect.processInterleaved(samples, frames, channels);
+    WaveFlux::Dsp::StereoProcessor::applyBalance(samples, frames, m_dspSnapshot.balance);
+    WaveFlux::Dsp::StereoProcessor::applyPeakLimiter(samples, frames, channels);
+    m_gainRamp.processInterleaved(samples, frames, channels);
+
+    if (m_dspSnapshot.silenceRemovalEnabled) {
+        m_silenceDetector.processFrameChunk(samples, frames, channels);
+        if (m_silenceDetector.isQualifiedSilence()) {
+            m_silenceDetector.reset();
+            QMetaObject::invokeMethod(this, [this]() {
+                handleSilenceSkip();
+            }, Qt::QueuedConnection);
+        }
+    }
+
+    gst_buffer_unmap(buffer, &map);
+}
+
+void AudioEngine::fadeIn(int durationMs)
+{
+    std::lock_guard<std::mutex> lock(m_dspMutex);
+    m_gainRamp.setGainInstant(0.0);
+    m_gainRamp.rampTo(1.0, durationMs);
+}
+
+void AudioEngine::fadeOut(int durationMs)
+{
+    fadeOut(durationMs, nullptr);
+}
+
+void AudioEngine::fadeOut(int durationMs, std::function<void()> onFinished)
+{
+    {
+        std::lock_guard<std::mutex> lock(m_dspMutex);
+        m_gainRamp.rampTo(0.0, durationMs);
+    }
+    if (onFinished) {
+        if (durationMs <= 0) {
+            onFinished();
+        } else {
+            QTimer::singleShot(durationMs, this, [this, onFinished]() {
+                onFinished();
+                std::lock_guard<std::mutex> lock(m_dspMutex);
+                m_gainRamp.setGainInstant(1.0);
+            });
+        }
+    }
+}
+
+void AudioEngine::handleSilenceSkip()
+{
+    if (m_state != PlayingState) {
+        return;
+    }
+    const qint64 curPos = position();
+    const qint64 dur = duration();
+    if (dur > 0 && curPos + 2000 >= dur) {
+        emit endOfStream();
+    } else if (dur > 0) {
+        const qint64 skipTarget = qMin(dur - 500, curPos + qMax<qint64>(500, m_dspSnapshot.silenceMinDurationMs));
+        seekWithSource(skipTarget, QStringLiteral("audio.dsp.silence_skip"));
+    }
 }
 
 void AudioEngine::play()
@@ -1265,6 +1608,12 @@ void AudioEngine::play()
         g_object_set(m_pipeline, "volume", m_volume, nullptr);
     }
 
+    const auto *dsp = DspSettingsManager::instance();
+    const bool shouldFade = dsp && dsp->fadePauseResume() && m_state != PlayingState;
+    if (shouldFade) {
+        fadeIn(150);
+    }
+
     GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         qWarning() << "Failed to start playback";
@@ -1294,6 +1643,18 @@ void AudioEngine::pause()
     }
 
     if (!m_pipeline) return;
+
+    const auto *dsp = DspSettingsManager::instance();
+    const bool shouldFade = dsp && dsp->fadePauseResume() && m_state == PlayingState;
+    if (shouldFade) {
+        fadeOut(150, [this]() {
+            if (!m_pipeline) return;
+            gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+            setState(PausedState);
+            m_positionTimer->stop();
+        });
+        return;
+    }
     
     gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
     setState(PausedState);
@@ -1324,6 +1685,7 @@ void AudioEngine::stop()
         m_pendingRateApplication = false;
         m_pendingReverseStart = false;
         m_seekCoalesceTimer.stop();
+        m_dspRateApplyTimer.stop();
         m_equalizerApplyTimer.stop();
         m_equalizerRampTimer.stop();
         m_coalescedSeekPositionMs = -1;
@@ -1361,6 +1723,7 @@ void AudioEngine::stop()
     m_pendingRateApplication = false;
     m_pendingReverseStart = false;
     m_seekCoalesceTimer.stop();
+    m_dspRateApplyTimer.stop();
     m_equalizerApplyTimer.stop();
     m_equalizerRampTimer.stop();
     m_coalescedSeekPositionMs = -1;
@@ -1902,12 +2265,15 @@ void AudioEngine::performSeek(qint64 positionMs)
             m_positionTimer->start();
             setState(PlayingState);
         }
+        const auto *dsp = DspSettingsManager::instance();
+        const int fadeMs = (dsp && dsp->fadeTrackNavigation()) ? 120 : 60;
+        fadeIn(fadeMs);
     }
 }
 
 void AudioEngine::setVolume(double volume)
 {
-    const double clamped = qBound(0.0, volume, 1.25);
+    const double clamped = qBound(0.0, volume, 2.0);
     const bool changed = !qFuzzyCompare(m_volume, clamped);
     if (clamped > 0.000001) {
         m_volumeBeforeMute = clamped;
@@ -1940,12 +2306,12 @@ void AudioEngine::toggleMute()
         return;
     }
 
-    setVolume(qBound(0.01, m_volumeBeforeMute, 1.25));
+    setVolume(qBound(0.01, m_volumeBeforeMute, 2.0));
 }
 
 void AudioEngine::setPlaybackRate(double rate)
 {
-    const double clampedRate = qBound(0.25, rate, 2.0);
+    const double clampedRate = qBound(0.25, rate, 3.0);
     if (!rateAvailable() && !qFuzzyCompare(clampedRate, 1.0)) {
         return;
     }
@@ -1989,6 +2355,10 @@ void AudioEngine::setPlaybackRate(double rate)
     // Apply rate change instantly using playbin rate (not pitch tempo)
     // This keeps position/duration reporting correct
     applyPlaybackRateToPipeline();
+    const qint64 currentDuration = duration();
+    if (currentDuration > 0) {
+        emit durationChanged(currentDuration);
+    }
 }
 
 void AudioEngine::setReversePlayback(bool enabled)
@@ -2036,7 +2406,7 @@ void AudioEngine::setReversePlayback(bool enabled)
     if (!m_reversePlayback) {
         m_pendingReverseStart = false;
         if (m_state == StoppedState) {
-            m_pendingRateApplication = !qFuzzyCompare(m_playbackRate, 1.0);
+            m_pendingRateApplication = requiresPipelineRateApplication();
             return;
         }
 
@@ -2139,8 +2509,8 @@ void AudioEngine::applyAudioQualityProfileToPipeline()
             "full",
             "cubic",
             3.5,
-            1.04f,
-            0.985f,
+            1.00f,
+            1.00f,
             24u,
             "tpdf-hf",
             "high"
@@ -2152,8 +2522,8 @@ void AudioEngine::applyAudioQualityProfileToPipeline()
             "full",
             "cubic",
             2.5,
-            1.14f,
-            0.94f,
+            1.00f,
+            1.00f,
             24u,
             "tpdf-hf",
             "high"
@@ -2165,8 +2535,8 @@ void AudioEngine::applyAudioQualityProfileToPipeline()
             "auto",
             "linear",
             1.5,
-            1.08f,
-            0.96f,
+            1.00f,
+            1.00f,
             20u,
             "tpdf",
             "medium"
@@ -2219,11 +2589,13 @@ void AudioEngine::applyAudioQualityProfileToPipeline()
         setEnumPropertyIfAvailable(m_outputConvertElement, "dithering", cfg.ditheringMode);
         setEnumPropertyIfAvailable(m_outputConvertElement, "noise-shaping", cfg.noiseShapingMode);
     }
+
+    applyReplayGainFromDsp();
 }
 
 void AudioEngine::setPitchSemitones(int semitones)
 {
-    const int clamped = qBound(-6, semitones, 6);
+    const int clamped = qBound(-10, semitones, 10);
     if (!pitchAvailable() && clamped != 0) {
         return;
     }
@@ -2246,18 +2618,7 @@ void AudioEngine::setPitchSemitones(int semitones)
     m_pitchSemitones = clamped;
     emit pitchSemitonesChanged(m_pitchSemitones);
 
-    if (usingOpenMptBackend()) {
-        if (m_openMptBackend) {
-            m_openMptBackend->setPitchSemitones(m_pitchSemitones);
-        }
-        return;
-    }
-
-    if (m_pitchElement) {
-        // Convert semitones to pitch ratio: 2^(semitones/12)
-        const double pitchRatio = std::pow(2.0, m_pitchSemitones / 12.0);
-        g_object_set(m_pitchElement, "pitch", pitchRatio, nullptr);
-    }
+    applyDspTransport();
 }
 
 void AudioEngine::setSpectrumEnabled(bool enabled)
@@ -2372,7 +2733,7 @@ void AudioEngine::resetEqualizerBands()
     setEqualizerBandGains(flat);
 }
 
-void AudioEngine::applyPlaybackRateToPipeline()
+void AudioEngine::applyPlaybackRateToPipeline(bool reportErrors)
 {
     if (usingOpenMptBackend()) {
         return;
@@ -2505,7 +2866,9 @@ void AudioEngine::applyPlaybackRateToPipeline()
                                     .arg(m_playbackRate, 0, 'f', 2)
                                     .arg(effectiveRate, 0, 'f', 2);
         qWarning() << message;
-        emit error(message);
+        if (reportErrors) {
+            emit error(message);
+        }
         return;
     }
 
@@ -2580,7 +2943,7 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     m_gaplessEosDeferralTimer.stop();
 
     // Mark that we need to apply playback rate when pipeline reaches PLAYING state
-    m_pendingRateApplication = m_reversePlayback || !qFuzzyCompare(m_playbackRate, 1.0);
+    m_pendingRateApplication = requiresPipelineRateApplication();
     m_pendingReverseStart = m_reversePlayback;
     m_seekCoalesceTimer.stop();
     m_coalescedSeekPositionMs = -1;
@@ -2673,6 +3036,9 @@ void AudioEngine::loadFileWithTransition(const QString &filePath, quint64 transi
     m_currentTransitionId = resolvedTransitionId;
     m_currentFile = filePath;
     m_currentBackendKind = preferredBackend;
+    // Resync DSP transport for the backend that will actually play this source: the tracker
+    // path never touches the pitch element, so its compensation can be stale after one.
+    applyDspTransport();
     clearMetadata();
     m_metadataFallbackDurationMs = probeMetadataDurationMs(m_currentFile);
     m_lastEmittedPositionMs = -1;
@@ -2797,7 +3163,7 @@ qint64 AudioEngine::position() const
         return 0;
     }
 
-    const qint64 rawMs = pos / GST_MSECOND;
+    const qint64 rawMs = static_cast<qint64>(pos / GST_MSECOND);
     return qMax<qint64>(0, rawMs - m_trackTimelineOffsetMs);
 }
 
@@ -2886,7 +3252,8 @@ qint64 AudioEngine::duration() const
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     gint64 dur = 0;
     if (gst_element_query_duration(m_pipeline, GST_FORMAT_TIME, &dur) && dur >= 0) {
-        return stabilizeDurationValue(dur / GST_MSECOND, nowMs);
+        const qint64 rawDurMs = static_cast<qint64>(dur / GST_MSECOND);
+        return stabilizeDurationValue(rawDurMs, nowMs);
     }
     return stabilizeDurationValue(m_metadataFallbackDurationMs, nowMs);
 }
@@ -2936,7 +3303,7 @@ void AudioEngine::updatePosition()
         return;
     }
 
-    const qint64 rawMs = pos / GST_MSECOND;
+    const qint64 rawMs = static_cast<qint64>(pos / GST_MSECOND);
     if (m_recentGaplessStreamStartMs > 0) {
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         const qint64 ageMs = nowMs - m_recentGaplessStreamStartMs;
@@ -3866,10 +4233,18 @@ void AudioEngine::applyEqualizerBandValues(const QVariantList &gainsDb)
         return;
     }
 
+    const double bassMultiplier = DspSettingsManager::instance() ? DspSettingsManager::instance()->bass() : 1.0;
+    const double bassGainDb = (bassMultiplier > 0.001) ? (20.0 * std::log10(bassMultiplier)) : (bassMultiplier <= 0.0 ? -24.0 : 0.0);
     const int count = qMin(m_equalizerBandCount, gainsDb.size());
     for (int i = 0; i < count; ++i) {
         const QByteArray gainProperty = QByteArray("band") + QByteArray::number(i) + "::gain";
-        const double gainDb = qBound(-24.0, gainsDb.at(i).toDouble(), 12.0);
+        double baseGain = gainsDb.at(i).toDouble();
+        if (i == 0) {
+            baseGain += bassGainDb;
+        } else if (i == 1) {
+            baseGain += bassGainDb * 0.5;
+        }
+        const double gainDb = qBound(-24.0, baseGain, 12.0);
         gst_child_proxy_set(GST_CHILD_PROXY(m_equalizerElement), gainProperty.constData(), gainDb, nullptr);
     }
 
@@ -4119,7 +4494,7 @@ void AudioEngine::handleAboutToFinishOnMainThread(quint64 callbackSerial)
     g_object_set(m_pipeline, "uri", uri.toUtf8().constData(), nullptr);
 
     // Mark for rate/direction reapplication if needed (gapless transition).
-    m_pendingRateApplication = m_reversePlayback || !qFuzzyCompare(m_playbackRate, 1.0);
+    m_pendingRateApplication = requiresPipelineRateApplication();
     m_pendingReverseStart = m_reversePlayback;
     traceTransition("audio_gapless_candidate_queued", m_gaplessPendingTransitionId, {
         {QStringLiteral("nextFile"), nextFile},
@@ -4164,7 +4539,17 @@ qint64 AudioEngine::safeReverseStartPositionMs(qint64 durationMs) const
 
 double AudioEngine::effectivePlaybackRate() const
 {
-    return m_reversePlayback ? -m_playbackRate : m_playbackRate;
+    const double forwardRate = qBound(kMinEffectivePlaybackRate,
+                                      m_playbackRate * m_dspRateFactor,
+                                      kMaxEffectivePlaybackRate);
+    return m_reversePlayback ? -forwardRate : forwardRate;
+}
+
+bool AudioEngine::requiresPipelineRateApplication() const
+{
+    return m_reversePlayback
+        || !qFuzzyCompare(m_playbackRate, 1.0)
+        || !qFuzzyCompare(m_dspRateFactor, 1.0);
 }
 
 void AudioEngine::enableGaplessBypass(const QString &reason,

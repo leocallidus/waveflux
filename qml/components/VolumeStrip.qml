@@ -7,7 +7,7 @@ import "."
 RowLayout {
     id: root
 
-    property real maximumVolume: 1.25
+    property real maximumVolume: 2.0
     property int stripWidth: Math.round(86 * UiMetrics.fontScale)
     property int stripHeight: Math.max(18, Math.round(20 * UiMetrics.fontScale))
     property bool compactMode: false
@@ -40,6 +40,15 @@ RowLayout {
         return appSettings && appSettings.displayVolumeInDecibels
                 ? decibelLabel(value)
                 : percentLabel(value)
+    }
+
+    function adjustVolumeByDelta(delta) {
+        if (!audioEngine || delta === 0) return
+        const step = 0.05
+        const direction = delta > 0 ? 1 : -1
+        const currentVol = audioEngine.volume
+        const nextVol = Math.max(0, Math.min(maximumVolume, Math.round((currentVol + direction * step) * 100) / 100))
+        audioEngine.volume = nextVol
     }
 
     function setVolumeFromX(x) {
@@ -80,6 +89,17 @@ RowLayout {
                       ? appSettings.translate("player.unmute")
                       : appSettings.translate("player.mute")
         ToolTip.visible: hovered
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            hoverEnabled: false
+            onWheel: function(wheel) {
+                const delta = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
+                root.adjustVolumeByDelta(delta)
+                wheel.accepted = true
+            }
+        }
     }
 
     Rectangle {
@@ -162,15 +182,28 @@ RowLayout {
 
         MouseArea {
             anchors.fill: parent
-            acceptedButtons: Qt.LeftButton
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
             hoverEnabled: true
             enabled: audioEngine
             cursorShape: Qt.PointingHandCursor
-            onPressed: function(mouse) { root.setVolumeFromX(mouse.x) }
-            onPositionChanged: function(mouse) {
-                if (pressed) {
+            onPressed: function(mouse) {
+                if (mouse.button === Qt.MiddleButton) {
+                    if (audioEngine) {
+                        audioEngine.volume = 1.0
+                    }
+                } else {
                     root.setVolumeFromX(mouse.x)
                 }
+            }
+            onPositionChanged: function(mouse) {
+                if (pressed && (mouse.buttons & Qt.LeftButton)) {
+                    root.setVolumeFromX(mouse.x)
+                }
+            }
+            onWheel: function(wheel) {
+                const delta = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
+                root.adjustVolumeByDelta(delta)
+                wheel.accepted = true
             }
             ToolTip.text: root.volumeLabel(audioEngine ? audioEngine.volume : 0)
             ToolTip.visible: containsMouse || pressed

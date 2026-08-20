@@ -175,14 +175,14 @@ void UpdateCheckerTest::initTestCase()
     QSettings::setPath(QSettings::NativeFormat, QSettings::SystemScope, settingsDir);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir);
     QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, settingsDir);
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.3.1"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.4.0"));
     clearSettings();
 }
 
 void UpdateCheckerTest::init()
 {
     clearSettings();
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.3.1"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.4.0"));
 }
 
 void UpdateCheckerTest::cleanup()
@@ -196,8 +196,8 @@ void UpdateCheckerTest::comparesVersions_data()
     QTest::addColumn<QString>("availableTag");
     QTest::addColumn<bool>("updateExpected");
 
-    QTest::newRow("v1.3 equals 1.3.1") << QStringLiteral("1.3.1") << QStringLiteral("v1.3") << false;
-    QTest::newRow("1.3.2 newer than 1.3.1") << QStringLiteral("1.3.1") << QStringLiteral("1.3.2") << true;
+    QTest::newRow("v1.3 equals 1.4.0") << QStringLiteral("1.4.0") << QStringLiteral("v1.3") << false;
+    QTest::newRow("1.4.1 newer than 1.4.0") << QStringLiteral("1.4.0") << QStringLiteral("1.4.1") << true;
     QTest::newRow("2.0 newer than 1.9.9") << QStringLiteral("1.9.9") << QStringLiteral("2.0") << true;
 }
 
@@ -237,8 +237,8 @@ void UpdateCheckerTest::ignoresPrereleaseByDefault()
     server.setResponse(QStringLiteral("/latest-array"),
                        HttpTestServer::Response{
                            200,
-                           releasesJson({releaseJson(QStringLiteral("v1.3.1-beta.1"), true),
-                                         releaseJson(QStringLiteral("v1.3.1"), false)})
+                           releasesJson({releaseJson(QStringLiteral("v1.4.0-beta.1"), true),
+                                         releaseJson(QStringLiteral("v1.4.0"), false)})
                        });
 
     AppSettingsManager settings;
@@ -264,10 +264,10 @@ void UpdateCheckerTest::skipSuppressesAutomaticUpdateButNotManualCheck()
     HttpTestServer server;
     QVERIFY(server.listen());
     server.setResponse(QStringLiteral("/latest"),
-                       HttpTestServer::Response{200, releaseJson(QStringLiteral("v1.4.0"))});
+                       HttpTestServer::Response{200, releaseJson(QStringLiteral("v1.5.0"))});
 
     AppSettingsManager settings;
-    settings.setSkippedUpdateTag(QStringLiteral("v1.4.0"));
+    settings.setSkippedUpdateTag(QStringLiteral("v1.5.0"));
 
     UpdateChecker checker(&settings);
     checker.setApiUrlsForTesting(server.url(QStringLiteral("/latest")),
@@ -291,7 +291,7 @@ void UpdateCheckerTest::deferSuppressesAutomaticUpdateButNotManualCheck()
     HttpTestServer server;
     QVERIFY(server.listen());
     server.setResponse(QStringLiteral("/latest"),
-                       HttpTestServer::Response{200, releaseJson(QStringLiteral("v1.4.0"))});
+                       HttpTestServer::Response{200, releaseJson(QStringLiteral("v1.5.0"))});
 
     AppSettingsManager settings;
     settings.setUpdateReminderDeferredUntil(QDateTime::currentDateTimeUtc().addSecs(3600));
@@ -318,7 +318,7 @@ void UpdateCheckerTest::manualCheckDoesNotConsumeAutomaticInterval()
     HttpTestServer server;
     QVERIFY(server.listen());
     server.setResponse(QStringLiteral("/latest"),
-                       HttpTestServer::Response{200, releaseJson(QStringLiteral("v1.4.0"))});
+                       HttpTestServer::Response{200, releaseJson(QStringLiteral("v1.5.0"))});
 
     AppSettingsManager settings;
     UpdateChecker checker(&settings);
@@ -346,9 +346,9 @@ void UpdateCheckerTest::parsesGithubJsonAndPersistsMetadata()
     server.setResponse(QStringLiteral("/latest"),
                        HttpTestServer::Response{
                            200,
-                           releaseJson(QStringLiteral("v1.4.0"),
+                           releaseJson(QStringLiteral("v1.5.0"),
                                        false,
-                                       QStringLiteral("WaveFlux 1.3"),
+                                       QStringLiteral("WaveFlux 1.5"),
                                        QStringLiteral("<b>unsafe</b>\n- New updater")),
                            {{QByteArrayLiteral("ETag"), QByteArrayLiteral("\"etag-1\"")}}
                        });
@@ -364,12 +364,12 @@ void UpdateCheckerTest::parsesGithubJsonAndPersistsMetadata()
 
     QCOMPARE(updateSpy.count(), 1);
     QCOMPARE(checker.updateAvailable(), true);
-    QCOMPARE(checker.latestVersion(), QStringLiteral("1.4.0"));
-    QCOMPARE(checker.latestTag(), QStringLiteral("v1.4.0"));
-    QCOMPARE(checker.releaseName(), QStringLiteral("WaveFlux 1.3"));
+    QCOMPARE(checker.latestVersion(), QStringLiteral("1.5.0"));
+    QCOMPARE(checker.latestTag(), QStringLiteral("v1.5.0"));
+    QCOMPARE(checker.releaseName(), QStringLiteral("WaveFlux 1.5"));
     QVERIFY(checker.releaseNotes().contains(QStringLiteral("- New updater")));
     QVERIFY(!checker.releaseNotes().contains(QStringLiteral("<b>")));
-    QCOMPARE(checker.releaseUrl(), QStringLiteral("https://github.com/leocallidus/waveflux/releases/tag/v1.4.0"));
+    QCOMPARE(checker.releaseUrl(), QStringLiteral("https://github.com/leocallidus/waveflux/releases/tag/v1.5.0"));
     QVERIFY(checker.publishedAt().isValid());
     QCOMPARE(settings.updateCheckerEtag(), QStringLiteral("\"etag-1\""));
     QVERIFY(settings.lastUpdateCheckAt().isValid());

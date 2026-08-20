@@ -1,6 +1,7 @@
 #include "YtDlpImportService.h"
 
 #include "AppSettingsManager.h"
+#include "TagLibPath.h"
 
 #include <QDir>
 #include <QDateTime>
@@ -419,6 +420,12 @@ FormatArgumentPlan formatArgumentPlanForSelection(const QString &selectedFormat)
                 QStringLiteral("opus"),
                 {QStringLiteral("--audio-quality"), QStringLiteral("0")}};
     }
+    if (normalized == QStringLiteral("ogg") || normalized == QStringLiteral("vorbis")) {
+        return {QStringLiteral("ogg"),
+                QStringLiteral("vorbis"),
+                QStringLiteral("ogg"),
+                {QStringLiteral("--audio-quality"), QStringLiteral("0")}};
+    }
     return {QStringLiteral("mp3"),
             QStringLiteral("mp3"),
             QStringLiteral("mp3"),
@@ -461,18 +468,36 @@ QString outputTemplateForFile(const QString &plannedOutputFile)
     return info.path() + QDir::separator() + info.completeBaseName() + QStringLiteral(".%(ext)s");
 }
 
-QStringList probeArgumentsForSourceUrl(const QString &sourceUrl)
+QStringList splitCommandLineArguments(const QString &rawArgs)
 {
-    QStringList arguments{QStringLiteral("--dump-single-json"),
-                          QStringLiteral("--skip-download"),
-                          QStringLiteral("--no-warnings")};
-    if (isPlaylistCandidateUrl(sourceUrl)) {
-        arguments.push_back(QStringLiteral("--flat-playlist"));
-        arguments.push_back(QStringLiteral("--yes-playlist"));
+    const QString trimmed = rawArgs.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
     }
-    arguments.append({QStringLiteral("--"),
-                      sourceUrl});
-    return arguments;
+    QStringList result;
+    QString current;
+    bool inQuote = false;
+    QChar quoteChar;
+    for (int i = 0; i < trimmed.size(); ++i) {
+        const QChar c = trimmed.at(i);
+        if ((c == QLatin1Char('\"') || c == QLatin1Char('\'')) && !inQuote) {
+            inQuote = true;
+            quoteChar = c;
+        } else if (inQuote && c == quoteChar) {
+            inQuote = false;
+        } else if (!inQuote && c.isSpace()) {
+            if (!current.isEmpty()) {
+                result.append(current);
+                current.clear();
+            }
+        } else {
+            current.append(c);
+        }
+    }
+    if (!current.isEmpty()) {
+        result.append(current);
+    }
+    return result;
 }
 
 QString positionalPrefix(int index)
@@ -1272,6 +1297,15 @@ void YtDlpImportService::setAppSettingsManager(AppSettingsManager *settingsManag
         setOutputDirectory(persistedSettings.value(QStringLiteral("outputDirectory")).toString());
         setSelectedFormat(persistedSettings.value(QStringLiteral("selectedFormat")).toString());
         setNamingPolicy(persistedSettings.value(QStringLiteral("namingPolicy")).toString());
+        setProbeCustomArgs(persistedSettings.value(QStringLiteral("probeCustomArgs")).toString());
+        setDownloadCustomArgs(persistedSettings.value(QStringLiteral("downloadCustomArgs")).toString());
+        setEmbedMetadata(persistedSettings.value(QStringLiteral("embedMetadata"), true).toBool());
+        setEmbedThumbnail(persistedSettings.value(QStringLiteral("embedThumbnail"), true).toBool());
+        setCropCoverArt(persistedSettings.value(QStringLiteral("cropCoverArt"), false).toBool());
+        setRemoveSourceMetadata(persistedSettings.value(QStringLiteral("removeSourceMetadata"), false).toBool());
+        setUseAria2c(persistedSettings.value(QStringLiteral("useAria2c"), false).toBool());
+        setAria2cMaxConnections(persistedSettings.value(QStringLiteral("aria2cMaxConnections"), 16).toInt());
+        setAria2cMinSplitSizeMb(persistedSettings.value(QStringLiteral("aria2cMinSplitSizeMb"), 20).toInt());
         m_restoringPersistedDraft = false;
     }
     reloadPersistedHistory();
@@ -1535,9 +1569,11 @@ void YtDlpImportService::setOutputDirectory(const QString &outputDirectory)
 void YtDlpImportService::setSelectedFormat(const QString &selectedFormat)
 {
     const QString normalized = selectedFormat.trimmed().toLower();
-    const QString resolved = normalized == QStringLiteral("m4a")
-            || normalized == QStringLiteral("opus")
-        ? normalized
+    const QString resolved = (normalized == QStringLiteral("m4a")
+                              || normalized == QStringLiteral("opus")
+                              || normalized == QStringLiteral("ogg")
+                              || normalized == QStringLiteral("vorbis"))
+        ? (normalized == QStringLiteral("vorbis") ? QStringLiteral("ogg") : normalized)
         : QStringLiteral("mp3");
     if (m_selectedFormat == resolved) {
         return;
@@ -1617,6 +1653,127 @@ void YtDlpImportService::setParallelDownloads(int parallelDownloads)
 
     m_parallelDownloads = normalized;
     emit parallelDownloadsChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setProbeCustomArgs(const QString &probeCustomArgs)
+{
+    const QString normalized = probeCustomArgs.trimmed();
+    if (m_probeCustomArgs == normalized) {
+        return;
+    }
+    m_probeCustomArgs = normalized;
+    emit probeCustomArgsChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setDownloadCustomArgs(const QString &downloadCustomArgs)
+{
+    const QString normalized = downloadCustomArgs.trimmed();
+    if (m_downloadCustomArgs == normalized) {
+        return;
+    }
+    m_downloadCustomArgs = normalized;
+    emit downloadCustomArgsChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setEmbedMetadata(bool embedMetadata)
+{
+    if (m_embedMetadata == embedMetadata) {
+        return;
+    }
+    m_embedMetadata = embedMetadata;
+    emit embedMetadataChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setEmbedThumbnail(bool embedThumbnail)
+{
+    if (m_embedThumbnail == embedThumbnail) {
+        return;
+    }
+    m_embedThumbnail = embedThumbnail;
+    emit embedThumbnailChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setCropCoverArt(bool cropCoverArt)
+{
+    if (m_cropCoverArt == cropCoverArt) {
+        return;
+    }
+    m_cropCoverArt = cropCoverArt;
+    emit cropCoverArtChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setRemoveSourceMetadata(bool removeSourceMetadata)
+{
+    if (m_removeSourceMetadata == removeSourceMetadata) {
+        return;
+    }
+    m_removeSourceMetadata = removeSourceMetadata;
+    emit removeSourceMetadataChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setUseAria2c(bool useAria2c)
+{
+    if (m_useAria2c == useAria2c) {
+        return;
+    }
+    m_useAria2c = useAria2c;
+    emit useAria2cChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setAria2cMaxConnections(int aria2cMaxConnections)
+{
+    const int bounded = qBound(1, aria2cMaxConnections, 16);
+    if (m_aria2cMaxConnections == bounded) {
+        return;
+    }
+    m_aria2cMaxConnections = bounded;
+    emit aria2cMaxConnectionsChanged();
+    if (!m_restoringPersistedDraft) {
+        persistSettingsSnapshot();
+        persistDraftState();
+    }
+}
+
+void YtDlpImportService::setAria2cMinSplitSizeMb(int aria2cMinSplitSizeMb)
+{
+    const int bounded = qMax(1, aria2cMinSplitSizeMb);
+    if (m_aria2cMinSplitSizeMb == bounded) {
+        return;
+    }
+    m_aria2cMinSplitSizeMb = bounded;
+    emit aria2cMinSplitSizeMbChanged();
     if (!m_restoringPersistedDraft) {
         persistSettingsSnapshot();
         persistDraftState();
@@ -2215,6 +2372,18 @@ bool YtDlpImportService::finalizeSuccessfulImport(ImportItem &item)
     }
 
     item.finalOutputFile = item.plannedOutputFile;
+
+    if (m_removeSourceMetadata && QFileInfo::exists(item.plannedOutputFile)) {
+        try {
+            auto fileRef = WaveFlux::TagLibPath::makeFileRef(item.plannedOutputFile, false);
+            if (!fileRef.isNull() && fileRef.tag()) {
+                fileRef.tag()->setComment(TagLib::String());
+                fileRef.file()->save();
+            }
+        } catch (...) {
+        }
+    }
+
     if (!item.stagingDirectory.isEmpty()) {
         QDir(item.stagingDirectory).removeRecursively();
     }
@@ -2727,8 +2896,43 @@ bool YtDlpImportService::startNextImportItem()
     arguments.append(formatPlan.extraArguments);
     arguments.append({QStringLiteral("--newline"),
                       QStringLiteral("--no-warnings"),
-                      QStringLiteral("--no-overwrites"),
-                      QStringLiteral("--output"),
+                      QStringLiteral("--no-overwrites")});
+
+    if (m_embedMetadata) {
+        arguments.append(QStringLiteral("--embed-metadata"));
+    }
+
+    if (m_embedThumbnail) {
+        arguments.append(QStringLiteral("--embed-thumbnail"));
+        if (m_cropCoverArt) {
+            arguments.append({QStringLiteral("--convert-thumbnails"),
+                              QStringLiteral("jpg"),
+                              QStringLiteral("--ppa"),
+                              QStringLiteral("ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)")});
+        }
+    }
+
+    if (m_removeSourceMetadata) {
+        arguments.append({QStringLiteral("--no-write-comments"),
+                          QStringLiteral("--parse-metadata"),
+                          QStringLiteral(":(?i)(comment|description|purl|webpage_url|synopsis)=%()s")});
+    }
+
+    if (m_useAria2c) {
+        const int maxConnections = qBound(1, m_aria2cMaxConnections, 16);
+        const int minSplitSize = qMax(1, m_aria2cMinSplitSizeMb);
+        arguments.append({QStringLiteral("--downloader"),
+                          QStringLiteral("aria2c"),
+                          QStringLiteral("--downloader-args"),
+                          QStringLiteral("aria2c:-x %1 -s %1 -k %2M").arg(maxConnections).arg(minSplitSize)});
+    }
+
+    const QStringList customDownloadArgs = splitCommandLineArguments(m_downloadCustomArgs);
+    if (!customDownloadArgs.isEmpty()) {
+        arguments.append(customDownloadArgs);
+    }
+
+    arguments.append({QStringLiteral("--output"),
                       stagingOutputTemplate,
                       QStringLiteral("--"),
                       item.sourceUrl});
@@ -3220,6 +3424,24 @@ bool YtDlpImportService::startNextProbeSource()
         return startNextProbeSource();
     }
     return startProbeProcessForSource(sourceIndex);
+}
+
+QStringList YtDlpImportService::probeArgumentsForSourceUrl(const QString &sourceUrl) const
+{
+    QStringList arguments{QStringLiteral("--dump-single-json"),
+                          QStringLiteral("--skip-download"),
+                          QStringLiteral("--no-warnings")};
+    if (isPlaylistCandidateUrl(sourceUrl)) {
+        arguments.push_back(QStringLiteral("--flat-playlist"));
+        arguments.push_back(QStringLiteral("--yes-playlist"));
+    }
+    const QStringList customProbeArgs = splitCommandLineArguments(m_probeCustomArgs);
+    if (!customProbeArgs.isEmpty()) {
+        arguments.append(customProbeArgs);
+    }
+    arguments.append({QStringLiteral("--"),
+                      sourceUrl});
+    return arguments;
 }
 
 bool YtDlpImportService::startProbeProcessForSource(int sourceIndex)
@@ -4583,7 +4805,16 @@ QVariantMap YtDlpImportService::currentSettingsPreset() const
         {QStringLiteral("selectedFormat"), m_selectedFormat},
         {QStringLiteral("namingPolicy"), m_namingPolicy},
         {QStringLiteral("conflictPolicy"), m_conflictPolicy},
-        {QStringLiteral("parallelDownloads"), m_parallelDownloads}
+        {QStringLiteral("parallelDownloads"), m_parallelDownloads},
+        {QStringLiteral("probeCustomArgs"), m_probeCustomArgs},
+        {QStringLiteral("downloadCustomArgs"), m_downloadCustomArgs},
+        {QStringLiteral("embedMetadata"), m_embedMetadata},
+        {QStringLiteral("embedThumbnail"), m_embedThumbnail},
+        {QStringLiteral("cropCoverArt"), m_cropCoverArt},
+        {QStringLiteral("removeSourceMetadata"), m_removeSourceMetadata},
+        {QStringLiteral("useAria2c"), m_useAria2c},
+        {QStringLiteral("aria2cMaxConnections"), m_aria2cMaxConnections},
+        {QStringLiteral("aria2cMinSplitSizeMb"), m_aria2cMinSplitSizeMb}
     };
 }
 
@@ -4599,6 +4830,15 @@ bool YtDlpImportService::applySettingsPreset(const QVariantMap &preset)
     setConflictPolicy(preset.value(QStringLiteral("conflictPolicy")).toString());
     setParallelDownloads(
         preset.value(QStringLiteral("parallelDownloads"), kDefaultParallelDownloads).toInt());
+    setProbeCustomArgs(preset.value(QStringLiteral("probeCustomArgs")).toString());
+    setDownloadCustomArgs(preset.value(QStringLiteral("downloadCustomArgs")).toString());
+    setEmbedMetadata(preset.value(QStringLiteral("embedMetadata"), true).toBool());
+    setEmbedThumbnail(preset.value(QStringLiteral("embedThumbnail"), true).toBool());
+    setCropCoverArt(preset.value(QStringLiteral("cropCoverArt"), false).toBool());
+    setRemoveSourceMetadata(preset.value(QStringLiteral("removeSourceMetadata"), false).toBool());
+    setUseAria2c(preset.value(QStringLiteral("useAria2c"), false).toBool());
+    setAria2cMaxConnections(preset.value(QStringLiteral("aria2cMaxConnections"), 16).toInt());
+    setAria2cMinSplitSizeMb(preset.value(QStringLiteral("aria2cMinSplitSizeMb"), 20).toInt());
     persistSettingsSnapshot();
     return true;
 }

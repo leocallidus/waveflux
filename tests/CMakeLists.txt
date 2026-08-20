@@ -173,6 +173,7 @@ qt_add_executable(tst_ytdlp_import_service
 
 target_include_directories(tst_ytdlp_import_service PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${TAGLIB_INCLUDE_DIRS}
 )
 
 target_compile_definitions(tst_ytdlp_import_service PRIVATE
@@ -183,6 +184,7 @@ target_link_libraries(tst_ytdlp_import_service PRIVATE
     Qt6::Core
     Qt6::Test
     KF6::I18n
+    ${TAGLIB_LIBRARIES}
 )
 
 add_test(NAME tst_ytdlp_import_service COMMAND tst_ytdlp_import_service)
@@ -197,6 +199,7 @@ qt_add_executable(tst_ytdlp_import_dialog_smoke
 
 target_include_directories(tst_ytdlp_import_dialog_smoke PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${TAGLIB_INCLUDE_DIRS}
 )
 
 target_compile_definitions(tst_ytdlp_import_dialog_smoke PRIVATE
@@ -211,6 +214,7 @@ target_link_libraries(tst_ytdlp_import_dialog_smoke PRIVATE
     Qt6::QuickControls2
     Qt6::Test
     KF6::I18n
+    ${TAGLIB_LIBRARIES}
 )
 
 add_test(NAME tst_ytdlp_import_dialog_smoke COMMAND tst_ytdlp_import_dialog_smoke)
@@ -240,6 +244,10 @@ qt_add_executable(tst_openmpt_playback_backend
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
 )
 
@@ -289,6 +297,10 @@ qt_add_executable(tst_openmpt_waveform_renderer
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptWaveformRenderer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptWaveformRenderer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
@@ -324,6 +336,10 @@ qt_add_executable(tst_waveform_provider
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptWaveformRenderer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
 )
 
@@ -359,6 +375,9 @@ qt_add_executable(tst_audio_converter_service
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioConverterService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/XspfPlaylistParser.cpp
@@ -400,6 +419,9 @@ qt_add_executable(tst_batch_audio_converter_service
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/BatchAudioConverterService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioConverterService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/XspfPlaylistParser.cpp
@@ -449,6 +471,10 @@ qt_add_executable(tst_playback_controller_transitions
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/XspfPlaylistParser.cpp
@@ -498,6 +524,10 @@ qt_add_executable(tst_playback_controller_scenarios
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/XspfPlaylistParser.cpp
@@ -581,6 +611,10 @@ qt_add_executable(tst_playback_backend_routing
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
 )
 
@@ -641,6 +675,9 @@ qt_add_executable(tst_app_dialog
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThemeManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/UiMetrics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
 )
 
 target_include_directories(tst_app_dialog PRIVATE
@@ -697,6 +734,154 @@ target_link_libraries(tst_theme_manager_ui_metrics PRIVATE
 
 add_test(NAME tst_theme_manager_ui_metrics COMMAND tst_theme_manager_ui_metrics)
 
+qt_add_executable(tst_settings_registry
+    tst_SettingsRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/SettingsRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+)
+
+target_include_directories(tst_settings_registry PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_settings_registry PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test
+    KF6::I18n
+)
+
+add_test(NAME tst_settings_registry COMMAND tst_settings_registry)
+
+qt_add_executable(tst_dsp_settings_manager
+    tst_DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+)
+
+target_include_directories(tst_dsp_settings_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_dsp_settings_manager PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME tst_dsp_settings_manager COMMAND tst_dsp_settings_manager)
+
+qt_add_executable(tst_dsp_processor
+    tst_DspProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
+)
+
+target_include_directories(tst_dsp_processor PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_dsp_processor PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME tst_dsp_processor COMMAND tst_dsp_processor)
+
+qt_add_executable(tst_silence_removal
+    tst_SilenceRemoval.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
+)
+
+target_include_directories(tst_silence_removal PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+target_link_libraries(tst_silence_removal PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME tst_silence_removal COMMAND tst_silence_removal)
+
+qt_add_executable(tst_tag_editor
+    tst_TagEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TagEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+)
+
+target_include_directories(tst_tag_editor PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${TAGLIB_INCLUDE_DIRS}
+)
+
+target_link_libraries(tst_tag_editor PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${TAGLIB_LIBRARIES}
+)
+
+add_test(NAME tst_tag_editor COMMAND tst_tag_editor)
+
+qt_add_executable(tst_desktop_notification_service
+    tst_DesktopNotificationService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DesktopNotificationService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AppSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackInfoFormatter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/PlaybackController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/AudioEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/RemoteTrackerSourceCache.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/RemoteTrackerSourceCache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/IPlaybackBackend.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/OpenMptPlaybackBackend.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/TrackerPcmEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/DspSettingsManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspParameters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspCapabilities.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/dsp/DspProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/playback/PlaybackBackendRouting.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrackModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/XspfPlaylistParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/CueSheetParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/PerformanceProfiler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/TrayManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/library/LibraryRepository.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/library/SearchRepository.cpp
+)
+
+target_include_directories(tst_desktop_notification_service PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${GSTREAMER_INCLUDE_DIRS}
+    ${GSTREAMER_APP_INCLUDE_DIRS}
+    ${GSTREAMER_AUDIO_INCLUDE_DIRS}
+    ${TAGLIB_INCLUDE_DIRS}
+)
+
+target_link_libraries(tst_desktop_notification_service PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Multimedia
+    Qt6::Network
+    Qt6::Quick
+    Qt6::Concurrent
+    Qt6::Sql
+    Qt6::Test
+    KF6::I18n
+    ${OPENMPT_LIBRARIES}
+    ${GSTREAMER_LIBRARIES}
+    ${GSTREAMER_APP_LIBRARIES}
+    ${GSTREAMER_AUDIO_LIBRARIES}
+    ${TAGLIB_LIBRARIES}
+    $<$<BOOL:${WAVEFLUX_ENABLE_DBUS_INTEGRATION}>:Qt6::DBus>
+)
+
+add_test(NAME tst_desktop_notification_service COMMAND tst_desktop_notification_service)
+
 # Exercise the production QML module registrar and the actual Main.qml graph.
 # This catches missing declarative C++ type registration that source-only QML
 # linting cannot detect.
@@ -713,6 +898,7 @@ if(WAVEFLUX_QMLLINT_EXECUTABLE)
         NAME tst_audio_converter_qml_smoke
         COMMAND ${WAVEFLUX_QMLLINT_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/../qml/AudioConverterDialog.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/../qml/BatchAudioConverterDialog.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/../qml/YtDlpImportDialog.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/../qml/Main.qml
     )

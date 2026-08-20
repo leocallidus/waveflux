@@ -655,9 +655,13 @@ void MprisService::connectSignals()
         });
 
         connect(m_audioEngine, &AudioEngine::playbackRateChanged, this, [this]() {
-            emitPlayerPropertiesChanged({{QStringLiteral("Rate"), rate()},
-                                         {QStringLiteral("MinimumRate"), minimumRate()},
-                                         {QStringLiteral("MaximumRate"), maximumRate()}});
+            QVariantMap changed;
+            changed.insert(QStringLiteral("Rate"), rate());
+            changed.insert(QStringLiteral("MinimumRate"), minimumRate());
+            changed.insert(QStringLiteral("MaximumRate"), maximumRate());
+            changed.insert(QStringLiteral("Metadata"), metadata());
+            changed.insert(QStringLiteral("Position"), positionUs());
+            emitPlayerPropertiesChanged(changed);
         });
 
         connect(m_audioEngine, &AudioEngine::playbackCapabilitiesChanged, this, [this]() {
@@ -666,6 +670,8 @@ void MprisService::connectSignals()
             changed.insert(QStringLiteral("Rate"), rate());
             changed.insert(QStringLiteral("MinimumRate"), minimumRate());
             changed.insert(QStringLiteral("MaximumRate"), maximumRate());
+            changed.insert(QStringLiteral("Metadata"), metadata());
+            changed.insert(QStringLiteral("Position"), positionUs());
             emitPlayerPropertiesChanged(changed);
         });
 

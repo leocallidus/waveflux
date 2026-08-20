@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QUrl>
 #include <QDateTime>
+#include <QFileInfo>
 #include <QLocale>
 #include <algorithm>
 
@@ -1025,7 +1026,13 @@ QString PlaylistColumnLayoutManager::formatValue(
             }
             return title;
         }
-        return extra.value(QStringLiteral("displayName")).toString().trimmed();
+        const QString displayName = extra.value(QStringLiteral("displayName")).toString().trimmed();
+        if (!displayName.isEmpty()) return displayName;
+        const QString filePath = extra.value(QStringLiteral("filePath")).toString().trimmed();
+        if (!filePath.isEmpty()) {
+            return QFileInfo(filePath).completeBaseName();
+        }
+        return QString();
     }
 
     if (desc->valueKind == QStringLiteral("url")) {
@@ -1034,6 +1041,17 @@ QString PlaylistColumnLayoutManager::formatValue(
             return urlStr;
         }
         return QString();
+    }
+
+    if (columnId == QStringLiteral("title")) {
+        const QString title = value.toString().trimmed();
+        if (!title.isEmpty()) {
+            return title;
+        }
+        const QString filePath = extra.value(QStringLiteral("filePath")).toString().trimmed();
+        if (!filePath.isEmpty()) {
+            return QFileInfo(filePath).completeBaseName();
+        }
     }
 
     return value.toString().trimmed();

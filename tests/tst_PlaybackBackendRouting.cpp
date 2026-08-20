@@ -18,6 +18,7 @@
 
 #include "AudioEngine.h"
 #include "AppSettingsManager.h"
+#include "DspSettingsManager.h"
 #include "playback/PlaybackBackendRouting.h"
 
 class PlaybackBackendRoutingTest : public QObject
@@ -48,6 +49,7 @@ private slots:
     void audioEngine_repeatedTrackerOrdinaryBackendSwitchClearsTrackerState();
     void audioEngine_remoteTrackerUrlDownloadsToCacheAndUsesOpenMptBackend();
     void audioEngine_remoteTrackerDownloadCancelsSafelyOnNewLoad();
+    void audioEngine_dspSpeedAndTempoChangeDoesNotWarpDurationOrPosition();
 };
 
 namespace {
@@ -107,6 +109,45 @@ QString writeModuleFixture(QTemporaryDir *dir, const QString &fileName = QString
     file.write(createMinimalModFile());
     file.close();
     return filePath;
+}
+
+QString writeWavFixture(QTemporaryDir *dir, const QString &fileName = QStringLiteral("tempo-test.wav"), int durationMs = 2000)
+{
+    const QString path = dir->filePath(fileName);
+    const int sampleRate = 44100;
+    const int channels = 2;
+    const int bytesPerSample = 2;
+    const int sampleCount = qMax(1, (sampleRate * durationMs) / 1000);
+    const int dataBytes = sampleCount * channels * bytesPerSample;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return {};
+    }
+
+    QDataStream stream(&file);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.writeRawData("RIFF", 4);
+    stream << quint32(36 + dataBytes);
+    stream.writeRawData("WAVE", 4);
+    stream.writeRawData("fmt ", 4);
+    stream << quint32(16);
+    stream << quint16(1);
+    stream << quint16(channels);
+    stream << quint32(sampleRate);
+    stream << quint32(sampleRate * channels * bytesPerSample);
+    stream << quint16(channels * bytesPerSample);
+    stream << quint16(16);
+    stream.writeRawData("data", 4);
+    stream << quint32(dataBytes);
+
+    QByteArray samples(dataBytes, '\0');
+    if (stream.writeRawData(samples.constData(), samples.size()) != samples.size()) {
+        file.close();
+        return {};
+    }
+    file.close();
+    return path;
 }
 
 bool levelsHaveEnergy(const QVariantList &levels)
@@ -1093,6 +1134,78 @@ void PlaybackBackendRoutingTest::audioEngine_repeatedTrackerOrdinaryBackendSwitc
 
     QCOMPARE(errorSpy.count(), 0);
     qunsetenv("WAVEFLUX_SKIP_PIPELINE_LOAD");
+}
+
+void PlaybackBackendRoutingTest::audioEngine_dspSpeedAndTempoChangeDoesNotWarpDurationOrPosition()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    const QString trackerPath = writeModuleFixture(&dir, QStringLiteral("tempo-speed-check.mod"));
+    QVERIFY(!trackerPath.isEmpty());
+
+    DspSettingsManager dsp;
+    AudioEngine engine;
+    QSignalSpy errorSpy(&engine, &AudioEngine::error);
+    QSignalSpy durationSpy(&engine, &AudioEngine::durationChanged);
+
+    engine.loadFile(trackerPath);
+    QCOMPARE(engine.currentBackendKind(), WaveFlux::PlaybackBackendKind::OpenMpt);
+
+    const qint64 baselineDuration = engine.duration();
+    QVERIFY(baselineDuration > 0);
+
+    // Changing DSP speed and tempo must not alter track duration or cause false duration changes
+    durationSpy.clear();
+    dsp.setSpeed(1.50);
+    dsp.setTempo(1.25);
+
+    QCOMPARE(engine.duration(), baselineDuration);
+    QCOMPARE(durationSpy.count(), 0);
+
+    dsp.setSpeed(0.75);
+    dsp.setTempo(0.50);
+
+    QCOMPARE(engine.duration(), baselineDuration);
+    QCOMPARE(durationSpy.count(), 0);
+
+    // Reset to defaults
+    dsp.setSpeed(1.0);
+    dsp.setTempo(1.0);
+    QCOMPARE(engine.duration(), baselineDuration);
+    QCOMPARE(errorSpy.count(), 0);
+
+    // Test with GStreamer audio pipeline
+    const QString wavPath = writeWavFixture(&dir, QStringLiteral("tempo-speed-check.wav"), 2000);
+    QVERIFY(!wavPath.isEmpty());
+
+    AudioEngine gstEngine;
+    QSignalSpy gstErrorSpy(&gstEngine, &AudioEngine::error);
+    QSignalSpy gstDurationSpy(&gstEngine, &AudioEngine::durationChanged);
+
+    gstEngine.loadFile(wavPath);
+    QCOMPARE(gstEngine.currentBackendKind(), WaveFlux::PlaybackBackendKind::GStreamer);
+
+    const qint64 gstBaselineDuration = gstEngine.duration();
+    QVERIFY(gstBaselineDuration > 0);
+
+    gstDurationSpy.clear();
+    dsp.setSpeed(1.50);
+    dsp.setTempo(1.25);
+
+    QCOMPARE(gstEngine.duration(), gstBaselineDuration);
+    QCOMPARE(gstDurationSpy.count(), 0);
+
+    dsp.setSpeed(0.75);
+    dsp.setTempo(0.50);
+
+    QCOMPARE(gstEngine.duration(), gstBaselineDuration);
+    QCOMPARE(gstDurationSpy.count(), 0);
+
+    dsp.setSpeed(1.0);
+    dsp.setTempo(1.0);
+    QCOMPARE(gstEngine.duration(), gstBaselineDuration);
+    QCOMPARE(gstErrorSpy.count(), 0);
 }
 
 QTEST_MAIN(PlaybackBackendRoutingTest)

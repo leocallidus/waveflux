@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import WaveFlux 1.2
+import WaveFlux
 import "components"
 import "IconResolver.js" as IconResolver
 

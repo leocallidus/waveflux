@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include "dsp/DspProcessor.h"
 
 namespace openmpt {
 class module;
@@ -140,6 +141,11 @@ private:
     int m_equalizerRampBlocksRemaining = 0;
     static constexpr int kEqualizerRampBlockCount = 6;
     TransportStageState m_transportStage;
+    WaveFlux::Dsp::LowShelfFilter m_bassFilter;
+    WaveFlux::Dsp::DelayEffect m_echoEffect;
+    WaveFlux::Dsp::ModulatedDelayEffect m_chorusEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Chorus};
+    WaveFlux::Dsp::ModulatedDelayEffect m_flangerEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Flanger};
+    WaveFlux::Dsp::SimpleReverb m_reverbEffect;
 
     mutable std::mutex m_ringMutex;
     std::condition_variable m_decodeCondition;

@@ -287,6 +287,26 @@ QVariantMap BatchAudioConverterPresetManager::normalizePresetSettings(const QVar
                       normalizePlaybackRate(settings.value(QStringLiteral("playbackRate")).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizePitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("speed"),
+                      qBound(0.25, settings.value(QStringLiteral("speed"), 1.0).toDouble(), 3.0));
+    normalized.insert(QStringLiteral("tempo"),
+                      qBound(0.5, settings.value(QStringLiteral("tempo"), 1.0).toDouble(), 3.0));
+    normalized.insert(QStringLiteral("tonalitySemitones"),
+                      qBound(-10.0, settings.value(QStringLiteral("tonalitySemitones"), 0.0).toDouble(), 10.0));
+    normalized.insert(QStringLiteral("echoMix"),
+                      qBound(0.0, settings.value(QStringLiteral("echoMix"), 0.0).toDouble(), 100.0));
+    normalized.insert(QStringLiteral("chorusMix"),
+                      qBound(0.0, settings.value(QStringLiteral("chorusMix"), 0.0).toDouble(), 100.0));
+    normalized.insert(QStringLiteral("flangerMix"),
+                      qBound(0.0, settings.value(QStringLiteral("flangerMix"), 0.0).toDouble(), 100.0));
+    normalized.insert(QStringLiteral("reverbMix"),
+                      qBound(0.0, settings.value(QStringLiteral("reverbMix"), 0.0).toDouble(), 100.0));
+    normalized.insert(QStringLiteral("bass"),
+                      qBound(0.0, settings.value(QStringLiteral("bass"), 1.0).toDouble(), 2.0));
+    normalized.insert(QStringLiteral("stereoWidth"),
+                      qBound(1.0, settings.value(QStringLiteral("stereoWidth"), 1.0).toDouble(), 5.0));
+    normalized.insert(QStringLiteral("voiceSuppression"),
+                      settings.value(QStringLiteral("voiceSuppression"), false).toBool());
     normalized.insert(QStringLiteral("applyEqualizer"),
                       settings.value(QStringLiteral("applyEqualizer"), false).toBool());
     normalized.insert(QStringLiteral("equalizerBandGains"),

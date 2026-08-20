@@ -1007,7 +1007,7 @@ QVariant TrackModel::data(const QModelIndex &index, int role) const
         result = track.filePath;
         break;
     case TitleRole:
-        result = track.title;
+        result = track.title.isEmpty() ? QFileInfo(track.filePath).completeBaseName() : track.title;
         break;
     case ArtistRole:
         result = track.artist;
@@ -1462,6 +1462,7 @@ QVariantMap TrackModel::addFilesWithReport(const QStringList &filePaths)
         const int beforeAppend = acceptedTracks.size();
         Track track;
         track.filePath = path;
+        track.title = QFileInfo(path).completeBaseName();
         track.addedAt = nowMs;
         track.format = upperExtension(path);
         internTrackStrings(track);
@@ -1602,6 +1603,11 @@ void TrackModel::addFolder(const QUrl &folderUrl)
         return;
     }
 
+    const QString cleanRoot = QDir::cleanPath(rootPath);
+    if (!cleanRoot.isEmpty() && !m_sourceFolders.contains(cleanRoot)) {
+        m_sourceFolders.append(cleanRoot);
+    }
+
     QStringList playlistPaths;
     QDirIterator it(rootPath, QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
@@ -1721,7 +1727,7 @@ void TrackModel::insertUrlsAt(int index, const QList<QUrl> &urls)
 
             Track localTrack;
             localTrack.filePath = localPath;
-            localTrack.title = title.trimmed();
+            localTrack.title = title.trimmed().isEmpty() ? QFileInfo(localPath).completeBaseName() : title.trimmed();
             localTrack.artist = artist.trimmed();
             localTrack.album = album.trimmed();
             if (durationMs > 0) {
@@ -1887,6 +1893,7 @@ void TrackModel::clear()
     QSet<QString>().swap(m_stringPool);
     QVector<Track>().swap(m_tracks);
     QVector<Track>().swap(m_baselineTracks);
+    m_sourceFolders.clear();
     m_currentIndex = -1;
     m_currentAlbumArt.clear();
     resetTransientSearchState();
@@ -3143,6 +3150,177 @@ bool TrackModel::resetPlaylist()
 
     updatePlaylistFolderWatch();
     return true;
+}
+
+void TrackModel::refreshPlaylist()
+{
+    if (m_tracks.isEmpty() && m_sourceFolders.isEmpty() && m_watchedPlaylistFolder.isEmpty()) {
+        return;
+    }
+
+    // Determine source folders for the playlist
+    QStringList sourceFolders = m_sourceFolders;
+    if (sourceFolders.isEmpty()) {
+        if (!m_watchedPlaylistFolder.isEmpty()) {
+            sourceFolders.append(m_watchedPlaylistFolder);
+        } else {
+            QSet<QString> uniqueDirs;
+            for (const Track &t : std::as_const(m_tracks)) {
+                if (isLocalSourcePath(t.filePath)) {
+                    const QString lp = localPathFromSource(t.filePath);
+                    if (!lp.isEmpty()) {
+                        const QString dir = QFileInfo(lp).absolutePath();
+                        if (!dir.isEmpty() && QDir(dir).exists()) {
+                            uniqueDirs.insert(dir);
+                        }
+                    }
+                }
+            }
+            sourceFolders = QStringList(uniqueDirs.cbegin(), uniqueDirs.cend());
+        }
+    }
+
+    if (sourceFolders.isEmpty()) {
+        return;
+    }
+
+    // Scan all audio / CUE files from source folders
+    QStringList scannedPaths;
+    for (const QString &folder : std::as_const(sourceFolders)) {
+        if (!QDir(folder).exists()) {
+            continue;
+        }
+        QDirIterator it(folder, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            const QString suffix = QFileInfo(path).suffix().toLower();
+            if (hasSupportedAudioExtension(path) || suffix == QStringLiteral("cue")) {
+                scannedPaths.append(QDir::cleanPath(path));
+            }
+        }
+    }
+
+    scannedPaths.removeDuplicates();
+
+    QCollator collator = makeNaturalCollator();
+    std::sort(scannedPaths.begin(), scannedPaths.end(), [&collator](const QString &a, const QString &b) {
+        const int cmp = collator.compare(a, b);
+        if (cmp == 0) {
+            return QString::compare(a, b, Qt::CaseSensitive) < 0;
+        }
+        return cmp < 0;
+    });
+
+    // Map existing tracks to preserve tags/metadata
+    QHash<QPair<QString, qint64>, Track> existingTracksMap;
+    for (const Track &t : std::as_const(m_tracks)) {
+        existingTracksMap.insert(qMakePair(QDir::cleanPath(t.filePath), t.cueStartMs), t);
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    QVector<Track> newTrackList;
+    QVector<int> newMetadataOffsets;
+
+    for (const QString &path : std::as_const(scannedPaths)) {
+        const QString suffix = QFileInfo(path).suffix().toLower();
+        if (suffix == QStringLiteral("cue")) {
+            QVector<CueTrackSegment> segments;
+            QString parseError;
+            if (CueSheetParser::parseFile(path, &segments, &parseError)) {
+                for (const CueTrackSegment &segment : std::as_const(segments)) {
+                    const auto key = qMakePair(QDir::cleanPath(segment.sourceFilePath), qMax<qint64>(0, segment.startMs));
+                    if (existingTracksMap.contains(key)) {
+                        newTrackList.push_back(existingTracksMap.value(key));
+                    } else {
+                        Track cueTrack;
+                        cueTrack.filePath = segment.sourceFilePath;
+                        cueTrack.title = segment.title;
+                        cueTrack.artist = segment.performer;
+                        cueTrack.album = segment.album;
+                        if (segment.trackNumber > 0) {
+                            cueTrack.trackNumber = QString::number(segment.trackNumber);
+                        }
+                        cueTrack.addedAt = nowMs;
+                        cueTrack.format = upperExtension(segment.sourceFilePath);
+                        cueTrack.cueSegment = true;
+                        cueTrack.cueStartMs = qMax<qint64>(0, segment.startMs);
+                        cueTrack.cueEndMs = segment.endMs;
+                        cueTrack.cueTrackNumber = segment.trackNumber;
+                        cueTrack.cueSheetPath = segment.cueSheetPath;
+                        if (cueTrack.cueEndMs > cueTrack.cueStartMs) {
+                            cueTrack.duration = cueTrack.cueEndMs - cueTrack.cueStartMs;
+                        }
+                        internTrackStrings(cueTrack);
+                        newTrackList.push_back(std::move(cueTrack));
+                        newMetadataOffsets.push_back(newTrackList.size() - 1);
+                    }
+                }
+            }
+            continue;
+        }
+
+        const auto key = qMakePair(path, static_cast<qint64>(0));
+        if (existingTracksMap.contains(key)) {
+            newTrackList.push_back(existingTracksMap.value(key));
+        } else {
+            Track localTrack;
+            localTrack.filePath = path;
+            localTrack.title = QFileInfo(path).completeBaseName();
+            localTrack.addedAt = nowMs;
+            localTrack.format = upperExtension(path);
+            internTrackStrings(localTrack);
+            newTrackList.push_back(std::move(localTrack));
+            newMetadataOffsets.push_back(newTrackList.size() - 1);
+        }
+    }
+
+    // Keep any non-local/remote tracks that were in the playlist
+    for (const Track &t : std::as_const(m_tracks)) {
+        if (!isLocalSourcePath(t.filePath)) {
+            newTrackList.push_back(t);
+        }
+    }
+
+    // Preserve currently playing track
+    QString currentPath;
+    qint64 currentCueStart = 0;
+    if (m_currentIndex >= 0 && m_currentIndex < m_tracks.size()) {
+        currentPath = m_tracks.at(m_currentIndex).filePath;
+        currentCueStart = m_tracks.at(m_currentIndex).cueStartMs;
+    }
+
+    beginResetModel();
+    m_tracks = std::move(newTrackList);
+    endResetModel();
+
+    rebuildFilePathIndexCache();
+    invalidateSearchCache();
+    updatePlaylistFolderWatch();
+    updateProfilerPlaylistCount();
+
+    // Find new index of current track
+    int newIndex = -1;
+    if (!currentPath.isEmpty()) {
+        for (int i = 0; i < m_tracks.size(); ++i) {
+            if (m_tracks.at(i).filePath == currentPath && m_tracks.at(i).cueStartMs == currentCueStart) {
+                newIndex = i;
+                break;
+            }
+        }
+    }
+    setCurrentIndexSilently(newIndex);
+
+    // Enqueue metadata read for newly added files
+    for (int offset : std::as_const(newMetadataOffsets)) {
+        if (offset >= 0 && offset < m_tracks.size()) {
+            enqueueMetadataRead(m_tracks.at(offset).filePath, false);
+        }
+    }
+
+    emit countChanged();
+    emit playlistDurationChanged();
+    emit currentTrackChanged();
+    emit canResetPlaylistChanged();
 }
 
 void TrackModel::captureBaselineSnapshot()
@@ -4451,9 +4629,7 @@ void TrackModel::applyParsedMetadataBatch(const QVector<ParsedMetadata> &batch)
             if (metadata.channelCount > 0) {
                 setIfDifferent(track.channelCount, metadata.channelCount);
             }
-            if (!metadata.chapters.isEmpty()) {
-                setIfDifferent(track.chapters, metadata.chapters);
-            }
+            setIfDifferent(track.chapters, metadata.chapters);
             if (metadata.albumArtChecked) {
                 if (i == m_currentIndex) {
                     setIfDifferent(track.albumArt, metadata.albumArt);

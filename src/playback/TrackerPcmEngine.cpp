@@ -1,4 +1,5 @@
 #include "playback/TrackerPcmEngine.h"
+#include "DspSettingsManager.h"
 
 #include <algorithm>
 #include <chrono>
@@ -32,6 +33,11 @@ TrackerPcmEngine::TrackerPcmEngine(int sampleRate)
     , m_ringCapacityFrames(static_cast<std::size_t>(sampleRate) * 2u)
     , m_ring(m_ringCapacityFrames * kChannelCount, 0.0f)
 {
+    m_bassFilter.setSampleRate(sampleRate);
+    m_echoEffect.setSampleRate(sampleRate);
+    m_chorusEffect.setSampleRate(sampleRate);
+    m_flangerEffect.setSampleRate(sampleRate);
+    m_reverbEffect.setSampleRate(sampleRate);
 }
 
 TrackerPcmEngine::~TrackerPcmEngine()
@@ -471,8 +477,34 @@ void TrackerPcmEngine::applyDspGraphLocked(float *interleavedSamples, std::size_
     }
 
     applyTransportStageLocked(interleavedSamples, frames);
+
+    if (auto *dsp = DspSettingsManager::instance()) {
+        m_bassFilter.setBassMultiplier(dsp->bass());
+        m_bassFilter.processInterleaved(interleavedSamples, frames, kChannelCount);
+    }
+
     advanceEqualizerRampLocked();
     applyEqualizerLocked(interleavedSamples, frames);
+
+    if (auto *dsp = DspSettingsManager::instance()) {
+        WaveFlux::Dsp::StereoProcessor::applyVoiceSuppression(interleavedSamples, frames, dsp->voiceSuppression());
+        WaveFlux::Dsp::StereoProcessor::applyStereoWidth(interleavedSamples, frames, dsp->stereoWidth());
+
+        m_echoEffect.setParameters(350.0, 0.35, dsp->echoMix() * 0.01);
+        m_echoEffect.processInterleaved(interleavedSamples, frames, kChannelCount);
+
+        m_chorusEffect.setParameters(20.0, 1.5, 3.0, dsp->chorusMix() * 0.01);
+        m_chorusEffect.processInterleaved(interleavedSamples, frames, kChannelCount);
+
+        m_flangerEffect.setParameters(3.0, 0.25, 2.0, dsp->flangerMix() * 0.01);
+        m_flangerEffect.processInterleaved(interleavedSamples, frames, kChannelCount);
+
+        m_reverbEffect.setParameters(0.85, 0.5, dsp->reverbMix() * 0.01);
+        m_reverbEffect.processInterleaved(interleavedSamples, frames, kChannelCount);
+
+        WaveFlux::Dsp::StereoProcessor::applyBalance(interleavedSamples, frames, dsp->balance());
+    }
+
     applyOutputLimiterLocked(interleavedSamples, frames);
 }
 
@@ -661,6 +693,11 @@ void TrackerPcmEngine::applyOutputLimiterLocked(float *interleavedSamples, std::
 void TrackerPcmEngine::resetDspGraphStateLocked()
 {
     resetEqualizerStateLocked();
+    m_bassFilter.reset();
+    m_echoEffect.reset();
+    m_chorusEffect.reset();
+    m_flangerEffect.reset();
+    m_reverbEffect.reset();
     m_equalizerRampBlocksRemaining = 0;
     m_limiterEngaged = false;
 }

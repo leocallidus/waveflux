@@ -3,14 +3,16 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "components"
+import "IconResolver.js" as IconResolver
 
 AppDialog {
     id: root
 
-    readonly property int preferredDialogWidth: Math.round(820 * UiMetrics.fontScale)
-    readonly property int preferredDialogHeight: Math.round(760 * UiMetrics.fontScale)
+    readonly property int preferredDialogWidth: Math.round(860 * UiMetrics.fontScale)
+    readonly property int preferredDialogHeight: Math.round(740 * UiMetrics.fontScale)
     readonly property int minimumDialogWidth: Math.round(560 * UiMetrics.fontScale)
-    readonly property int minimumDialogHeight: Math.round(540 * UiMetrics.fontScale)
+    readonly property int minimumDialogHeight: Math.round(500 * UiMetrics.fontScale)
+    readonly property int dialogMargin: UiMetrics.spaceL
     readonly property var formatProfiles: audioConverterService.formatProfiles
     readonly property var currentProfile: root.profileForFormat(batchAudioConverterService.format)
     readonly property int runnableCount: Math.max(
@@ -26,6 +28,7 @@ AppDialog {
     readonly property bool hasItems: batchAudioConverterService.totalCount > 0
     readonly property var visibleQueueItems: root.filteredQueueItems(batchAudioConverterService.items || [],
                                                                      root.queueFilterMode)
+    property int activeTabIndex: 0
     property var selectedItemIds: []
     property var userPresetItems: batchAudioConverterPresetManager ? batchAudioConverterPresetManager.userPresets : []
     property string selectedPresetId: ""
@@ -33,8 +36,6 @@ AppDialog {
     property string pendingDeletePresetId: ""
     property string pendingDeletePresetName: ""
     property string queueFilterMode: "all"
-    property string queueViewMode: "expanded"
-    property bool reportExpanded: false
     property string runtimeFeedbackText: ""
 
     signal browseOutputDirectoryRequested()
@@ -104,19 +105,6 @@ AppDialog {
         return result
     }
 
-    function formatAvailabilityText(profile) {
-        if (!profile || profile.available !== false) {
-            return ""
-        }
-
-        const label = profile.label ? String(profile.label) : String(profile.id || "").toUpperCase()
-        const missing = profile.missingGStreamerElements ? profile.missingGStreamerElements : []
-        if (missing.length > 0) {
-            return root.tr("audioConverter.formatUnavailableHint").arg(label).arg(missing.join(", "))
-        }
-        return root.tr("audioConverter.formatUnavailableGenericHint").arg(label)
-    }
-
     function sampleRateOptions(profile) {
         const values = profile && profile.sampleRateValues ? profile.sampleRateValues : []
         const result = []
@@ -173,97 +161,6 @@ AppDialog {
         ]
     }
 
-    function namingPolicyLabel(policy) {
-        const normalized = String(policy || "").trim().toLowerCase()
-        if (normalized === "artist-title") {
-            return root.tr("batchAudioConverter.namingArtistTitle")
-        }
-        if (normalized === "album-track-title") {
-            return root.tr("batchAudioConverter.namingAlbumTrackTitle")
-        }
-        return root.tr("batchAudioConverter.namingBasename")
-    }
-
-    function metadataFieldLabel(fieldKey) {
-        const normalized = String(fieldKey || "").trim().toLowerCase()
-        if (normalized === "artist") {
-            return root.tr("batchAudioConverter.metadataArtist")
-        }
-        if (normalized === "title") {
-            return root.tr("batchAudioConverter.metadataTitle")
-        }
-        if (normalized === "album") {
-            return root.tr("batchAudioConverter.metadataAlbum")
-        }
-        if (normalized === "track-number") {
-            return root.tr("batchAudioConverter.metadataTrackNumber")
-        }
-        return normalized
-    }
-
-    function joinLocalizedMetadataFields(fields) {
-        const source = fields || []
-        const localized = []
-        for (let i = 0; i < source.length; ++i) {
-            localized.push(metadataFieldLabel(source[i]))
-        }
-        return localized.join(", ")
-    }
-
-    function previewNamingText(item) {
-        const diagnostics = item && item.previewDiagnostics ? item.previewDiagnostics : ({})
-        const appliedPolicy = namingPolicyLabel(diagnostics.appliedNamingPolicy || diagnostics.requestedNamingPolicy)
-        let text = root.tr("batchAudioConverter.previewNamingPattern").arg(appliedPolicy)
-        if (Boolean(diagnostics.usedFallback)) {
-            text += " " + root.tr("batchAudioConverter.previewFallbackPattern")
-                .arg(namingPolicyLabel(diagnostics.fallbackNamingPolicy || "basename"))
-                .arg(joinLocalizedMetadataFields(diagnostics.missingMetadataFields || []))
-        }
-        text += " " + root.tr(
-            String(diagnostics.sourceDirectoryPolicy || "") === "source-folder"
-                ? "batchAudioConverter.previewDirectorySourceFolder"
-                : "batchAudioConverter.previewDirectoryBatchOutput")
-        return text
-    }
-
-    function previewCollisionLabel(item) {
-        const diagnostics = item && item.previewDiagnostics ? item.previewDiagnostics : ({})
-        const resolutionKey = String(diagnostics.resolutionKey || "").trim().toLowerCase()
-        const collisionRuleKey = String(diagnostics.collisionRuleKey || "").trim().toLowerCase()
-
-        if (resolutionKey === "auto-renamed") {
-            return root.tr("batchAudioConverter.previewCollisionAutoRenamed")
-        }
-        if (resolutionKey === "overwrite-existing") {
-            return root.tr("batchAudioConverter.previewCollisionOverwriteExisting")
-        }
-        if (resolutionKey === "overwrite-blocked-queue-conflict") {
-            return root.tr("batchAudioConverter.previewCollisionOverwriteBlocked")
-        }
-        if (resolutionKey === "skip-existing-conflict" || resolutionKey === "skip-queue-conflict") {
-            return root.tr("batchAudioConverter.previewCollisionSkipConflict")
-        }
-        if (resolutionKey === "fail-existing-conflict" || resolutionKey === "fail-queue-conflict") {
-            return root.tr("batchAudioConverter.previewCollisionFailConflict")
-        }
-        if (collisionRuleKey === "queue-conflict") {
-            return root.tr("batchAudioConverter.previewCollisionQueueConflict")
-        }
-        return root.tr("batchAudioConverter.previewCollisionPlanned")
-    }
-
-    function previewFinalizationLabel(item) {
-        const diagnostics = item && item.previewDiagnostics ? item.previewDiagnostics : ({})
-        const strategyKey = String(diagnostics.finalizationStrategyKey || "").trim().toLowerCase()
-        if (strategyKey === "temp-replace-existing") {
-            return root.tr("batchAudioConverter.previewFinalizationTempReplace")
-        }
-        if (strategyKey === "temp-not-started") {
-            return root.tr("batchAudioConverter.previewFinalizationNotStarted")
-        }
-        return root.tr("batchAudioConverter.previewFinalizationTempCommit")
-    }
-
     function findOptionIndex(options, expectedValue) {
         const normalizedExpected = String(expectedValue)
         for (let i = 0; i < options.length; ++i) {
@@ -272,7 +169,7 @@ AppDialog {
                 return i
             }
         }
-        return options.length > 0 ? 0 : -1
+        return options.length > 0 ? options.length - 1 : -1
     }
 
     function fileNameFromPath(path) {
@@ -281,22 +178,92 @@ AppDialog {
         return idx >= 0 ? normalized.substring(idx + 1) : normalized
     }
 
-    function retryableCountForState(expectedState) {
-        const normalizedState = String(expectedState || "").trim().toLowerCase()
-        const items = batchAudioConverterService.items || []
-        let count = 0
-        for (let i = 0; i < items.length; ++i) {
-            const item = items[i]
-            if (String(item.state || "").trim().toLowerCase() === normalizedState
-                    && batchAudioConverterService.canRetryItem(String(item.itemId || ""))) {
-                count += 1
-            }
+    function isItemSelected(itemId) {
+        const normalized = String(itemId || "")
+        return selectedItemIds.indexOf(normalized) >= 0
+    }
+
+    function setItemSelected(itemId, selected) {
+        const normalized = String(itemId || "")
+        if (normalized.length === 0) {
+            return
         }
-        return count
+        const next = selectedItemIds.slice(0)
+        const existingIndex = next.indexOf(normalized)
+        if (selected) {
+            if (existingIndex < 0) {
+                next.push(normalized)
+            }
+        } else if (existingIndex >= 0) {
+            next.splice(existingIndex, 1)
+        }
+        selectedItemIds = next
     }
 
     function clearSelection() {
         selectedItemIds = []
+    }
+
+    function itemMatchesFilter(item, filterMode) {
+        const mode = String(filterMode || "all").trim().toLowerCase()
+        const state = String(item && item.state || "").trim().toLowerCase()
+        if (mode === "pending") {
+            return state === "pending" || state === "running"
+        }
+        if (mode === "failed") {
+            return state === "failed" || state === "skipped" || state === "canceled"
+        }
+        if (mode === "succeeded") {
+            return state === "succeeded"
+        }
+        return true
+    }
+
+    function filteredQueueItems(items, filterMode) {
+        const source = items || []
+        const filtered = []
+        for (let i = 0; i < source.length; ++i) {
+            if (itemMatchesFilter(source[i], filterMode)) {
+                filtered.push(source[i])
+            }
+        }
+        return filtered
+    }
+
+    function itemStateLabel(state) {
+        const normalized = String(state || "").trim().toLowerCase()
+        if (normalized === "running") {
+            return root.tr("batchAudioConverter.stateRunning")
+        }
+        if (normalized === "succeeded") {
+            return root.tr("batchAudioConverter.stateSucceeded")
+        }
+        if (normalized === "failed") {
+            return root.tr("batchAudioConverter.stateFailed")
+        }
+        if (normalized === "canceled") {
+            return root.tr("batchAudioConverter.stateCanceled")
+        }
+        if (normalized === "skipped") {
+            return root.tr("batchAudioConverter.stateSkipped")
+        }
+        return root.tr("batchAudioConverter.statePending")
+    }
+
+    function resetAllDsp() {
+        batchAudioConverterService.speed = 1.0
+        batchAudioConverterService.tempo = 1.0
+        batchAudioConverterService.tonalitySemitones = 0.0
+        batchAudioConverterService.pitchSemitones = 0
+        batchAudioConverterService.echoMix = 0.0
+        batchAudioConverterService.reverbMix = 0.0
+        batchAudioConverterService.applyReverb = false
+        batchAudioConverterService.chorusMix = 0.0
+        batchAudioConverterService.flangerMix = 0.0
+        batchAudioConverterService.bass = 1.0
+        batchAudioConverterService.stereoWidth = 1.0
+        batchAudioConverterService.voiceSuppression = false
+        batchAudioConverterService.applyEqualizer = false
     }
 
     function currentPresetSettings() {
@@ -327,11 +294,9 @@ AppDialog {
         }
         if (userPresetItems.length > 0) {
             selectedPresetId = String(userPresetItems[0].id || "")
-            renamePresetNameField.text = String(userPresetItems[0].name || "")
             return
         }
         selectedPresetId = ""
-        renamePresetNameField.text = ""
     }
 
     function selectPresetById(presetId) {
@@ -340,25 +305,23 @@ AppDialog {
             return
         }
         selectedPresetId = String(preset.id || "")
-        renamePresetNameField.text = String(preset.name || "")
         presetFeedbackText = ""
     }
 
-    function saveCurrentAsPreset() {
+    function saveCurrentAsPreset(name) {
         if (!batchAudioConverterPresetManager) {
             return
         }
-        const name = String(newPresetNameField.text || "").trim()
-        if (name.length === 0) {
+        const trimmedName = String(name || "").trim()
+        if (trimmedName.length === 0) {
             presetFeedbackText = root.tr("batchAudioConverter.presetNameRequired")
             return
         }
-        const presetId = batchAudioConverterPresetManager.createUserPreset(name, currentPresetSettings())
+        const presetId = batchAudioConverterPresetManager.createUserPreset(trimmedName, currentPresetSettings())
         if (String(presetId || "").length === 0) {
             presetFeedbackText = String(batchAudioConverterPresetManager.lastError || "")
             return
         }
-        newPresetNameField.text = ""
         selectPresetById(presetId)
     }
 
@@ -373,26 +336,6 @@ AppDialog {
         }
         outputDirectoryField.text = batchAudioConverterService.outputDirectory
         presetFeedbackText = ""
-    }
-
-    function renameSelectedPreset() {
-        if (!batchAudioConverterPresetManager) {
-            return
-        }
-        const preset = selectedPreset()
-        if (!preset) {
-            return
-        }
-        const nextName = String(renamePresetNameField.text || "").trim()
-        if (nextName.length === 0) {
-            presetFeedbackText = root.tr("batchAudioConverter.presetNameRequired")
-            return
-        }
-        if (!batchAudioConverterPresetManager.renameUserPreset(String(preset.id || ""), nextName)) {
-            presetFeedbackText = String(batchAudioConverterPresetManager.lastError || "")
-            return
-        }
-        selectPresetById(String(preset.id || ""))
     }
 
     function requestDeleteSelectedPreset() {
@@ -421,154 +364,6 @@ AppDialog {
         }
         syncSelectedPreset()
         presetFeedbackText = ""
-    }
-
-    function isItemSelected(itemId) {
-        const normalized = String(itemId || "")
-        return selectedItemIds.indexOf(normalized) >= 0
-    }
-
-    function setItemSelected(itemId, selected) {
-        const normalized = String(itemId || "")
-        if (normalized.length === 0) {
-            return
-        }
-        const next = selectedItemIds.slice(0)
-        const existingIndex = next.indexOf(normalized)
-        if (selected) {
-            if (existingIndex < 0) {
-                next.push(normalized)
-            }
-        } else if (existingIndex >= 0) {
-            next.splice(existingIndex, 1)
-        }
-        selectedItemIds = next
-    }
-
-    function pitchLabel(value) {
-        const safeValue = Math.round(Number(value) || 0)
-        const prefix = safeValue > 0 ? "+" : ""
-        return prefix + safeValue + " " + root.tr("audioConverter.semitones")
-    }
-
-    function itemStateLabel(state) {
-        const normalized = String(state || "").trim().toLowerCase()
-        if (normalized === "running") {
-            return root.tr("batchAudioConverter.stateRunning")
-        }
-        if (normalized === "succeeded") {
-            return root.tr("batchAudioConverter.stateSucceeded")
-        }
-        if (normalized === "failed") {
-            return root.tr("batchAudioConverter.stateFailed")
-        }
-        if (normalized === "canceled") {
-            return root.tr("batchAudioConverter.stateCanceled")
-        }
-        if (normalized === "skipped") {
-            return root.tr("batchAudioConverter.stateSkipped")
-        }
-        return root.tr("batchAudioConverter.statePending")
-    }
-
-    function itemStateColor(state) {
-        const normalized = String(state || "").trim().toLowerCase()
-        if (normalized === "succeeded") {
-            return Kirigami.Theme.positiveTextColor
-        }
-        if (normalized === "failed" || normalized === "canceled") {
-            return Kirigami.Theme.negativeTextColor
-        }
-        if (normalized === "skipped") {
-            return themeManager.textMutedColor
-        }
-        if (normalized === "running") {
-            return Kirigami.Theme.highlightColor
-        }
-        return themeManager.textSecondaryColor
-    }
-
-    function itemMatchesFilter(item, filterMode) {
-        const mode = String(filterMode || "all").trim().toLowerCase()
-        const state = String(item && item.state || "").trim().toLowerCase()
-        if (mode === "pending") {
-            return state === "pending" || state === "running"
-        }
-        if (mode === "failed") {
-            return state === "failed" || state === "skipped" || state === "canceled"
-        }
-        if (mode === "succeeded") {
-            return state === "succeeded"
-        }
-        return true
-    }
-
-    function filteredQueueItems(items, filterMode) {
-        const source = items || []
-        const filtered = []
-        for (let i = 0; i < source.length; ++i) {
-            if (itemMatchesFilter(source[i], filterMode)) {
-                filtered.push(source[i])
-            }
-        }
-        return filtered
-    }
-
-    function queueFilterButtonText(filterMode) {
-        if (filterMode === "pending") {
-            return root.tr("batchAudioConverter.filterPending")
-        }
-        if (filterMode === "failed") {
-            return root.tr("batchAudioConverter.filterFailed")
-        }
-        if (filterMode === "succeeded") {
-            return root.tr("batchAudioConverter.filterSucceeded")
-        }
-        return root.tr("batchAudioConverter.filterAll")
-    }
-
-    function primaryOutputFolderPath() {
-        if (String(batchAudioConverterService.outputDirectory || "").trim().length > 0) {
-            return String(batchAudioConverterService.outputDirectory || "").trim()
-        }
-        const resultFiles = batchAudioConverterService.succeededResultFiles()
-        if (resultFiles.length > 0) {
-            const normalized = String(resultFiles[0] || "").replace(/\\/g, "/")
-            const idx = normalized.lastIndexOf("/")
-            return idx > 0 ? normalized.substring(0, idx) : normalized
-        }
-        const currentOutput = String(batchAudioConverterService.currentItem.outputFile || "").replace(/\\/g, "/")
-        const currentIdx = currentOutput.lastIndexOf("/")
-        return currentIdx > 0 ? currentOutput.substring(0, currentIdx) : currentOutput
-    }
-
-    function openPrimaryOutputFolder() {
-        const targetPath = String(primaryOutputFolderPath() || "").trim()
-        if (targetPath.length === 0) {
-            runtimeFeedbackText = root.tr("batchAudioConverter.runtimeNoOutputFolder")
-            return
-        }
-        runtimeFeedbackText = xdgPortalFilePicker.openInFileManager(targetPath)
-                ? root.tr("batchAudioConverter.runtimeOpenedOutputFolder")
-                : root.tr("batchAudioConverter.runtimeFailedToOpenOutputFolder")
-    }
-
-    function copyCurrentReportToClipboard() {
-        const reportText = String(batchAudioConverterService.currentReportText("txt") || "")
-        if (reportText.length === 0) {
-            runtimeFeedbackText = root.tr("batchAudioConverter.runtimeNoReportToCopy")
-            return
-        }
-        runtimeFeedbackText = xdgPortalFilePicker.copyTextToClipboard(reportText)
-                ? root.tr("batchAudioConverter.runtimeCopiedReport")
-                : root.tr("batchAudioConverter.runtimeFailedToCopyReport")
-    }
-
-    function addSucceededOutputsToPlaylist() {
-        const addedCount = batchAudioConverterService.addSucceededResultsToPlaylist()
-        runtimeFeedbackText = addedCount > 0
-                ? root.tr("batchAudioConverter.runtimeAddedSucceededOutputs").arg(addedCount)
-                : root.tr("batchAudioConverter.runtimeNoDeferredOutputs")
     }
 
     function applyIntakeResult(result, shouldOpen) {
@@ -613,26 +408,6 @@ AppDialog {
                                  visible)
     }
 
-    function pruneSelection() {
-        const validIds = []
-        const items = batchAudioConverterService.items || []
-        for (let i = 0; i < items.length; ++i) {
-            const itemId = String(items[i].itemId || "")
-            if (itemId.length > 0) {
-                validIds.push(itemId)
-            }
-        }
-
-        const next = []
-        for (let i = 0; i < selectedItemIds.length; ++i) {
-            const itemId = String(selectedItemIds[i] || "")
-            if (validIds.indexOf(itemId) >= 0 && next.indexOf(itemId) < 0) {
-                next.push(itemId)
-            }
-        }
-        selectedItemIds = next
-    }
-
     function applyBrowsedOutputDirectory(localPath) {
         const normalized = String(localPath || "").trim()
         if (normalized.length === 0) {
@@ -642,22 +417,31 @@ AppDialog {
         outputDirectoryField.text = batchAudioConverterService.outputDirectory
     }
 
+    function openPrimaryOutputFolder() {
+        const targetPath = String(batchAudioConverterService.outputDirectory || "").trim()
+        if (targetPath.length === 0) {
+            return
+        }
+        xdgPortalFilePicker.openInFileManager(targetPath)
+    }
+
     title: ""
     modal: true
     focus: true
     padding: 0
     standardButtons: Dialog.NoButton
-    closePolicy: Popup.NoAutoClose
+    header: null
 
     implicitWidth: preferredDialogWidth
     implicitHeight: preferredDialogHeight
 
     width: (root.isSeparateWindow && root.parent)
            ? root.parent.width
-           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - 24) : preferredDialogWidth)
+           : (root.parent ? boundedDialogSize(preferredDialogWidth, minimumDialogWidth, root.parent.width - dialogMargin * 2) : preferredDialogWidth)
     height: (root.isSeparateWindow && root.parent)
             ? root.parent.height
-            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - 24) : preferredDialogHeight)
+            : (root.parent ? boundedDialogSize(preferredDialogHeight, minimumDialogHeight, root.parent.height - dialogMargin * 2) : preferredDialogHeight)
+
     anchors.centerIn: (!root.isSeparateWindow && root.parent) ? root.parent : undefined
 
     onOpened: {
@@ -666,1123 +450,1235 @@ AppDialog {
         root.runtimeFeedbackText = ""
     }
 
+    background: Rectangle {
+        radius: themeManager.borderRadiusLarge
+        color: themeManager.surfaceColor
+        border.width: 1
+        border.color: themeManager.borderColor
+    }
+
     contentItem: ColumnLayout {
-        width: parent ? parent.width : 0
-        height: parent ? parent.height : 0
+        anchors.fill: parent
         spacing: 0
 
-        ScrollView {
+        // Dialog Header
+        Rectangle {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            padding: Kirigami.Units.largeSpacing
-
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            contentWidth: availableWidth
+            implicitHeight: headerCol.implicitHeight + UiMetrics.spaceM * 2
+            color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, themeManager.darkMode ? 0.42 : 0.62)
+            border.width: 1
+            border.color: themeManager.borderColor
 
             ColumnLayout {
-                width: parent.width
-                spacing: Kirigami.Units.largeSpacing
+                id: headerCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceS
 
-                Frame {
+                // Title row
+                RowLayout {
                     Layout.fillWidth: true
-                    padding: Kirigami.Units.largeSpacing
+                    spacing: UiMetrics.spaceM
 
-                    background: Rectangle {
-                        radius: 10
-                        gradient: Gradient {
-                            GradientStop {
-                                position: 0.0
-                                color: Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                               Kirigami.Theme.highlightColor.g,
-                                               Kirigami.Theme.highlightColor.b,
-                                               0.18)
-                            }
-                            GradientStop {
-                                position: 1.0
-                                color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
-                                               Kirigami.Theme.backgroundColor.g,
-                                               Kirigami.Theme.backgroundColor.b,
-                                               0.0)
-                            }
-                        }
-                        border.color: Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                              Kirigami.Theme.highlightColor.g,
-                                              Kirigami.Theme.highlightColor.b,
-                                              0.35)
+                    Image {
+                        Layout.preferredWidth: 22
+                        Layout.preferredHeight: 22
+                        source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
+                        sourceSize.width: 22
+                        sourceSize.height: 22
+                        fillMode: Image.PreserveAspectFit
                     }
 
                     ColumnLayout {
-                        anchors.fill: parent
-                        spacing: Kirigami.Units.smallSpacing
+                        Layout.fillWidth: true
+                        spacing: 1
 
                         Label {
                             text: root.tr("batchAudioConverter.title")
-                            font.pointSize: UiMetrics.displayPointSize
-                            font.bold: true
                             color: themeManager.textColor
+                            font.pointSize: UiMetrics.subtitlePointSize
+                            font.weight: Font.DemiBold
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
 
                         Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
                             text: root.tr("batchAudioConverter.summaryLine")
                                   .arg(batchAudioConverterService.totalCount)
                                   .arg(root.runnableCount)
                                   .arg(batchAudioConverterService.skippedCount)
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        RowLayout {
+                            color: themeManager.textMutedColor
+                            font.pointSize: UiMetrics.captionPointSize
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Button {
-                                text: root.tr("batchAudioConverter.addFiles")
-                                enabled: !batchAudioConverterService.isRunning
-                                onClicked: root.browseInputFilesRequested()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.addFolder")
-                                enabled: !batchAudioConverterService.isRunning
-                                onClicked: root.browseInputFolderRequested()
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
-                            }
+                            elide: Text.ElideMiddle
                         }
                     }
-                }
 
-                SettingsSectionPage {
-                    Layout.fillWidth: true
-                    title: root.tr("batchAudioConverter.summarySection")
-                    description: root.tr("batchAudioConverter.summaryHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
-
-                    GridLayout {
-                        columns: 2
-                        columnSpacing: Kirigami.Units.largeSpacing
-                        rowSpacing: Kirigami.Units.smallSpacing
-                        Layout.fillWidth: true
-
-                        Label {
-                            text: root.tr("batchAudioConverter.selectedCount")
-                            color: themeManager.textSecondaryColor
+                    // Queue status chip
+                    Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        implicitWidth: queueBadgeLabel.implicitWidth + UiMetrics.spaceM * 2
+                        implicitHeight: 26
+                        radius: 13
+                        color: {
+                            if (batchAudioConverterService.isRunning) return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.25)
+                            if (root.completedCount > 0 && root.runnableCount === 0) return Qt.rgba(0.2, 0.8, 0.3, themeManager.darkMode ? 0.25 : 0.15)
+                            return Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.6)
                         }
+                        border.width: 1
+                        border.color: batchAudioConverterService.isRunning ? themeManager.primaryColor : themeManager.borderColor
+
                         Label {
-                            text: String(batchAudioConverterService.totalCount)
-                            color: themeManager.textColor
+                            id: queueBadgeLabel
+                            anchors.centerIn: parent
+                            text: batchAudioConverterService.isRunning ? (Math.round((Number(batchAudioConverterService.batchProgress) || 0) * 100) + "%") : (batchAudioConverterService.totalCount + " tracks")
                             font.bold: true
-                        }
-
-                        Label {
-                            text: root.tr("batchAudioConverter.willProcess")
-                            color: themeManager.textSecondaryColor
-                        }
-                        Label {
-                            text: String(root.runnableCount)
+                            font.pointSize: UiMetrics.captionPointSize
                             color: themeManager.textColor
-                            font.bold: true
-                        }
-
-                        Label {
-                            text: root.tr("batchAudioConverter.skippedCount")
-                            color: themeManager.textSecondaryColor
-                        }
-                        Label {
-                            text: String(batchAudioConverterService.skippedCount)
-                            color: themeManager.textColor
-                            font.bold: true
                         }
                     }
                 }
 
-                SettingsSectionPage {
+                // Tab Bar
+                RowLayout {
                     Layout.fillWidth: true
-                    title: root.tr("batchAudioConverter.presetsSection")
-                    description: root.tr("batchAudioConverter.presetsHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
+                    spacing: UiMetrics.spaceS
 
-                    ColumnLayout {
+                    Button {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("batchAudioConverter.tabQueue") + " (" + batchAudioConverterService.totalCount + ")"
+                        highlighted: root.activeTabIndex === 0
+                        icon.source: IconResolver.themed("view-media-playlist", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 0
+                    }
 
-                        Label {
-                            text: root.tr("batchAudioConverter.preset")
-                            color: themeManager.textColor
-                        }
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("batchAudioConverter.tabFormat")
+                        highlighted: root.activeTabIndex === 1
+                        icon.source: IconResolver.themed("audio-x-generic", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 1
+                    }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("batchAudioConverter.tabDsp")
+                        highlighted: root.activeTabIndex === 2
+                        icon.source: IconResolver.themed("equalizer", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 2
+                    }
 
-                            AccentComboBox {
-                                Layout.fillWidth: true
-                                enabled: !batchAudioConverterService.isRunning && root.userPresetItems.length > 0
-                                model: root.userPresetItems
-                                textRole: "name"
-                                valueRole: "id"
-                                currentIndex: root.findOptionIndex(model, root.selectedPresetId)
-                                onActivated: function(index) {
-                                    const entry = model[index]
-                                    if (entry) {
-                                        root.selectPresetById(entry.id)
-                                    }
-                                }
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.applyPreset")
-                                enabled: !batchAudioConverterService.isRunning && !!root.selectedPreset()
-                                onClicked: root.applySelectedPreset()
-                            }
-                        }
-
-                        Label {
-                            visible: root.userPresetItems.length === 0
-                            text: root.tr("batchAudioConverter.noPresets")
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            TextField {
-                                id: newPresetNameField
-                                Layout.fillWidth: true
-                                placeholderText: root.tr("batchAudioConverter.presetNamePlaceholder")
-                                enabled: !batchAudioConverterService.isRunning
-                                onAccepted: root.saveCurrentAsPreset()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.saveAsPreset")
-                                enabled: !batchAudioConverterService.isRunning
-                                onClicked: root.saveCurrentAsPreset()
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            TextField {
-                                id: renamePresetNameField
-                                Layout.fillWidth: true
-                                placeholderText: root.tr("batchAudioConverter.presetNamePlaceholder")
-                                enabled: !batchAudioConverterService.isRunning && !!root.selectedPreset()
-                                onAccepted: root.renameSelectedPreset()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.renamePreset")
-                                enabled: !batchAudioConverterService.isRunning && !!root.selectedPreset()
-                                onClicked: root.renameSelectedPreset()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.deletePreset")
-                                enabled: !batchAudioConverterService.isRunning && !!root.selectedPreset()
-                                onClicked: root.requestDeleteSelectedPreset()
-                            }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            visible: root.presetFeedbackText.length > 0
-                            text: root.presetFeedbackText
-                            color: Kirigami.Theme.negativeTextColor
-                            wrapMode: Text.WordWrap
-                        }
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: UiMetrics.controlHeightNormal + 4
+                        leftPadding: UiMetrics.spaceM
+                        rightPadding: UiMetrics.spaceM
+                        text: root.tr("batchAudioConverter.tabReport")
+                        highlighted: root.activeTabIndex === 3
+                        icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                        onClicked: root.activeTabIndex = 3
                     }
                 }
+            }
+        }
 
-                SettingsSectionPage {
-                    Layout.fillWidth: true
-                    title: root.tr("batchAudioConverter.outputSection")
-                    description: root.tr("batchAudioConverter.outputHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
-
-                    GridLayout {
-                        columns: 3
-                        columnSpacing: Kirigami.Units.smallSpacing
-                        rowSpacing: Kirigami.Units.smallSpacing
-                        Layout.fillWidth: true
-
-                        Label {
-                            text: root.tr("batchAudioConverter.outputDirectory")
-                            color: themeManager.textColor
-                        }
-
-                        TextField {
-                            id: outputDirectoryField
-                            Layout.fillWidth: true
-                            placeholderText: root.tr("batchAudioConverter.outputDirectoryPlaceholder")
-                            enabled: !batchAudioConverterService.isRunning
-                            onEditingFinished: {
-                                batchAudioConverterService.outputDirectory = text
-                                text = batchAudioConverterService.outputDirectory
-                            }
-                        }
-
-                        RowLayout {
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Button {
-                                text: root.tr("batchAudioConverter.browseFolder")
-                                enabled: !batchAudioConverterService.isRunning
-                                onClicked: root.browseOutputDirectoryRequested()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.useSourceFolders")
-                                enabled: !batchAudioConverterService.isRunning
-                                onClicked: {
-                                    batchAudioConverterService.outputDirectory = ""
-                                    outputDirectoryField.text = ""
-                                }
-                            }
-                        }
-
-                        Label {
-                            text: root.tr("batchAudioConverter.namingPolicy")
-                            color: themeManager.textColor
-                        }
-
-                        AccentComboBox {
-                            Layout.preferredWidth: 240
-                            Layout.columnSpan: 2
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.namingPolicyOptions()
-                            textRole: "label"
-                            valueRole: "value"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.namingPolicy)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.namingPolicy = entry.value
-                                }
-                            }
-                        }
-
-                        Label {
-                            text: root.tr("batchAudioConverter.conflictPolicy")
-                            color: themeManager.textColor
-                        }
-
-                        AccentComboBox {
-                            Layout.preferredWidth: 240
-                            Layout.columnSpan: 2
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.conflictPolicyOptions()
-                            textRole: "label"
-                            valueRole: "value"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.conflictPolicy)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.conflictPolicy = entry.value
-                                }
-                            }
-                        }
-
-                        Item {
-                            Layout.columnSpan: 3
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 1
-                        }
-
-                        Label {
-                            text: root.tr("batchAudioConverter.playlistMode")
-                            color: themeManager.textColor
-                        }
-
-                        AccentComboBox {
-                            Layout.preferredWidth: 240
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.playlistAddModeOptions()
-                            textRole: "label"
-                            valueRole: "value"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.playlistAddMode)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.playlistAddMode = entry.value
-                                }
-                            }
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("batchAudioConverter.playlistModeHint")
-                            color: themeManager.textSecondaryColor
-                            wrapMode: Text.WordWrap
-                        }
+        // Status & Notification Banner
+        Rectangle {
+            id: statusBanner
+            Layout.fillWidth: true
+            implicitHeight: bannerRow.implicitHeight + UiMetrics.spaceS * 2
+            visible: {
+                if (batchAudioConverterService.isRunning && batchAudioConverterService.isPaused) return true
+                if (batchAudioConverterService.hasFinished) return true
+                if (batchAudioConverterService.wasCanceled) return true
+                if (batchAudioConverterService.lastError.length > 0 && !batchAudioConverterService.isRunning) return true
+                return false
+            }
+            color: {
+                if (batchAudioConverterService.isRunning && batchAudioConverterService.isPaused) {
+                    return Qt.rgba(0.9, 0.65, 0.1, themeManager.darkMode ? 0.28 : 0.18)
+                }
+                if (batchAudioConverterService.hasFinished) {
+                    if (batchAudioConverterService.failedCount === 0) {
+                        return Qt.rgba(0.2, 0.78, 0.35, themeManager.darkMode ? 0.28 : 0.18)
                     }
+                    return Qt.rgba(0.9, 0.3, 0.2, themeManager.darkMode ? 0.28 : 0.18)
+                }
+                if (batchAudioConverterService.wasCanceled) {
+                    return Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.12)
+                }
+                if (batchAudioConverterService.lastError.length > 0) {
+                    return Qt.rgba(0.9, 0.2, 0.2, themeManager.darkMode ? 0.28 : 0.18)
+                }
+                return "transparent"
+            }
+            border.width: 1
+            border.color: {
+                if (batchAudioConverterService.isRunning && batchAudioConverterService.isPaused) return Qt.rgba(0.9, 0.65, 0.1, 0.6)
+                if (batchAudioConverterService.hasFinished) {
+                    return (batchAudioConverterService.failedCount === 0) ? Qt.rgba(0.2, 0.78, 0.35, 0.6) : Qt.rgba(0.9, 0.3, 0.2, 0.6)
+                }
+                if (batchAudioConverterService.wasCanceled) return themeManager.borderColor
+                return Qt.rgba(0.9, 0.2, 0.2, 0.6)
+            }
+
+            RowLayout {
+                id: bannerRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: UiMetrics.spaceS
+                spacing: UiMetrics.spaceM
+
+                Image {
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                    source: {
+                        if (batchAudioConverterService.isRunning && batchAudioConverterService.isPaused) {
+                            return IconResolver.themed("media-playback-pause", themeManager.darkMode)
+                        }
+                        if (batchAudioConverterService.hasFinished) {
+                            return IconResolver.themed((batchAudioConverterService.failedCount === 0) ? "dialog-ok" : "dialog-warning", themeManager.darkMode)
+                        }
+                        if (batchAudioConverterService.wasCanceled) {
+                            return IconResolver.themed("dialog-cancel", themeManager.darkMode)
+                        }
+                        return IconResolver.themed("dialog-warning", themeManager.darkMode)
+                    }
+                    sourceSize.width: 18
+                    sourceSize.height: 18
+                    fillMode: Image.PreserveAspectFit
                 }
 
-                SettingsSectionPage {
+                Label {
                     Layout.fillWidth: true
-                    title: root.tr("audioConverter.formatSection")
-                    description: root.tr("batchAudioConverter.formatHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
-
-                    GridLayout {
-                        columns: 2
-                        columnSpacing: Kirigami.Units.largeSpacing
-                        rowSpacing: Kirigami.Units.smallSpacing
-                        Layout.fillWidth: true
-
-                        Label { text: root.tr("audioConverter.format"); color: themeManager.textColor }
-                        AccentComboBox {
-                            Layout.preferredWidth: 220
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.formatOptions(root.formatProfiles)
-                            textRole: "label"
-                            valueRole: "id"
-                            enabledRole: "available"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.format)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.format = entry.id
-                                }
+                    text: {
+                        if (batchAudioConverterService.isRunning && batchAudioConverterService.isPaused) {
+                            return root.tr("batchAudioConverter.statePaused") + ": " + (batchAudioConverterService.currentItem.displayName || root.fileNameFromPath(batchAudioConverterService.currentItem.sourceFile))
+                        }
+                        if (batchAudioConverterService.hasFinished) {
+                            if (batchAudioConverterService.failedCount === 0) {
+                                return root.tr("batchAudioConverter.batchSuccessNotice").arg(batchAudioConverterService.succeededCount)
                             }
+                            return root.tr("batchAudioConverter.batchErrorNotice").arg(batchAudioConverterService.failedCount)
                         }
-
-                        Label {
-                            Layout.columnSpan: 2
-                            Layout.fillWidth: true
-                            visible: root.formatAvailabilityText(root.currentProfile).length > 0
-                            text: root.formatAvailabilityText(root.currentProfile)
-                            color: themeManager.textSecondaryColor
-                            wrapMode: Text.WordWrap
+                        if (batchAudioConverterService.wasCanceled) {
+                            return root.tr("batchAudioConverter.batchCanceledNotice")
                         }
-
-                        Label {
-                            visible: currentProfile && currentProfile.supportsBitrate
-                            text: root.tr("audioConverter.bitrate")
-                            color: themeManager.textColor
+                        if (batchAudioConverterService.lastError.length > 0) {
+                            return batchAudioConverterService.lastError
                         }
-                        AccentComboBox {
-                            visible: currentProfile && currentProfile.supportsBitrate
-                            Layout.preferredWidth: 220
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.bitrateOptions(root.currentProfile)
-                            textRole: "label"
-                            valueRole: "value"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.bitrate)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.bitrate = Number(entry.value)
-                                }
-                            }
-                        }
-
-                        Label {
-                            visible: currentProfile && currentProfile.supportsSampleRate
-                            text: root.tr("audioConverter.sampleRate")
-                            color: themeManager.textColor
-                        }
-                        AccentComboBox {
-                            visible: currentProfile && currentProfile.supportsSampleRate
-                            Layout.preferredWidth: 220
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.sampleRateOptions(root.currentProfile)
-                            textRole: "label"
-                            valueRole: "value"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.sampleRate)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.sampleRate = Number(entry.value)
-                                }
-                            }
-                        }
-
-                        Label {
-                            visible: currentProfile && currentProfile.supportsChannels
-                            text: root.tr("audioConverter.channels")
-                            color: themeManager.textColor
-                        }
-                        AccentComboBox {
-                            visible: currentProfile && currentProfile.supportsChannels
-                            Layout.preferredWidth: 220
-                            enabled: !batchAudioConverterService.isRunning
-                            model: root.channelModeOptions(root.currentProfile)
-                            textRole: "label"
-                            valueRole: "value"
-                            currentIndex: root.findOptionIndex(model, batchAudioConverterService.channelMode)
-                            onActivated: function(index) {
-                                const entry = model[index]
-                                if (entry) {
-                                    batchAudioConverterService.channelMode = String(entry.value)
-                                }
-                            }
-                        }
+                        return ""
                     }
+                    color: themeManager.textColor
+                    font.weight: Font.Medium
+                    font.pointSize: UiMetrics.captionPointSize + 1
+                    elide: Text.ElideRight
                 }
 
-                SettingsSectionPage {
-                    Layout.fillWidth: true
-                    title: root.tr("audioConverter.transformSection")
-                    description: root.tr("batchAudioConverter.transformHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
-
-                    SettingSliderRow {
-                        title: root.tr("audioConverter.speed")
-                        rowEnabled: !batchAudioConverterService.isRunning
-                        from: 0.25
-                        to: 4.0
-                        stepSize: 0.05
-                        value: batchAudioConverterService.playbackRate
-                        valueText: Number(batchAudioConverterService.playbackRate).toFixed(2) + "x"
-                        onMoved: function(value) {
-                            batchAudioConverterService.playbackRate = value
-                        }
-                    }
-
-                    SettingSliderRow {
-                        title: root.tr("audioConverter.pitch")
-                        rowEnabled: !batchAudioConverterService.isRunning
-                        from: -24
-                        to: 24
-                        stepSize: 1
-                        value: batchAudioConverterService.pitchSemitones
-                        valueText: root.pitchLabel(batchAudioConverterService.pitchSemitones)
-                        onMoved: function(value) {
-                            batchAudioConverterService.pitchSemitones = Math.round(value)
-                        }
-                    }
-
-                    AccentCheckBox {
-                        Layout.fillWidth: true
-                        text: root.tr("audioConverter.applyCurrentEqualizer")
-                        checked: batchAudioConverterService.applyEqualizer
-                        enabled: !batchAudioConverterService.isRunning
-                        Accessible.name: text
-                        Accessible.description: root.tr("audioConverter.applyCurrentEqualizerHint")
-                        onToggled: {
-                            batchAudioConverterService.applyEqualizer = checked
-                            root.syncEqualizerSettingsForConversion()
-                        }
-                    }
-
-                    AccentCheckBox {
-                        Layout.fillWidth: true
-                        text: root.tr("audioConverter.applyReverb")
-                        checked: batchAudioConverterService.applyReverb
-                        enabled: !batchAudioConverterService.isRunning
-                        Accessible.name: text
-                        Accessible.description: root.tr("audioConverter.applyReverbHint")
-                        onToggled: batchAudioConverterService.applyReverb = checked
-                    }
-
-                    SettingSliderRow {
-                        title: root.tr("audioConverter.reverbRoomSize")
-                        rowEnabled: !batchAudioConverterService.isRunning
-                                    && batchAudioConverterService.applyReverb
-                        from: 0.0
-                        to: 1.0
-                        stepSize: 0.01
-                        value: batchAudioConverterService.reverbRoomSize
-                        valueText: Math.round(Number(batchAudioConverterService.reverbRoomSize) * 100) + "%"
-                        onMoved: function(value) {
-                            batchAudioConverterService.reverbRoomSize = value
-                        }
-                    }
-
-                    SettingSliderRow {
-                        title: root.tr("audioConverter.reverbWetLevel")
-                        rowEnabled: !batchAudioConverterService.isRunning
-                                    && batchAudioConverterService.applyReverb
-                        from: 0.0
-                        to: 1.0
-                        stepSize: 0.01
-                        value: batchAudioConverterService.reverbWetLevel
-                        valueText: Math.round(Number(batchAudioConverterService.reverbWetLevel) * 100) + "%"
-                        onMoved: function(value) {
-                            batchAudioConverterService.reverbWetLevel = value
-                        }
-                    }
-
-                    SettingSliderRow {
-                        title: root.tr("audioConverter.reverbDamping")
-                        rowEnabled: !batchAudioConverterService.isRunning
-                                    && batchAudioConverterService.applyReverb
-                        from: 0.0
-                        to: 1.0
-                        stepSize: 0.01
-                        value: batchAudioConverterService.reverbDamping
-                        valueText: Math.round(Number(batchAudioConverterService.reverbDamping) * 100) + "%"
-                        onMoved: function(value) {
-                            batchAudioConverterService.reverbDamping = value
-                        }
-                    }
+                Button {
+                    text: root.tr("playlist.openInFileManager")
+                    icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                    visible: batchAudioConverterService.hasFinished && batchAudioConverterService.succeededCount > 0
+                    onClicked: root.openPrimaryOutputFolder()
                 }
 
-                SettingsSectionPage {
-                    Layout.fillWidth: true
-                    title: root.tr("batchAudioConverter.queueSection")
-                    description: root.tr("batchAudioConverter.queueHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
+                Button {
+                    text: root.tr("batchAudioConverter.tabReport")
+                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                    visible: batchAudioConverterService.hasFinished
+                    onClicked: root.activeTabIndex = 3
+                }
+            }
+        }
 
-                    ColumnLayout {
+        // Tab Content Container
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+
+            // TAB 0: Queue & Item Selection
+            Item {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 0
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: UiMetrics.spaceM
+                    spacing: UiMetrics.spaceS
+
+                    // Action Toolbar
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        spacing: UiMetrics.spaceS
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                        Button {
+                            text: root.tr("batchAudioConverter.addFiles")
+                            icon.source: IconResolver.themed("list-add", themeManager.darkMode)
+                            enabled: !batchAudioConverterService.isRunning
+                            onClicked: root.browseInputFilesRequested()
+                        }
 
-                            Repeater {
-                                model: ["all", "pending", "failed", "succeeded"]
+                        Button {
+                            text: root.tr("batchAudioConverter.addFolder")
+                            icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                            enabled: !batchAudioConverterService.isRunning
+                            onClicked: root.browseInputFolderRequested()
+                        }
 
-                                delegate: Button {
-                                    required property string modelData
-                                    text: root.queueFilterButtonText(modelData)
-                                    checkable: true
-                                    checked: root.queueFilterMode === modelData
-                                    onClicked: root.queueFilterMode = modelData
-                                }
-                            }
+                        Button {
+                            text: root.tr("batchAudioConverter.removeSelected")
+                            icon.source: IconResolver.themed("list-remove", themeManager.darkMode)
+                            enabled: root.selectedItemIds.length > 0 && !batchAudioConverterService.isRunning
+                            onClicked: batchAudioConverterService.removeItems(root.selectedItemIds)
+                        }
 
-                            Item {
-                                Layout.fillWidth: true
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.viewCompact")
-                                checkable: true
-                                checked: root.queueViewMode === "compact"
-                                onClicked: root.queueViewMode = "compact"
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.viewExpanded")
-                                checkable: true
-                                checked: root.queueViewMode === "expanded"
-                                onClicked: root.queueViewMode = "expanded"
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
+                        Button {
+                            text: root.tr("batchAudioConverter.clearQueue")
+                            icon.source: IconResolver.themed("edit-clear-all", themeManager.darkMode)
+                            enabled: root.hasItems && !batchAudioConverterService.isRunning
+                            onClicked: {
+                                root.clearSelection()
+                                batchAudioConverterService.clear()
                             }
                         }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                        Item { Layout.fillWidth: true }
 
-                            Button {
-                                text: root.tr("batchAudioConverter.removeSelected")
-                                enabled: selectedItemIds.length > 0
-                                         && !batchAudioConverterService.isRunning
-                                onClicked: {
-                                    batchAudioConverterService.removeItemsById(selectedItemIds)
-                                    root.clearSelection()
-                                }
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.clearFailed")
-                                enabled: batchAudioConverterService.failedCount > 0
-                                         && !batchAudioConverterService.isRunning
-                                onClicked: {
-                                    batchAudioConverterService.clearFailedItems()
-                                    root.clearSelection()
-                                }
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.clearCompleted")
-                                enabled: root.completedCount > 0
-                                         && !batchAudioConverterService.isRunning
-                                onClicked: {
-                                    batchAudioConverterService.clearCompletedItems()
-                                    root.clearSelection()
-                                }
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
-                            }
+                        // Filter mode buttons
+                        Button {
+                            text: root.tr("batchAudioConverter.filterAll")
+                            highlighted: root.queueFilterMode === "all"
+                            onClicked: root.queueFilterMode = "all"
                         }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                        Button {
+                            text: root.tr("batchAudioConverter.filterPending")
+                            highlighted: root.queueFilterMode === "pending"
+                            onClicked: root.queueFilterMode = "pending"
+                        }
 
-                            Button {
-                                text: root.tr("batchAudioConverter.retrySelected")
-                                enabled: selectedItemIds.length > 0
-                                         && !batchAudioConverterService.isRunning
-                                onClicked: batchAudioConverterService.retryItemsById(selectedItemIds)
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.retryFailed")
-                                enabled: root.retryableCountForState("failed") > 0
-                                         && !batchAudioConverterService.isRunning
-                                onClicked: batchAudioConverterService.retryFailedItems()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.retrySkipped")
-                                enabled: root.retryableCountForState("skipped") > 0
-                                         && !batchAudioConverterService.isRunning
-                                onClicked: batchAudioConverterService.retrySkippedItems()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.clearSelection")
-                                enabled: selectedItemIds.length > 0
-                                onClicked: root.clearSelection()
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
-                            }
+                        Button {
+                            text: root.tr("batchAudioConverter.filterSucceeded")
+                            highlighted: root.queueFilterMode === "succeeded"
+                            onClicked: root.queueFilterMode = "succeeded"
                         }
                     }
 
+                    // Queue List
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(320, Math.max(180, queueList.contentHeight + 8))
-                        radius: 10
-                        color: Qt.rgba(themeManager.surfaceColor.r,
-                                       themeManager.surfaceColor.g,
-                                       themeManager.surfaceColor.b,
-                                       themeManager.darkMode ? 0.54 : 0.94)
+                        Layout.fillHeight: true
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
                         border.width: 1
                         border.color: themeManager.borderColor
 
                         ListView {
-                            id: queueList
+                            id: queueListView
                             anchors.fill: parent
                             anchors.margins: 4
                             clip: true
-                            spacing: 6
                             model: root.visibleQueueItems
-                            ScrollBar.vertical: ScrollBar {}
+                            spacing: 4
 
                             delegate: Rectangle {
-                                required property var modelData
-                                readonly property bool compactMode: root.queueViewMode === "compact"
-                                width: ListView.view ? ListView.view.width : 0
-                                height: itemColumn.implicitHeight + 16
-                                radius: 8
-                                color: Qt.rgba(themeManager.backgroundColor.r,
-                                               themeManager.backgroundColor.g,
-                                               themeManager.backgroundColor.b,
-                                               themeManager.darkMode ? 0.28 : 0.72)
-                                border.width: 1
-                                border.color: root.isItemSelected(modelData.itemId)
-                                              ? Kirigami.Theme.highlightColor
-                                              : Qt.rgba(root.itemStateColor(modelData.state).r,
-                                                        root.itemStateColor(modelData.state).g,
-                                                        root.itemStateColor(modelData.state).b,
-                                                        0.32)
+                                id: queueDelegate
+                                width: queueListView.width
+                                height: 44
+                                radius: themeManager.borderRadius
+                                color: root.isItemSelected(modelData.itemId)
+                                       ? Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.18)
+                                       : (delegateMouse.containsMouse ? Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.5) : "transparent")
 
-                                ColumnLayout {
-                                    id: itemColumn
+                                MouseArea {
+                                    id: delegateMouse
                                     anchors.fill: parent
-                                    anchors.margins: 8
-                                    spacing: 4
+                                    hoverEnabled: true
+                                    onClicked: root.setItemSelected(modelData.itemId, !root.isItemSelected(modelData.itemId))
+                                }
 
-                                    RowLayout {
-                                        Layout.fillWidth: true
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: UiMetrics.spaceM
+                                    anchors.rightMargin: UiMetrics.spaceM
+                                    spacing: UiMetrics.spaceM
 
-                                        AccentCheckBox {
-                                            checked: root.isItemSelected(modelData.itemId)
-                                            enabled: !batchAudioConverterService.isRunning
-                                            onToggled: root.setItemSelected(modelData.itemId, checked)
+                                    AccentCheckBox {
+                                        checked: root.isItemSelected(modelData.itemId)
+                                        onToggled: root.setItemSelected(modelData.itemId, checked)
+                                    }
+
+                                    // State pill
+                                    Rectangle {
+                                        implicitWidth: 80
+                                        implicitHeight: 22
+                                        radius: 11
+                                        color: {
+                                            const st = String(modelData.state || "")
+                                            if (st === "succeeded") return Qt.rgba(0.2, 0.8, 0.3, 0.2)
+                                            if (st === "failed") return Qt.rgba(0.9, 0.2, 0.2, 0.2)
+                                            if (st === "running") return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.25)
+                                            return Qt.rgba(themeManager.textColor.r, themeManager.textColor.g, themeManager.textColor.b, 0.08)
                                         }
 
                                         Label {
-                                            Layout.fillWidth: true
-                                            text: String(modelData.sourceDisplayName || root.fileNameFromPath(modelData.sourceFile))
+                                            anchors.centerIn: parent
+                                            text: root.itemStateLabel(modelData.state)
+                                            font.pointSize: UiMetrics.captionPointSize - 1
+                                            font.bold: true
+                                            color: themeManager.textColor
+                                        }
+                                    }
+
+                                    // File info
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+
+                                        Label {
+                                            text: modelData.displayName ? modelData.displayName : root.fileNameFromPath(modelData.sourceFile)
                                             color: themeManager.textColor
                                             font.bold: true
+                                            Layout.fillWidth: true
                                             elide: Text.ElideRight
                                         }
 
                                         Label {
-                                            text: root.itemStateLabel(modelData.state)
-                                            color: root.itemStateColor(modelData.state)
-                                            font.bold: true
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: Kirigami.Units.smallSpacing
-                                        visible: !compactMode
-
-                                        Button {
-                                            text: root.tr("batchAudioConverter.moveUp")
-                                            enabled: batchAudioConverterService.canMoveItemUp(modelData.itemId)
-                                            onClicked: batchAudioConverterService.moveItemUp(modelData.itemId)
-                                        }
-
-                                        Button {
-                                            text: root.tr("batchAudioConverter.moveDown")
-                                            enabled: batchAudioConverterService.canMoveItemDown(modelData.itemId)
-                                            onClicked: batchAudioConverterService.moveItemDown(modelData.itemId)
-                                        }
-
-                                        Button {
-                                            text: root.tr("batchAudioConverter.retry")
-                                            enabled: !batchAudioConverterService.isRunning
-                                                     && batchAudioConverterService.canRetryItem(modelData.itemId)
-                                            onClicked: batchAudioConverterService.retryItemById(modelData.itemId)
-                                        }
-
-                                        Button {
-                                            text: root.tr("batchAudioConverter.remove")
-                                            enabled: batchAudioConverterService.canRemoveItem(modelData.itemId)
-                                            onClicked: {
-                                                batchAudioConverterService.removeItemById(modelData.itemId)
-                                                root.setItemSelected(modelData.itemId, false)
-                                            }
-                                        }
-
-                                        Item {
+                                            text: modelData.sourceFile
+                                            color: themeManager.textMutedColor
+                                            font.pointSize: UiMetrics.captionPointSize
                                             Layout.fillWidth: true
+                                            elide: Text.ElideMiddle
                                         }
                                     }
 
-                                    Label {
-                                        Layout.fillWidth: true
-                                        text: String(modelData.outputFile || "")
-                                        color: themeManager.textSecondaryColor
-                                        font.pointSize: UiMetrics.bodyPointSize
-                                        elide: Text.ElideMiddle
+                                    // Trim badge if enabled
+                                    Rectangle {
+                                        visible: Boolean(modelData.trimEnabled)
+                                        implicitWidth: trimBadgeLabel.implicitWidth + 12
+                                        implicitHeight: 22
+                                        radius: 11
+                                        color: Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.2)
+                                        border.width: 1
+                                        border.color: themeManager.primaryColor
+
+                                        Label {
+                                            id: trimBadgeLabel
+                                            anchors.centerIn: parent
+                                            text: root.formatDuration(modelData.trimStartMs) + " - " + root.formatDuration(modelData.trimEndMs)
+                                            font.pointSize: UiMetrics.captionPointSize - 1
+                                            font.bold: true
+                                            color: themeManager.textColor
+                                        }
                                     }
 
-                                    Label {
-                                        Layout.fillWidth: true
-                                        visible: !compactMode && String(modelData.outputFile || "").length > 0
-                                        text: root.previewNamingText(modelData)
-                                        color: themeManager.textMutedColor
-                                        font.pointSize: UiMetrics.bodyPointSize
-                                        wrapMode: Text.WordWrap
+                                    // Fragment trim button
+                                    Button {
+                                        icon.source: IconResolver.themed("transform-crop-and-resize", themeManager.darkMode)
+                                        enabled: !batchAudioConverterService.isRunning
+                                        onClicked: itemTrimDialog.openForItem(modelData)
                                     }
 
-                                    Label {
-                                        Layout.fillWidth: true
-                                        visible: !compactMode && String(modelData.outputFile || "").length > 0
-                                        text: root.tr("batchAudioConverter.previewCollisionPattern")
-                                              .arg(root.previewCollisionLabel(modelData))
-                                              + " "
-                                              + root.tr("batchAudioConverter.previewFinalizationPattern")
-                                                    .arg(root.previewFinalizationLabel(modelData))
-                                        color: themeManager.textMutedColor
-                                        font.pointSize: UiMetrics.bodyPointSize
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Label {
-                                        Layout.fillWidth: true
-                                        visible: compactMode
-                                        text: root.tr("batchAudioConverter.queueCompactPattern")
-                                              .arg(root.itemStateLabel(modelData.state))
-                                              .arg(String(modelData.errorText || "").length > 0
-                                                       ? String(modelData.errorText || "")
-                                                       : root.previewCollisionLabel(modelData))
-                                        color: String(modelData.errorText || "").length > 0
-                                               ? Kirigami.Theme.negativeTextColor
-                                               : themeManager.textMutedColor
-                                        font.pointSize: UiMetrics.bodyPointSize
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Label {
-                                        Layout.fillWidth: true
-                                        visible: String(modelData.errorText || "").length > 0
-                                        text: String(modelData.errorText || "")
-                                        color: Kirigami.Theme.negativeTextColor
-                                        wrapMode: Text.WordWrap
+                                    // Delete Item Action
+                                    Button {
+                                        icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
+                                        enabled: !batchAudioConverterService.isRunning
+                                        onClicked: batchAudioConverterService.removeItems([modelData.itemId])
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
 
-                SettingsSectionPage {
-                    Layout.fillWidth: true
-                    title: root.tr("batchAudioConverter.runtimeSection")
-                    description: root.tr("batchAudioConverter.runtimeHint")
-                    panelColor: themeManager.surfaceColor
-                    frameColor: themeManager.borderColor
-                    titleColor: themeManager.textSecondaryColor
-                    fontFamily: themeManager.fontFamily
+            // TAB 1: Format & Output Configuration
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 1
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
 
-                    ColumnLayout {
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    // Preset Selector Card
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        implicitHeight: presetCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
 
-                        Label {
-                            text: root.tr("batchAudioConverter.currentTrack")
-                                  + (batchAudioConverterService.currentItem.sourceDisplayName
-                                     ? batchAudioConverterService.currentItem.sourceDisplayName
-                                     : root.tr("batchAudioConverter.noCurrentTrack"))
-                            color: themeManager.textColor
-                            wrapMode: Text.WordWrap
-                        }
+                        ColumnLayout {
+                            id: presetCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
 
-                        Label {
-                            text: root.tr("batchAudioConverter.currentTrackProgress")
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        AccentProgressBar {
-                            Layout.fillWidth: true
-                            value: Math.max(0, Number(batchAudioConverterService.currentItem.progress) || 0)
-                        }
-
-                        Label {
-                            text: root.tr("batchAudioConverter.batchProgress")
-                            color: themeManager.textSecondaryColor
-                        }
-
-                        AccentProgressBar {
-                            Layout.fillWidth: true
-                            value: batchAudioConverterService.batchProgress
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: batchAudioConverterService.statusText.length > 0
-                                  ? batchAudioConverterService.statusText
-                                  : root.tr("audioConverter.readyHint")
-                            color: themeManager.textColor
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            visible: batchAudioConverterService.lastError.length > 0
-                            text: batchAudioConverterService.lastError
-                            color: Kirigami.Theme.negativeTextColor
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("batchAudioConverter.summaryDone")
-                                  .arg(root.completedCount)
-                                  .arg(batchAudioConverterService.totalCount)
-                                  .arg(batchAudioConverterService.succeededCount)
-                                  .arg(batchAudioConverterService.failedCount)
-                                  .arg(batchAudioConverterService.canceledCount)
-                                  .arg(batchAudioConverterService.skippedCount)
-                            color: themeManager.textSecondaryColor
-                            wrapMode: Text.WordWrap
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Button {
-                                text: root.tr("batchAudioConverter.viewExpandedReport")
-                                checkable: true
-                                checked: root.reportExpanded
-                                enabled: batchAudioConverterService.hasFinished
-                                onClicked: root.reportExpanded = checked
+                            Label {
+                                text: root.tr("batchAudioConverter.presetsSection")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
                             }
 
-                            Button {
-                                text: root.tr("batchAudioConverter.copyReport")
-                                enabled: batchAudioConverterService.hasFinished
-                                onClicked: root.copyCurrentReportToClipboard()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.openOutputFolder")
-                                enabled: String(root.primaryOutputFolderPath() || "").trim().length > 0
-                                onClicked: root.openPrimaryOutputFolder()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.addSucceededOutputsToPlaylist")
-                                visible: batchAudioConverterService.playlistAddMode === "deferred"
-                                enabled: batchAudioConverterService.canAddSucceededResultsToPlaylist
-                                onClicked: root.addSucceededOutputsToPlaylist()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.exportText")
-                                enabled: batchAudioConverterService.hasFinished
-                                onClicked: root.reportExportRequested("txt",
-                                                                       batchAudioConverterService.suggestedReportFileName("txt"))
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.exportJson")
-                                enabled: batchAudioConverterService.hasFinished
-                                onClicked: root.reportExportRequested("json",
-                                                                       batchAudioConverterService.suggestedReportFileName("json"))
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.exportCsv")
-                                enabled: batchAudioConverterService.hasFinished
-                                onClicked: root.reportExportRequested("csv",
-                                                                       batchAudioConverterService.suggestedReportFileName("csv"))
-                            }
-
-                            Item {
+                            RowLayout {
                                 Layout.fillWidth: true
+                                spacing: UiMetrics.spaceS
+
+                                AccentComboBox {
+                                    id: presetCombo
+                                    Layout.fillWidth: true
+                                    textRole: "name"
+                                    valueRole: "id"
+                                    model: root.userPresetItems
+                                    currentIndex: root.findOptionIndex(model, root.selectedPresetId)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.id) {
+                                            root.selectPresetById(entry.id)
+                                            root.applySelectedPreset()
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.saveAsPreset")
+                                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                                    onClicked: savePresetDialog.open()
+                                }
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.deletePreset")
+                                    icon.source: IconResolver.themed("edit-delete", themeManager.darkMode)
+                                    enabled: Boolean(root.selectedPreset())
+                                    onClicked: root.requestDeleteSelectedPreset()
+                                }
                             }
                         }
+                    }
 
-                        Label {
-                            Layout.fillWidth: true
-                            visible: root.runtimeFeedbackText.length > 0
-                            text: root.runtimeFeedbackText
-                            color: themeManager.textSecondaryColor
-                            wrapMode: Text.WordWrap
+                    // Format and Encoding Parameters Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: bFormatCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: bFormatCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("audioConverter.formatSection")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: UiMetrics.spaceM
+                                rowSpacing: UiMetrics.spaceM
+                                Layout.fillWidth: true
+
+                                // Format
+                                Label {
+                                    text: root.tr("audioConverter.format")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "id"
+                                    model: root.formatOptions(root.formatProfiles)
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.format)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.id) {
+                                            batchAudioConverterService.format = entry.id
+                                        }
+                                    }
+                                }
+
+                                // Bitrate
+                                Label {
+                                    text: root.tr("audioConverter.bitrate")
+                                    Layout.alignment: Qt.AlignVCenter
+                                    visible: bBitrateCombo.visible
+                                }
+                                AccentComboBox {
+                                    id: bBitrateCombo
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    visible: currentProfile && currentProfile.supportsBitrate
+                                    model: root.bitrateOptions(currentProfile)
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.bitrate)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            batchAudioConverterService.bitrate = entry.value
+                                        }
+                                    }
+                                }
+
+                                // Sample Rate
+                                Label {
+                                    text: root.tr("audioConverter.sampleRate")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.sampleRateOptions(currentProfile)
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.sampleRate)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            batchAudioConverterService.sampleRate = entry.value
+                                        }
+                                    }
+                                }
+
+                                // Channels
+                                Label {
+                                    text: root.tr("audioConverter.channels")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.channelModeOptions(currentProfile)
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.channelMode)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            batchAudioConverterService.channelMode = entry.value
+                                        }
+                                    }
+                                }
+                            }
                         }
+                    }
 
-                        TextArea {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 220
-                            visible: batchAudioConverterService.hasFinished && root.reportExpanded
-                            readOnly: true
-                            wrapMode: TextEdit.Wrap
-                            text: batchAudioConverterService.currentReportText("txt")
+                    // Output Directory & Policy Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: outDirCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: outDirCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("batchAudioConverter.outputSection")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceS
+
+                                TextField {
+                                    id: outputDirectoryField
+                                    Layout.fillWidth: true
+                                    placeholderText: root.tr("batchAudioConverter.outputDirectoryPlaceholder")
+                                    text: batchAudioConverterService.outputDirectory
+                                    onTextChanged: {
+                                        if (activeFocus) {
+                                            batchAudioConverterService.outputDirectory = text
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.browseFolder")
+                                    icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                                    onClicked: root.browseOutputDirectoryRequested()
+                                }
+                            }
+
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: UiMetrics.spaceM
+                                rowSpacing: UiMetrics.spaceM
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("batchAudioConverter.namingPolicy")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.namingPolicyOptions()
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.namingPolicy)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            batchAudioConverterService.namingPolicy = entry.value
+                                        }
+                                    }
+                                }
+
+                                Label {
+                                    text: root.tr("batchAudioConverter.conflictPolicy")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.conflictPolicyOptions()
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.conflictPolicy)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            batchAudioConverterService.conflictPolicy = entry.value
+                                        }
+                                    }
+                                }
+
+                                Label {
+                                    text: root.tr("batchAudioConverter.playlistMode")
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                AccentComboBox {
+                                    Layout.fillWidth: true
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    model: root.playlistAddModeOptions()
+                                    currentIndex: root.findOptionIndex(model, batchAudioConverterService.playlistAddMode)
+                                    onActivated: function(index) {
+                                        const entry = model[index]
+                                        if (entry && entry.value !== undefined) {
+                                            batchAudioConverterService.playlistAddMode = entry.value
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 2: DSP & Enhancements
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 2
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    // Speed, Tempo & Pitch Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: bTransformCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: bTransformCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("audioConverter.transformSection")
+                                    font.weight: Font.DemiBold
+                                    font.pointSize: UiMetrics.captionPointSize + 1
+                                    color: themeManager.primaryColor
+                                    Layout.fillWidth: true
+                                }
+
+                                Button {
+                                    text: root.tr("dsp.resetAll")
+                                    icon.source: IconResolver.themed("document-revert", themeManager.darkMode)
+                                    onClicked: root.resetAllDsp()
+                                }
+                            }
+
+                            // Speed Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.speed") + ": " + batchAudioConverterService.speed.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0.25
+                                    to: 3.0
+                                    stepSize: 0.05
+                                    value: batchAudioConverterService.speed
+                                    onMoved: batchAudioConverterService.speed = value
+                                }
+                            }
+
+                            // Tempo Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.tempo") + ": " + batchAudioConverterService.tempo.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0.5
+                                    to: 3.0
+                                    stepSize: 0.05
+                                    value: batchAudioConverterService.tempo
+                                    onMoved: batchAudioConverterService.tempo = value
+                                }
+                            }
+
+                            // Tonality / Pitch Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.tonality") + ": " + (batchAudioConverterService.tonalitySemitones > 0 ? "+" : "") + batchAudioConverterService.tonalitySemitones.toFixed(1) + " st"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: -10.0
+                                    to: 10.0
+                                    stepSize: 0.5
+                                    value: batchAudioConverterService.tonalitySemitones
+                                    onMoved: {
+                                        batchAudioConverterService.tonalitySemitones = value
+                                        batchAudioConverterService.pitchSemitones = Math.round(value)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Space & Modulation Card (Echo, Reverb, Chorus, Flanger)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: bModulationCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: bModulationCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("dsp.generalTitle")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            // Echo Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.echo") + ": " + Math.round(batchAudioConverterService.echoMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: batchAudioConverterService.echoMix
+                                    onMoved: batchAudioConverterService.echoMix = value
+                                }
+                            }
+
+                            // Reverb Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.reverb") + ": " + Math.round(batchAudioConverterService.reverbMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: batchAudioConverterService.reverbMix
+                                    onMoved: {
+                                        batchAudioConverterService.reverbMix = value
+                                        batchAudioConverterService.applyReverb = (value > 0)
+                                    }
+                                }
+                            }
+
+                            // Chorus Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.chorus") + ": " + Math.round(batchAudioConverterService.chorusMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: batchAudioConverterService.chorusMix
+                                    onMoved: batchAudioConverterService.chorusMix = value
+                                }
+                            }
+
+                            // Flanger Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.flanger") + ": " + Math.round(batchAudioConverterService.flangerMix) + "%"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: batchAudioConverterService.flangerMix
+                                    onMoved: batchAudioConverterService.flangerMix = value
+                                }
+                            }
+                        }
+                    }
+
+                    // Dynamics, Bass, Stereobase, Voice Suppression & Equalizer Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: bDspCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: bDspCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("dsp.general.adjustments")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            // Bass Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.bass") + ": " + batchAudioConverterService.bass.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 0.0
+                                    to: 2.0
+                                    stepSize: 0.05
+                                    value: batchAudioConverterService.bass
+                                    onMoved: batchAudioConverterService.bass = value
+                                }
+                            }
+
+                            // Stereobase (Stereo Width) Slider
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Label {
+                                    text: root.tr("dsp.general.stereoWidth") + ": " + batchAudioConverterService.stereoWidth.toFixed(2) + "x"
+                                    Layout.preferredWidth: 150
+                                }
+
+                                AccentSlider {
+                                    Layout.fillWidth: true
+                                    from: 1.0
+                                    to: 5.0
+                                    stepSize: 0.05
+                                    value: batchAudioConverterService.stereoWidth
+                                    onMoved: batchAudioConverterService.stereoWidth = value
+                                }
+                            }
+
+                            // Voice suppression switch
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("dsp.general.voiceSuppression")
+                                    Layout.fillWidth: true
+                                }
+
+                                AccentSwitch {
+                                    checked: batchAudioConverterService.voiceSuppression
+                                    onToggled: batchAudioConverterService.voiceSuppression = checked
+                                }
+                            }
+
+                            // Equalizer switch
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: root.tr("audioConverter.applyCurrentEqualizer")
+                                    Layout.fillWidth: true
+                                }
+
+                                AccentSwitch {
+                                    checked: batchAudioConverterService.applyEqualizer
+                                    onToggled: batchAudioConverterService.applyEqualizer = checked
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 3: Report & Statistics
+            ScrollView {
+                anchors.fill: parent
+                visible: root.activeTabIndex === 3
+                clip: true
+                padding: UiMetrics.spaceL
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: UiMetrics.spaceL
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: reportCol.implicitHeight + UiMetrics.spaceM * 2
+                        radius: themeManager.borderRadius
+                        color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.45)
+                        border.width: 1
+                        border.color: themeManager.borderColor
+
+                        ColumnLayout {
+                            id: reportCol
+                            anchors.fill: parent
+                            anchors.margins: UiMetrics.spaceM
+                            spacing: UiMetrics.spaceM
+
+                            Label {
+                                text: root.tr("batchAudioConverter.reportSection")
+                                font.weight: Font.DemiBold
+                                font.pointSize: UiMetrics.captionPointSize + 1
+                                color: themeManager.primaryColor
+                            }
+
+                            // Stats Chips Grid
+                            GridLayout {
+                                columns: 3
+                                columnSpacing: UiMetrics.spaceM
+                                rowSpacing: UiMetrics.spaceM
+                                Layout.fillWidth: true
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 50
+                                    radius: themeManager.borderRadius
+                                    color: Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.6)
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 2
+                                        Label { text: root.tr("batchAudioConverter.statTotal"); font.pointSize: UiMetrics.captionPointSize; color: themeManager.textMutedColor }
+                                        Label { text: String(batchAudioConverterService.totalCount); font.bold: true; font.pointSize: UiMetrics.bodyPointSize }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 50
+                                    radius: themeManager.borderRadius
+                                    color: Qt.rgba(0.2, 0.8, 0.3, 0.15)
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 2
+                                        Label { text: root.tr("batchAudioConverter.statSucceeded"); font.pointSize: UiMetrics.captionPointSize; color: themeManager.textMutedColor }
+                                        Label { text: String(batchAudioConverterService.succeededCount); font.bold: true; font.pointSize: UiMetrics.bodyPointSize }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 50
+                                    radius: themeManager.borderRadius
+                                    color: Qt.rgba(0.9, 0.2, 0.2, 0.15)
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 2
+                                        Label { text: root.tr("batchAudioConverter.statFailed"); font.pointSize: UiMetrics.captionPointSize; color: themeManager.textMutedColor }
+                                        Label { text: String(batchAudioConverterService.failedCount); font.bold: true; font.pointSize: UiMetrics.bodyPointSize }
+                                    }
+                                }
+                            }
+
+                            // Actions
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.exportReport")
+                                    icon.source: IconResolver.themed("document-save", themeManager.darkMode)
+                                    onClicked: root.reportExportRequested("txt", "batch-conversion-report.txt")
+                                }
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.copyReport")
+                                    icon.source: IconResolver.themed("edit-copy", themeManager.darkMode)
+                                    onClicked: root.copyCurrentReportToClipboard()
+                                }
+
+                                Button {
+                                    text: root.tr("batchAudioConverter.openOutputFolder")
+                                    icon.source: IconResolver.themed("document-open-folder", themeManager.darkMode)
+                                    onClicked: root.openPrimaryOutputFolder()
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
+        // Dialog Footer (Progress & Actions)
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: footerColumn.implicitHeight + Kirigami.Units.largeSpacing * 2
+            implicitHeight: bFooterBox.implicitHeight + UiMetrics.spaceM * 2
             color: Qt.rgba(themeManager.backgroundColor.r,
                            themeManager.backgroundColor.g,
                            themeManager.backgroundColor.b,
-                           themeManager.darkMode ? 0.96 : 0.98)
+                           themeManager.darkMode ? 0.62 : 0.88)
+            border.width: 1
             border.color: themeManager.borderColor
 
             ColumnLayout {
-                id: footerColumn
+                id: bFooterBox
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceS
 
-                Rectangle {
+                // Active Progress Bar Row
+                RowLayout {
                     Layout.fillWidth: true
-                    visible: batchAudioConverterService.hasFinished
-                    radius: 8
-                    color: Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                   Kirigami.Theme.highlightColor.g,
-                                   Kirigami.Theme.highlightColor.b,
-                                   0.10)
-                    border.color: Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                          Kirigami.Theme.highlightColor.g,
-                                          Kirigami.Theme.highlightColor.b,
-                                          0.35)
-                    implicitHeight: summaryFooterColumn.implicitHeight + Kirigami.Units.smallSpacing * 2
+                    visible: batchAudioConverterService.isRunning
+                    spacing: UiMetrics.spaceM
 
-                    ColumnLayout {
-                        id: summaryFooterColumn
-                        anchors.fill: parent
-                        anchors.margins: Kirigami.Units.smallSpacing
-                        spacing: Kirigami.Units.smallSpacing
+                    AccentProgressBar {
+                        Layout.fillWidth: true
+                        value: Number(batchAudioConverterService.batchProgress) || 0
+                    }
 
-                        Label {
-                            Layout.fillWidth: true
-                            text: root.tr("batchAudioConverter.stickyFinalSummary")
-                            color: themeManager.textColor
-                            font.bold: true
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: String(batchAudioConverterService.finalSummary.statusText || "")
-                            color: themeManager.textSecondaryColor
-                            wrapMode: Text.WordWrap
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Button {
-                                text: root.tr("batchAudioConverter.openOutputFolder")
-                                enabled: String(root.primaryOutputFolderPath() || "").trim().length > 0
-                                onClicked: root.openPrimaryOutputFolder()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.copyReport")
-                                onClicked: root.copyCurrentReportToClipboard()
-                            }
-
-                            Button {
-                                text: root.tr("batchAudioConverter.addSucceededOutputsToPlaylist")
-                                visible: batchAudioConverterService.playlistAddMode === "deferred"
-                                enabled: batchAudioConverterService.canAddSucceededResultsToPlaylist
-                                onClicked: root.addSucceededOutputsToPlaylist()
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
-                            }
-                        }
+                    Label {
+                        text: Math.round((Number(batchAudioConverterService.batchProgress) || 0) * 100) + "%"
+                        font.family: "Monospace"
+                        font.bold: true
                     }
                 }
 
+                // Action Buttons Row
                 RowLayout {
-                    id: footerRow
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: UiMetrics.spaceM
 
                     Label {
+                        text: batchAudioConverterService.isRunning
+                              ? (batchAudioConverterService.currentItem.displayName || root.fileNameFromPath(batchAudioConverterService.currentItem.sourceFile))
+                              : ""
+                        color: themeManager.textMutedColor
+                        font.pointSize: UiMetrics.captionPointSize
                         Layout.fillWidth: true
-                        text: root.hasItems
-                              ? root.tr("batchAudioConverter.footerSummary")
-                                    .arg(batchAudioConverterService.pendingCount)
-                                    .arg(batchAudioConverterService.runningCount)
-                                    .arg(batchAudioConverterService.succeededCount)
-                                    .arg(batchAudioConverterService.failedCount)
-                              : root.tr("batchAudioConverter.errorSelectionRequired")
-                        color: themeManager.textSecondaryColor
-                        wrapMode: Text.WordWrap
+                        elide: Text.ElideRight
                     }
 
                     Button {
-                        text: root.tr("batchAudioConverter.convertSelected")
-                        enabled: !batchAudioConverterService.isRunning && root.runnableCount > 0
+                        text: root.tr("batchAudioConverter.start")
+                        highlighted: true
+                        icon.source: IconResolver.themed("media-playback-start", themeManager.darkMode)
+                        enabled: root.hasItems && !batchAudioConverterService.isRunning
+                        visible: !batchAudioConverterService.isRunning
                         onClicked: {
                             root.syncEqualizerSettingsForConversion()
                             batchAudioConverterService.startBatch()
@@ -1790,14 +1686,23 @@ AppDialog {
                     }
 
                     Button {
-                        text: root.tr("audioConverter.cancel")
-                        enabled: batchAudioConverterService.isRunning
+                        text: batchAudioConverterService.isPaused ? root.tr("batchAudioConverter.resume") : root.tr("batchAudioConverter.pause")
+                        icon.source: IconResolver.themed(batchAudioConverterService.isPaused ? "media-playback-start" : "media-playback-pause", themeManager.darkMode)
+                        visible: batchAudioConverterService.isRunning
+                        onClicked: batchAudioConverterService.togglePause()
+                    }
+
+                    Button {
+                        text: root.tr("batchAudioConverter.cancel")
+                        icon.source: IconResolver.themed("dialog-cancel", themeManager.darkMode)
+                        visible: batchAudioConverterService.isRunning
                         onClicked: batchAudioConverterService.cancelBatch()
                     }
 
                     Button {
-                        text: root.tr("audioConverter.close")
-                        enabled: !batchAudioConverterService.isRunning
+                        text: root.tr("dialogs.close")
+                        icon.source: IconResolver.themed("dialog-close", themeManager.darkMode)
+                        visible: !batchAudioConverterService.isRunning
                         onClicked: root.close()
                     }
                 }
@@ -1805,67 +1710,247 @@ AppDialog {
         }
     }
 
-    Connections {
-        target: batchAudioConverterService
-
-        function onItemsChanged() {
-            root.pruneSelection()
-        }
-
-        function onOutputDirectoryChanged() {
-            if (!outputDirectoryField.activeFocus) {
-                outputDirectoryField.text = batchAudioConverterService.outputDirectory
-            }
-        }
-    }
-
-    Connections {
-        target: batchAudioConverterPresetManager
-
-        function onPresetsChanged() {
-            root.syncSelectedPreset()
-        }
-    }
-
+    // Save Preset Dialog
     AppDialog {
-        id: deletePresetDialog
-        title: root.tr("batchAudioConverter.deletePresetTitle")
+        id: savePresetDialog
+        parent: savePresetDialog.isSeparateWindow ? undefined : Overlay.overlay
         modal: true
+        focus: true
+        title: root.tr("batchAudioConverter.saveAsPreset")
         standardButtons: Dialog.NoButton
+        anchors.centerIn: !savePresetDialog.isSeparateWindow ? parent : undefined
+        width: savePresetDialog.isSeparateWindow ? 380 : Math.min(380, root.width - 24)
 
-        contentItem: Kirigami.SelectableLabel {
-            id: deletePresetText
-            width: Math.min(Math.max(260, root.width * 0.48), 440)
-            text: root.tr("batchAudioConverter.deletePresetMessage").arg(root.pendingDeletePresetName)
-            wrapMode: Text.WordWrap
-            color: themeManager.textColor
-            font.family: themeManager.fontFamily
+        contentItem: ColumnLayout {
+            spacing: UiMetrics.spaceM
+
+            Label {
+                text: root.tr("batchAudioConverter.presetNamePlaceholder")
+                color: themeManager.textColor
+            }
+
+            TextField {
+                id: newPresetNameField
+                Layout.fillWidth: true
+                placeholderText: root.tr("batchAudioConverter.presetNamePlaceholder")
+            }
         }
 
         footer: Rectangle {
-            implicitHeight: deletePresetActions.implicitHeight + 16
-            color: themeManager.surfaceColor
+            implicitHeight: savePresetFooter.implicitHeight + UiMetrics.spaceM * 2
+            color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.92)
             border.width: 1
             border.color: themeManager.borderColor
 
             RowLayout {
-                id: deletePresetActions
+                id: savePresetFooter
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 8
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceM
+
                 Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("batchAudioConverter.saveAsPreset")
+                    highlighted: true
+                    onClicked: {
+                        root.saveCurrentAsPreset(newPresetNameField.text)
+                        savePresetDialog.close()
+                    }
+                }
+
                 Button {
                     text: root.tr("audioConverter.cancel")
-                    onClicked: deletePresetDialog.reject()
-                }
-                Button {
-                    text: root.tr("batchAudioConverter.deletePreset")
-                    accent: true
-                    onClicked: deletePresetDialog.accept()
+                    onClicked: savePresetDialog.close()
                 }
             }
         }
+    }
 
-        onAccepted: root.confirmDeleteSelectedPreset()
+    // Delete Preset Confirm Dialog
+    AppDialog {
+        id: deletePresetDialog
+        parent: deletePresetDialog.isSeparateWindow ? undefined : Overlay.overlay
+        modal: true
+        focus: true
+        title: root.tr("batchAudioConverter.deletePresetTitle")
+        standardButtons: Dialog.NoButton
+        anchors.centerIn: !deletePresetDialog.isSeparateWindow ? parent : undefined
+        width: deletePresetDialog.isSeparateWindow ? 380 : Math.min(380, root.width - 24)
+
+        contentItem: Label {
+            text: root.tr("batchAudioConverter.deletePresetMessage").arg(root.pendingDeletePresetName)
+            wrapMode: Text.WordWrap
+            width: deletePresetDialog.availableWidth
+        }
+
+        footer: Rectangle {
+            implicitHeight: delFooter.implicitHeight + UiMetrics.spaceM * 2
+            color: Qt.rgba(themeManager.backgroundColor.r, themeManager.backgroundColor.g, themeManager.backgroundColor.b, 0.92)
+            border.width: 1
+            border.color: themeManager.borderColor
+
+            RowLayout {
+                id: delFooter
+                anchors.fill: parent
+                anchors.margins: UiMetrics.spaceM
+                spacing: UiMetrics.spaceM
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("batchAudioConverter.deletePreset")
+                    highlighted: true
+                    onClicked: {
+                        deletePresetDialog.close()
+                        root.confirmDeleteSelectedPreset()
+                    }
+                }
+
+                Button {
+                    text: root.tr("audioConverter.cancel")
+                    onClicked: deletePresetDialog.close()
+                }
+            }
+        }
+    }
+
+    // Item Fragment Trimming Dialog
+    AppDialog {
+        id: itemTrimDialog
+        parent: itemTrimDialog.isSeparateWindow ? undefined : Overlay.overlay
+        modal: true
+        focus: true
+        title: root.tr("batchAudioConverter.trimTitle")
+        implicitWidth: Math.round(440 * UiMetrics.fontScale)
+        implicitHeight: Math.round(340 * UiMetrics.fontScale)
+
+        property string targetItemId: ""
+        property string targetItemName: ""
+        property int targetDurationMs: 0
+
+        property bool editingTrimEnabled: false
+        property int editingTrimStartSec: 0
+        property int editingTrimEndSec: 0
+
+        function openForItem(item) {
+            if (!item) return
+            targetItemId = String(item.itemId || "")
+            targetItemName = String(item.displayName || root.fileNameFromPath(item.sourceFile) || "")
+            targetDurationMs = Number(item.sourceDurationMs || 0)
+
+            editingTrimEnabled = Boolean(item.trimEnabled)
+            editingTrimStartSec = Math.floor((Number(item.trimStartMs) || 0) / 1000)
+            const maxSec = Math.max(1, Math.floor(targetDurationMs / 1000))
+            const rawEndSec = Math.floor((Number(item.trimEndMs) || 0) / 1000)
+            editingTrimEndSec = (rawEndSec > 0) ? Math.min(rawEndSec, maxSec) : maxSec
+
+            open()
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: UiMetrics.spaceL
+            spacing: UiMetrics.spaceM
+
+            Label {
+                text: itemTrimDialog.targetItemName
+                font.bold: true
+                Layout.fillWidth: true
+                elide: Text.ElideMiddle
+                color: themeManager.textColor
+            }
+
+            Label {
+                text: root.tr("playlist.duration") + ": " + root.formatDuration(itemTrimDialog.targetDurationMs)
+                font.pointSize: UiMetrics.captionPointSize
+                color: themeManager.textMutedColor
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                title: root.tr("batchAudioConverter.trimEnable")
+                checked: itemTrimDialog.editingTrimEnabled
+                onToggled: itemTrimDialog.editingTrimEnabled = checked
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: UiMetrics.spaceM
+                enabled: itemTrimDialog.editingTrimEnabled
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        text: root.tr("batchAudioConverter.trimStart")
+                        font.pointSize: UiMetrics.captionPointSize
+                        color: themeManager.textMutedColor
+                    }
+
+                    SpinBox {
+                        Layout.fillWidth: true
+                        from: 0
+                        to: Math.max(0, itemTrimDialog.editingTrimEndSec - 1)
+                        stepSize: 1
+                        editable: true
+                        value: itemTrimDialog.editingTrimStartSec
+                        onValueModified: itemTrimDialog.editingTrimStartSec = value
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        text: root.tr("batchAudioConverter.trimEnd")
+                        font.pointSize: UiMetrics.captionPointSize
+                        color: themeManager.textMutedColor
+                    }
+
+                    SpinBox {
+                        Layout.fillWidth: true
+                        from: Math.max(1, itemTrimDialog.editingTrimStartSec + 1)
+                        to: Math.max(1, Math.floor(itemTrimDialog.targetDurationMs / 1000))
+                        stepSize: 1
+                        editable: true
+                        value: itemTrimDialog.editingTrimEndSec
+                        onValueModified: itemTrimDialog.editingTrimEndSec = value
+                    }
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: UiMetrics.spaceM
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: root.tr("dialogs.cancel")
+                    icon.source: IconResolver.themed("dialog-cancel", themeManager.darkMode)
+                    onClicked: itemTrimDialog.close()
+                }
+
+                Button {
+                    text: root.tr("dialogs.apply")
+                    highlighted: true
+                    icon.source: IconResolver.themed("dialog-ok", themeManager.darkMode)
+                    onClicked: {
+                        batchAudioConverterService.setItemTrim(
+                            itemTrimDialog.targetItemId,
+                            itemTrimDialog.editingTrimEnabled,
+                            itemTrimDialog.editingTrimStartSec * 1000,
+                            itemTrimDialog.editingTrimEndSec * 1000
+                        )
+                        itemTrimDialog.close()
+                    }
+                }
+            }
+        }
     }
 }

@@ -97,6 +97,7 @@ private slots:
     void usesDashVersionForRealFfmpegContract();
     void persistsAndManagesFragmentRepeatSettings();
     void translatesWaveformPlaceholderKeys();
+    void translatesSettingsDialogKeys();
 };
 
 void AppSettingsManagerTest::initTestCase()
@@ -128,6 +129,7 @@ void AppSettingsManagerTest::defaultsNewPlaylistFolderAutoAddToEnabled()
     AppSettingsManager settings;
     QCOMPARE(settings.autoAddTracksFromPlaylistFolder(), true);
     QCOMPARE(settings.separateWindowDialogs(), false);
+    QCOMPARE(settings.notifyOnTrackChange(), true);
     QCOMPARE(settings.autoCheckUpdates(), true);
     QCOMPARE(settings.includePrereleaseUpdates(), false);
     QCOMPARE(settings.trackInfoEnabled(), false);
@@ -213,6 +215,15 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     ytDlpLastSettings.insert(QStringLiteral("namingPolicy"), QStringLiteral("title-only"));
     ytDlpLastSettings.insert(QStringLiteral("conflictPolicy"), QStringLiteral("skip-on-conflict"));
     ytDlpLastSettings.insert(QStringLiteral("parallelDownloads"), 4);
+    ytDlpLastSettings.insert(QStringLiteral("probeCustomArgs"), QStringLiteral("--cookies-from-browser firefox"));
+    ytDlpLastSettings.insert(QStringLiteral("downloadCustomArgs"), QStringLiteral("--limit-rate 5M"));
+    ytDlpLastSettings.insert(QStringLiteral("embedMetadata"), true);
+    ytDlpLastSettings.insert(QStringLiteral("embedThumbnail"), true);
+    ytDlpLastSettings.insert(QStringLiteral("cropCoverArt"), true);
+    ytDlpLastSettings.insert(QStringLiteral("removeSourceMetadata"), true);
+    ytDlpLastSettings.insert(QStringLiteral("useAria2c"), true);
+    ytDlpLastSettings.insert(QStringLiteral("aria2cMaxConnections"), 8);
+    ytDlpLastSettings.insert(QStringLiteral("aria2cMinSplitSizeMb"), 30);
     QVariantMap ytDlpDraft;
     ytDlpDraft.insert(QStringLiteral("schema"), QStringLiteral("waveflux.ytdlp-import.v2"));
     ytDlpDraft.insert(QStringLiteral("persistedAtMs"), QDateTime::currentMSecsSinceEpoch());
@@ -257,6 +268,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         settings.setCueWaveformOverlayLabelsEnabled(false);
         settings.setCueWaveformOverlayAutoHideOnZoom(false);
         settings.setShowSpeedPitchControls(true);
+        settings.setNotifyOnTrackChange(false);
         settings.setReversePlayback(true);
         settings.setAudioQualityProfile(QStringLiteral("studio"));
         settings.setDynamicSpectrum(true);
@@ -315,6 +327,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         QStringLiteral("waveform.cueOverlayLabelsEnabled"),
         QStringLiteral("waveform.cueOverlayAutoHideOnZoom"),
         QStringLiteral("showSpeedPitchControls"),
+        QStringLiteral("playback.notifyOnTrackChange"),
         QStringLiteral("reversePlayback"),
         QStringLiteral("audioQualityProfile"),
         QStringLiteral("dynamicSpectrum"),
@@ -381,6 +394,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     QCOMPARE(reloaded.cueWaveformOverlayLabelsEnabled(), false);
     QCOMPARE(reloaded.cueWaveformOverlayAutoHideOnZoom(), false);
     QCOMPARE(reloaded.showSpeedPitchControls(), true);
+    QCOMPARE(reloaded.notifyOnTrackChange(), false);
     QCOMPARE(reloaded.reversePlayback(), true);
     QCOMPARE(reloaded.audioQualityProfile(), QStringLiteral("studio"));
     QCOMPARE(reloaded.dynamicSpectrum(), true);
@@ -846,6 +860,41 @@ void AppSettingsManagerTest::translatesWaveformPlaceholderKeys()
     QCOMPARE(settings.translate(QStringLiteral("waveform.emptyPlaceholder")), QStringLiteral("Перетащите сюда аудиофайл"));
     QCOMPARE(settings.translate(QStringLiteral("waveform.generationDisabledPlaceholder")), QStringLiteral("Генерация волны отключена"));
     QCOMPARE(settings.translate(QStringLiteral("waveform.externalCachePlaceholder")), QStringLiteral("Только внешний кэш волны"));
+}
+
+void AppSettingsManagerTest::translatesSettingsDialogKeys()
+{
+    AppSettingsManager settings;
+
+    // English
+    settings.setLanguage(QStringLiteral("en"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.compactPlaylistTrackNumberVisible")),
+             QStringLiteral("Show track numbers in compact playlist"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.confirmTrash")),
+             QStringLiteral("Confirm moving files to trash"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.closeToTray")),
+             QStringLiteral("Close to tray"));
+    QCOMPARE(settings.translate(QStringLiteral("dialogs.close")),
+             QStringLiteral("Close"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.resetConfirmTitleGeneral")),
+             QStringLiteral("Confirm General Reset"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.resetConfirmTitleAppearance")),
+             QStringLiteral("Confirm Appearance Reset"));
+
+    // Russian
+    settings.setLanguage(QStringLiteral("ru"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.compactPlaylistTrackNumberVisible")),
+             QStringLiteral("Номера треков в компактном плейлисте"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.confirmTrash")),
+             QStringLiteral("Подтверждать перемещение в корзину"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.closeToTray")),
+             QStringLiteral("Закрывать в трей"));
+    QCOMPARE(settings.translate(QStringLiteral("dialogs.close")),
+             QStringLiteral("Закрыть"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.resetConfirmTitleGeneral")),
+             QStringLiteral("Подтвердите сброс основных настроек"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.resetConfirmTitleAppearance")),
+             QStringLiteral("Подтвердите сброс внешнего вида"));
 }
 
 QTEST_MAIN(AppSettingsManagerTest)

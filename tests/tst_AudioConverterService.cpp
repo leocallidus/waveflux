@@ -171,6 +171,12 @@ private slots:
     void supportsNonAsciiPathsForWavAndMp3();
     void addsConvertedTrackToPlaylistOnFinished();
     void acceptsDroppedWebmFilesIntoPlaylist();
+    void exposesDspDefaultsAndNormalizesProperties();
+    void resetsDspSettingsToDefaults();
+    void resetsIndividualParameters();
+    void controlsSamplePreviewLifecycle();
+    void completesWavConversionWithDspSettings();
+    void supportsPauseAndResumeControls();
 };
 
 void AudioConverterServiceTest::initTestCase()
@@ -1270,6 +1276,360 @@ void AudioConverterServiceTest::acceptsDroppedWebmFilesIntoPlaylist()
     QCOMPARE(trackModel.rowCount(), 1);
     QVERIFY(countSpy.count() >= 1);
     QCOMPARE(trackModel.getFilePath(0), webmPath);
+}
+
+void AudioConverterServiceTest::exposesDspDefaultsAndNormalizesProperties()
+{
+    AudioConverterService service;
+
+    QCOMPARE(service.speed(), 1.0);
+    QCOMPARE(service.tempo(), 1.0);
+    QCOMPARE(service.tonalitySemitones(), 0.0);
+    QCOMPARE(service.echoMix(), 0.0);
+    QCOMPARE(service.chorusMix(), 0.0);
+    QCOMPARE(service.flangerMix(), 0.0);
+    QCOMPARE(service.reverbMix(), 0.0);
+    QCOMPARE(service.bass(), 1.0);
+    QCOMPARE(service.stereoWidth(), 1.0);
+    QCOMPARE(service.voiceSuppression(), false);
+    QCOMPARE(service.isPreviewPlaying(), false);
+
+    service.setSpeed(1.5);
+    QCOMPARE(service.speed(), 1.5);
+    service.setSpeed(10.0);
+    QCOMPARE(service.speed(), 3.0);
+    service.setSpeed(0.01);
+    QCOMPARE(service.speed(), 0.25);
+
+    service.setTempo(2.0);
+    QCOMPARE(service.tempo(), 2.0);
+    service.setTempo(10.0);
+    QCOMPARE(service.tempo(), 3.0);
+    service.setTempo(0.1);
+    QCOMPARE(service.tempo(), 0.5);
+
+    service.setTonalitySemitones(-4.5);
+    QCOMPARE(service.tonalitySemitones(), -4.5);
+    service.setTonalitySemitones(15.0);
+    QCOMPARE(service.tonalitySemitones(), 10.0);
+    service.setTonalitySemitones(-15.0);
+    QCOMPARE(service.tonalitySemitones(), -10.0);
+
+    service.setEchoMix(50.0);
+    QCOMPARE(service.echoMix(), 50.0);
+    service.setEchoMix(150.0);
+    QCOMPARE(service.echoMix(), 100.0);
+
+    service.setChorusMix(30.0);
+    QCOMPARE(service.chorusMix(), 30.0);
+
+    service.setFlangerMix(40.0);
+    QCOMPARE(service.flangerMix(), 40.0);
+
+    service.setReverbMix(25.0);
+    QCOMPARE(service.reverbMix(), 25.0);
+
+    service.setBass(1.8);
+    QCOMPARE(service.bass(), 1.8);
+    service.setBass(5.0);
+    QCOMPARE(service.bass(), 2.0);
+
+    service.setStereoWidth(2.5);
+    QCOMPARE(service.stereoWidth(), 2.5);
+    service.setStereoWidth(10.0);
+    QCOMPARE(service.stereoWidth(), 5.0);
+    service.setStereoWidth(0.5);
+    QCOMPARE(service.stereoWidth(), 1.0);
+
+    service.setVoiceSuppression(true);
+    QCOMPARE(service.voiceSuppression(), true);
+}
+
+void AudioConverterServiceTest::resetsDspSettingsToDefaults()
+{
+    AudioConverterService service;
+
+    service.setSpeed(1.8);
+    service.setTempo(1.3);
+    service.setTonalitySemitones(3.5);
+    service.setEchoMix(45.0);
+    service.setChorusMix(60.0);
+    service.setFlangerMix(35.0);
+    service.setReverbMix(50.0);
+    service.setBass(1.6);
+    service.setStereoWidth(2.2);
+    service.setVoiceSuppression(true);
+    service.setApplyEqualizer(true);
+    service.setApplyReverb(true);
+
+    service.resetDspSettings();
+
+    QCOMPARE(service.speed(), 1.0);
+    QCOMPARE(service.tempo(), 1.0);
+    QCOMPARE(service.tonalitySemitones(), 0.0);
+    QCOMPARE(service.echoMix(), 0.0);
+    QCOMPARE(service.chorusMix(), 0.0);
+    QCOMPARE(service.flangerMix(), 0.0);
+    QCOMPARE(service.reverbMix(), 0.0);
+    QCOMPARE(service.bass(), 1.0);
+    QCOMPARE(service.stereoWidth(), 1.0);
+    QCOMPARE(service.voiceSuppression(), false);
+    QCOMPARE(service.applyEqualizer(), false);
+    QCOMPARE(service.applyReverb(), false);
+}
+
+void AudioConverterServiceTest::resetsIndividualParameters()
+{
+    AudioConverterService service;
+
+    // Reset speed
+    service.setSpeed(2.5);
+    service.resetParameter(QStringLiteral("speed"));
+    QCOMPARE(service.speed(), 1.0);
+
+    // Reset tempo
+    service.setTempo(1.8);
+    service.resetParameter(QStringLiteral("tempo"));
+    QCOMPARE(service.tempo(), 1.0);
+
+    // Reset tonality
+    service.setTonalitySemitones(-4.5);
+    service.resetParameter(QStringLiteral("tonality"));
+    QCOMPARE(service.tonalitySemitones(), 0.0);
+
+    // Reset pitch
+    service.setPitchSemitones(5);
+    service.resetParameter(QStringLiteral("pitch"));
+    QCOMPARE(service.pitchSemitones(), 0);
+
+    // Reset bass
+    service.setBass(0.2);
+    service.resetParameter(QStringLiteral("bass"));
+    QCOMPARE(service.bass(), 1.0);
+
+    // Reset stereo width
+    service.setStereoWidth(3.5);
+    service.resetParameter(QStringLiteral("stereowidth"));
+    QCOMPARE(service.stereoWidth(), 1.0);
+
+    // Reset echo
+    service.setEchoMix(75.0);
+    service.resetParameter(QStringLiteral("echo"));
+    QCOMPARE(service.echoMix(), 0.0);
+
+    // Reset chorus
+    service.setChorusMix(50.0);
+    service.resetParameter(QStringLiteral("chorus"));
+    QCOMPARE(service.chorusMix(), 0.0);
+
+    // Reset flanger
+    service.setFlangerMix(65.0);
+    service.resetParameter(QStringLiteral("flanger"));
+    QCOMPARE(service.flangerMix(), 0.0);
+
+    // Reset reverb
+    service.setReverbMix(80.0);
+    service.resetParameter(QStringLiteral("reverb"));
+    QCOMPARE(service.reverbMix(), 0.0);
+
+    // Reset voice suppression
+    service.setVoiceSuppression(true);
+    service.resetParameter(QStringLiteral("voicesuppression"));
+    QCOMPARE(service.voiceSuppression(), false);
+
+    // Reset equalizer
+    service.setApplyEqualizer(true);
+    service.resetParameter(QStringLiteral("applyequalizer"));
+    QCOMPARE(service.applyEqualizer(), false);
+
+    // Reset trim
+    service.setTrimEnabled(true);
+    service.setTrimStartMs(5000);
+    service.setTrimEndMs(20000);
+    service.resetParameter(QStringLiteral("trim"));
+    QCOMPARE(service.trimEnabled(), false);
+    service.resetParameter(QStringLiteral("trimstart"));
+    QCOMPARE(service.trimStartMs(), 0);
+
+    // Reset format, bitrate, samplerate, channelmode
+    service.setFormat(QStringLiteral("flac"));
+    service.resetParameter(QStringLiteral("format"));
+    QCOMPARE(service.format(), QStringLiteral("mp3"));
+
+    service.setBitrate(128);
+    service.resetParameter(QStringLiteral("bitrate"));
+    QCOMPARE(service.bitrate(), 320);
+
+    service.setSampleRate(48000);
+    service.resetParameter(QStringLiteral("samplerate"));
+    QCOMPARE(service.sampleRate(), 44100);
+
+    service.setChannelMode(QStringLiteral("mono"));
+    service.resetParameter(QStringLiteral("channelmode"));
+    QCOMPARE(service.channelMode(), QStringLiteral("stereo"));
+
+    // Reset preview loop
+    service.setPreviewLoop(true);
+    service.resetParameter(QStringLiteral("previewloop"));
+    QCOMPARE(service.previewLoop(), false);
+}
+
+void AudioConverterServiceTest::controlsSamplePreviewLifecycle()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("identity")
+        || !hasFactory("autoaudiosink")) {
+        QSKIP("Required GStreamer elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("preview_source.wav"));
+    writeSilentWavFile(sourcePath, 44100, 2, 500);
+
+    AudioConverterService service;
+    QCOMPARE(service.previewStartMs(), 0);
+    QCOMPARE(service.previewEndMs(), 15000);
+    QCOMPARE(service.previewLoop(), false);
+
+    service.setPreviewStartMs(2000);
+    QCOMPARE(service.previewStartMs(), 2000);
+    service.setPreviewEndMs(8000);
+    QCOMPARE(service.previewEndMs(), 8000);
+    service.setPreviewLoop(true);
+    QCOMPARE(service.previewLoop(), true);
+
+    service.resetPreviewRange();
+    QCOMPARE(service.previewStartMs(), 0);
+    QCOMPARE(service.previewEndMs(), 15000);
+
+    QCOMPARE(service.startPreview(), false);
+
+    service.setSourceFile(sourcePath);
+    service.setSpeed(1.2);
+    service.setEchoMix(20.0);
+    service.setPreviewStartMs(2000);
+    service.setPreviewEndMs(5000);
+
+    QSignalSpy isPlayingSpy(&service, &AudioConverterService::isPreviewPlayingChanged);
+
+    const QString source10s = tempDir.filePath(QStringLiteral("source_10s.wav"));
+    writeSilentWavFile(source10s, 44100, 2, 10000);
+    service.setSourceFile(source10s);
+
+    const bool started = service.startPreview(2000, 5000);
+    if (!started) {
+        QSKIP("Autoaudiosink could not initialize audio device in test environment.");
+    }
+
+    QVERIFY(service.isPreviewPlaying());
+    QVERIFY(isPlayingSpy.count() >= 1);
+    QCOMPARE(service.previewPositionMs(), 2000);
+
+    QTest::qWait(200);
+    if (service.isPreviewPlaying()) {
+        QVERIFY(service.previewPositionMs() >= 2000);
+        QVERIFY(service.previewPositionMs() <= 5000);
+
+        // Dynamically adjust speed, tempo, tonality, and pitch while playing
+        service.setSpeed(1.5);
+        QCOMPARE(service.speed(), 1.5);
+        service.setTempo(1.3);
+        QCOMPARE(service.tempo(), 1.3);
+        service.setTonalitySemitones(3.0);
+        QCOMPARE(service.tonalitySemitones(), 3.0);
+        service.setPitchSemitones(-2);
+        QCOMPARE(service.pitchSemitones(), -2);
+        // Dynamically adjust format, bitrate, sample rate, and channel mode while playing
+        service.setBitrate(128);
+        QCOMPARE(service.bitrate(), 128);
+        service.setSampleRate(22050);
+        QCOMPARE(service.sampleRate(), 22050);
+        service.setChannelMode(QStringLiteral("mono"));
+        QCOMPARE(service.channelMode(), QStringLiteral("mono"));
+        service.setApplyEqualizer(true);
+        QCOMPARE(service.applyEqualizer(), true);
+
+        // Seeking within fragment
+        QVERIFY(service.seekPreview(3500));
+        QCOMPARE(service.previewPositionMs(), 3500);
+
+        QVERIFY(service.seekPreviewProgress(0.8));
+        QVERIFY(service.previewPositionMs() >= 4000);
+    }
+
+    service.togglePreview();
+    QVERIFY(!service.isPreviewPlaying());
+
+    service.togglePreview();
+    QVERIFY(service.isPreviewPlaying());
+
+    service.stopPreview();
+    QVERIFY(!service.isPreviewPlaying());
+}
+
+void AudioConverterServiceTest::completesWavConversionWithDspSettings()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("identity")
+        || !hasFactory("wavenc")
+        || !hasFactory("filesink")) {
+        QSKIP("Required GStreamer conversion elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("dsp_source.wav"));
+    const QString outputPath = tempDir.filePath(QStringLiteral("dsp_output.wav"));
+    writeSilentWavFile(sourcePath, 44100, 2, 300);
+
+    AudioConverterService service;
+    service.setSourceFile(sourcePath);
+    service.setFormat(QStringLiteral("wav"));
+    service.setOutputFile(outputPath);
+
+    service.setSpeed(1.1);
+    service.setTempo(1.05);
+    service.setTonalitySemitones(1.0);
+    service.setEchoMix(10.0);
+    service.setChorusMix(15.0);
+    service.setFlangerMix(10.0);
+    service.setReverbMix(10.0);
+    service.setBass(1.2);
+    service.setStereoWidth(1.5);
+    service.setVoiceSuppression(true);
+
+    QSignalSpy finishedSpy(&service, &AudioConverterService::conversionFinished);
+    QSignalSpy failedSpy(&service, &AudioConverterService::conversionFailed);
+
+    QVERIFY(service.startConversion());
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(failedSpy.count(), 0);
+    QVERIFY(QFileInfo::exists(outputPath));
+    QVERIFY(QFileInfo(outputPath).size() > 44);
+}
+
+void AudioConverterServiceTest::supportsPauseAndResumeControls()
+{
+    AudioConverterService service;
+    QCOMPARE(service.isPaused(), false);
+    QCOMPARE(service.isPreviewPaused(), false);
+
+    // Calling pause/resume when not running returns false
+    QCOMPARE(service.pauseConversion(), false);
+    QCOMPARE(service.resumeConversion(), false);
+    QCOMPARE(service.pausePreview(), false);
+    QCOMPARE(service.resumePreview(), false);
 }
 
 QTEST_GUILESS_MAIN(AudioConverterServiceTest)

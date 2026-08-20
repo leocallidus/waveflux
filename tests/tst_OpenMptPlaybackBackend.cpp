@@ -945,18 +945,16 @@ void OpenMptPlaybackBackendTest::pcmEngine_pitchShiftPreservesClockAndSeekRemain
     pitchedEngine->load(std::move(pitchedModule), std::move(pitchedStream), nullptr, durationMs);
     pitchedEngine->setPitchSemitones(4);
 
-    QTRY_VERIFY_WITH_TIMEOUT(neutralEngine->availableOutputBytes() > 0, 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(pitchedEngine->availableOutputBytes() > 0, 1000);
-
     QByteArray neutralBuffer(WaveFlux::TrackerPcmEngine::kOutputBytesPerFrame * 4096, Qt::Uninitialized);
     QByteArray pitchedBuffer(WaveFlux::TrackerPcmEngine::kOutputBytesPerFrame * 4096, Qt::Uninitialized);
 
-    QVERIFY(neutralEngine->readInt16(neutralBuffer.data(), neutralBuffer.size()) > 0);
-    QVERIFY(pitchedEngine->readInt16(pitchedBuffer.data(), pitchedBuffer.size()) > 0);
-    QTRY_VERIFY_WITH_TIMEOUT(neutralEngine->availableOutputBytes() > 0, 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(pitchedEngine->availableOutputBytes() > 0, 1000);
-    QVERIFY(neutralEngine->readInt16(neutralBuffer.data(), neutralBuffer.size()) > 0);
-    QVERIFY(pitchedEngine->readInt16(pitchedBuffer.data(), pitchedBuffer.size()) > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(neutralEngine->availableOutputBytes() >= static_cast<std::size_t>(neutralBuffer.size()), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pitchedEngine->availableOutputBytes() >= static_cast<std::size_t>(pitchedBuffer.size()), 1000);
+
+    const std::size_t neutralRead = neutralEngine->readInt16(neutralBuffer.data(), neutralBuffer.size());
+    const std::size_t pitchedRead = pitchedEngine->readInt16(pitchedBuffer.data(), pitchedBuffer.size());
+    QVERIFY(neutralRead > 0);
+    QCOMPARE(pitchedRead, neutralRead);
 
     const qint64 neutralPositionMs = neutralEngine->positionMs();
     const qint64 pitchedPositionMs = pitchedEngine->positionMs();

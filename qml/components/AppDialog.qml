@@ -13,6 +13,11 @@ Dialog {
     property bool activeSeparateWindow: requestedSeparateWindow
     readonly property bool isSeparateWindow: activeSeparateWindow
 
+    function tr(key) {
+        const _rev = (typeof appSettings !== "undefined" && appSettings) ? appSettings.translationRevision : 0
+        return (typeof appSettings !== "undefined" && appSettings) ? appSettings.translate(key) : String(key || "")
+    }
+
     popupType: root.isSeparateWindow ? Popup.Window : Popup.Item
 
     function syncPopupMode() {

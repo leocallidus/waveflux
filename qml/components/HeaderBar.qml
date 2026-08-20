@@ -709,6 +709,9 @@ Rectangle {
             action: root.menuActions ? root.menuActions.fileResetPlaylist : null
         }
         FluxMenuItem {
+            action: root.menuActions ? root.menuActions.fileRefreshPlaylist : null
+        }
+        FluxMenuItem {
             action: root.menuActions ? root.menuActions.fileExportPlaylist : null
         }
         FluxMenuItem {
@@ -823,6 +826,7 @@ Rectangle {
 
         FluxMenuItem { action: root.menuActions ? root.menuActions.libraryCurrentPlaylist : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.fileResetPlaylist : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.fileRefreshPlaylist : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.librarySaveCurrentPlaylist : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.libraryNewEmptyPlaylist : null }
         MenuSeparator {}
@@ -922,6 +926,7 @@ Rectangle {
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileOpenAudioConverter : null }
             MenuSeparator {}
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileResetPlaylist : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.fileRefreshPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileExportPlaylist : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.fileClearPlaylist : null }
             MenuSeparator {}

@@ -265,6 +265,16 @@ void XdgPortalFilePicker::openImageFile(const QString &title)
     startRequest(RequestKind::OpenImageFile, QStringLiteral("OpenFile"), title, options);
 }
 
+void XdgPortalFilePicker::saveImageFile(const QString &title, const QString &defaultName)
+{
+    QVariantMap options;
+    options.insert(QStringLiteral("handle_token"), createHandleToken(QStringLiteral("image_save")));
+    options.insert(QStringLiteral("current_name"), defaultName);
+    options.insert(QStringLiteral("modal"), true);
+
+    startRequest(RequestKind::SaveImageFile, QStringLiteral("SaveFile"), title, options);
+}
+
 void XdgPortalFilePicker::openExecutableFile(const QString &title)
 {
     registerPortalFileFilterMetaTypes();
@@ -534,6 +544,9 @@ void XdgPortalFilePicker::onPortalResponse(uint response, const QVariantMap &res
         break;
     case RequestKind::OpenImageFile:
         emit imageFileSelected(urls.constFirst().toUrl());
+        break;
+    case RequestKind::SaveImageFile:
+        emit saveImageFileSelected(urls.constFirst().toUrl());
         break;
     case RequestKind::OpenExecutableFile:
         emit executableFileSelected(urls.constFirst().toUrl());

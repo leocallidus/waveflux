@@ -8,6 +8,7 @@ class QAction;
 class AudioEngine;
 class AppSettingsManager;
 class PlaybackController;
+class TrackModel;
 class QMenu;
 class QSystemTrayIcon;
 class QWindow;
@@ -26,7 +27,8 @@ public:
     void initialize(QWindow *mainWindow,
                     AudioEngine *audioEngine,
                     PlaybackController *playbackController,
-                    AppSettingsManager *settingsManager);
+                    AppSettingsManager *settingsManager,
+                    TrackModel *trackModel = nullptr);
 
     bool available() const;
     bool enabled() const { return m_enabled; }
@@ -34,6 +36,7 @@ public:
 public slots:
     void setEnabled(bool enabled);
     void requestQuit();
+    void showTrackNotification();
 
 signals:
     void enabledChanged();
@@ -55,6 +58,7 @@ private:
     AudioEngine *m_audioEngine = nullptr;
     PlaybackController *m_playbackController = nullptr;
     AppSettingsManager *m_settingsManager = nullptr;
+    TrackModel *m_trackModel = nullptr;
 
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_contextMenu = nullptr;

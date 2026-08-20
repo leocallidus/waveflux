@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(waveflux VERSION 1.3.1 LANGUAGES CXX)
+project(waveflux VERSION 1.4.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CheckCXXSourceCompiles)
@@ -137,8 +137,13 @@ set(SOURCES
     src/SessionManager.cpp
     src/PlaylistExportService.cpp
     src/PlaylistProfilesManager.cpp
+    src/DesktopNotificationService.cpp
     src/YtDlpImportService.cpp
     src/EqualizerPresetManager.cpp
+    src/DspSettingsManager.cpp
+    src/dsp/DspParameters.cpp
+    src/dsp/DspCapabilities.cpp
+    src/dsp/DspProcessor.cpp
     src/BatchAudioConverterPresetManager.cpp
     src/AppSettingsManager.cpp
     src/UpdateChecker.cpp
@@ -154,6 +159,7 @@ set(SOURCES
     src/library/LibraryRepository.cpp
     src/library/SearchRepository.cpp
     src/library/SmartCollectionsEngine.cpp
+    src/SettingsRegistry.cpp
 )
 
 if(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
@@ -202,6 +208,10 @@ set(HEADERS
     src/PlaylistProfilesManager.h
     src/YtDlpImportService.h
     src/EqualizerPresetManager.h
+    src/DspSettingsManager.h
+    src/dsp/DspParameters.h
+    src/dsp/DspCapabilities.h
+    src/dsp/DspProcessor.h
     src/BatchAudioConverterPresetManager.h
     src/AppSettingsManager.h
     src/UpdateChecker.h
@@ -218,6 +228,7 @@ set(HEADERS
     src/library/LibraryRepository.h
     src/library/SearchRepository.h
     src/library/SmartCollectionsEngine.h
+    src/SettingsRegistry.h
 )
 
 if(WIN32)
@@ -250,7 +261,7 @@ set_source_files_properties(qml/components/UiMetrics.qml PROPERTIES
 
 qt_add_qml_module(waveflux
     URI WaveFlux
-    VERSION 1.3
+    VERSION 1.4
     QML_FILES
         qml/Main.qml
         qml/CompactSkin.qml
@@ -261,6 +272,24 @@ qt_add_qml_module(waveflux
         qml/components/SettingToggleRow.qml
         qml/components/SettingSliderRow.qml
         qml/components/SettingComboRow.qml
+        qml/components/SettingRow.qml
+        qml/components/SettingSwitchRow.qml
+        qml/components/SettingActionRow.qml
+        qml/components/SettingTextFieldRow.qml
+        qml/components/SettingPathRow.qml
+        qml/components/SettingColorRow.qml
+        qml/components/SettingsGroup.qml
+        qml/settings/components/CategoryNavItem.qml
+        qml/settings/components/CategoryDrawer.qml
+        qml/settings/GeneralSettingsPage.qml
+        qml/settings/AppearanceSettingsPage.qml
+        qml/settings/PlaylistSettingsPage.qml
+        qml/settings/PlaybackSettingsPage.qml
+        qml/settings/WaveformSettingsPage.qml
+        qml/settings/TrackInfoSettingsPage.qml
+        qml/settings/SystemToolsSettingsPage.qml
+        qml/settings/ShortcutsSettingsPage.qml
+        qml/settings/AdvancedResetSettingsPage.qml
         qml/components/SettingHintText.qml
         qml/components/AppDialog.qml
         qml/components/UiMetrics.qml
@@ -298,6 +327,15 @@ qt_add_qml_module(waveflux
         qml/components/KeyboardShortcutsDialog.qml
         qml/SettingsDialog.qml
         qml/EqualizerDialog.qml
+        qml/DspManagerDialog.qml
+        qml/dsp/DspGeneralPage.qml
+        qml/dsp/DspEqualizerPage.qml
+        qml/dsp/DspVolumePage.qml
+        qml/dsp/DspMixPage.qml
+        qml/dsp/DspSilenceRemovalPage.qml
+        qml/components/DspParameterSlider.qml
+        qml/components/DspSection.qml
+        qml/components/DspAvailabilityNotice.qml
         qml/FragmentRepeatDialog.qml
         qml/SmartCollectionDialog.qml
         qml/PlaylistColumnsDialog.qml

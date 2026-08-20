@@ -21,7 +21,9 @@ class BatchAudioConverterService : public QObject
     Q_PROPERTY(QVariantMap jobMetadata READ jobMetadata NOTIFY jobMetadataChanged)
     Q_PROPERTY(QVariantList finishedJobHistory READ finishedJobHistory NOTIFY finishedJobHistoryChanged)
     Q_PROPERTY(bool isRunning READ isRunning NOTIFY isRunningChanged)
+    Q_PROPERTY(bool isPaused READ isPaused NOTIFY isPausedChanged)
     Q_PROPERTY(bool cancelRequested READ cancelRequested NOTIFY cancelRequestedChanged)
+    Q_PROPERTY(double progress READ batchProgress NOTIFY batchProgressChanged)
     Q_PROPERTY(double batchProgress READ batchProgress NOTIFY batchProgressChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
@@ -40,6 +42,16 @@ class BatchAudioConverterService : public QObject
     Q_PROPERTY(QString channelMode READ channelMode WRITE setChannelMode NOTIFY channelModeChanged)
     Q_PROPERTY(double playbackRate READ playbackRate WRITE setPlaybackRate NOTIFY playbackRateChanged)
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
+    Q_PROPERTY(double speed READ speed WRITE setSpeed NOTIFY speedChanged)
+    Q_PROPERTY(double tempo READ tempo WRITE setTempo NOTIFY tempoChanged)
+    Q_PROPERTY(double tonalitySemitones READ tonalitySemitones WRITE setTonalitySemitones NOTIFY tonalitySemitonesChanged)
+    Q_PROPERTY(double echoMix READ echoMix WRITE setEchoMix NOTIFY echoMixChanged)
+    Q_PROPERTY(double chorusMix READ chorusMix WRITE setChorusMix NOTIFY chorusMixChanged)
+    Q_PROPERTY(double flangerMix READ flangerMix WRITE setFlangerMix NOTIFY flangerMixChanged)
+    Q_PROPERTY(double reverbMix READ reverbMix WRITE setReverbMix NOTIFY reverbMixChanged)
+    Q_PROPERTY(double bass READ bass WRITE setBass NOTIFY bassChanged)
+    Q_PROPERTY(double stereoWidth READ stereoWidth WRITE setStereoWidth NOTIFY stereoWidthChanged)
+    Q_PROPERTY(bool voiceSuppression READ voiceSuppression WRITE setVoiceSuppression NOTIFY voiceSuppressionChanged)
     Q_PROPERTY(bool applyEqualizer READ applyEqualizer WRITE setApplyEqualizer NOTIFY applyEqualizerChanged)
     Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains WRITE setEqualizerBandGains NOTIFY equalizerBandGainsChanged)
     Q_PROPERTY(bool applyReverb READ applyReverb WRITE setApplyReverb NOTIFY applyReverbChanged)
@@ -134,6 +146,16 @@ public:
         QString channelMode = QStringLiteral("stereo");
         double playbackRate = 1.0;
         int pitchSemitones = 0;
+        double speed = 1.0;
+        double tempo = 1.0;
+        double tonalitySemitones = 0.0;
+        double echoMix = 0.0;
+        double chorusMix = 0.0;
+        double flangerMix = 0.0;
+        double reverbMix = 0.0;
+        double bass = 1.0;
+        double stereoWidth = 1.0;
+        bool voiceSuppression = false;
         bool applyEqualizer = false;
         QVariantList equalizerBandGains;
         bool applyReverb = false;
@@ -155,6 +177,16 @@ public:
         QString channelMode;
         double playbackRate = 1.0;
         int pitchSemitones = 0;
+        double speed = 1.0;
+        double tempo = 1.0;
+        double tonalitySemitones = 0.0;
+        double echoMix = 0.0;
+        double chorusMix = 0.0;
+        double flangerMix = 0.0;
+        double reverbMix = 0.0;
+        double bass = 1.0;
+        double stereoWidth = 1.0;
+        bool voiceSuppression = false;
         bool applyEqualizer = false;
         QVariantList equalizerBandGains;
         bool applyReverb = false;
@@ -162,6 +194,9 @@ public:
         double reverbDamping = 0.35;
         double reverbWetLevel = 0.28;
         bool addResultsToPlaylist = true;
+        bool trimEnabled = false;
+        qint64 trimStartMs = 0;
+        qint64 trimEndMs = 0;
         qint64 capturedAtMs = 0;
     };
 
@@ -215,6 +250,9 @@ public:
         qint64 updatedAtMs = 0;
         QString terminalResult = QStringLiteral("none");
         FailureType failureType = NoFailure;
+        bool trimEnabled = false;
+        qint64 trimStartMs = 0;
+        qint64 trimEndMs = 0;
         EffectiveSettingsSnapshot effectiveSettings;
         ConflictResolutionInfo conflictResolution;
         QVariantMap reportMetadata;
@@ -241,6 +279,16 @@ public:
     QString channelMode() const { return m_settings.channelMode; }
     double playbackRate() const { return m_settings.playbackRate; }
     int pitchSemitones() const { return m_settings.pitchSemitones; }
+    double speed() const { return m_settings.speed; }
+    double tempo() const { return m_settings.tempo; }
+    double tonalitySemitones() const { return m_settings.tonalitySemitones; }
+    double echoMix() const { return m_settings.echoMix; }
+    double chorusMix() const { return m_settings.chorusMix; }
+    double flangerMix() const { return m_settings.flangerMix; }
+    double reverbMix() const { return m_settings.reverbMix; }
+    double bass() const { return m_settings.bass; }
+    double stereoWidth() const { return m_settings.stereoWidth; }
+    bool voiceSuppression() const { return m_settings.voiceSuppression; }
     bool applyEqualizer() const { return m_settings.applyEqualizer; }
     QVariantList equalizerBandGains() const { return m_settings.equalizerBandGains; }
     bool applyReverb() const { return m_settings.applyReverb; }
@@ -250,8 +298,10 @@ public:
     bool addResultsToPlaylist() const { return m_settings.addResultsToPlaylist; }
     bool canAddSucceededResultsToPlaylist() const;
     bool isRunning() const { return m_isRunning; }
+    bool isPaused() const { return m_isPaused; }
     bool cancelRequested() const { return m_cancelRequested; }
     double batchProgress() const { return m_batchProgress; }
+    double progress() const { return m_batchProgress; }
     QString statusText() const { return m_statusText; }
     QString lastError() const { return m_lastError; }
     QString reportExportError() const { return m_reportExportError; }
@@ -279,6 +329,12 @@ public:
     Q_INVOKABLE QVariantMap appendSourceFolder(const QString &folderPath);
     Q_INVOKABLE bool startBatch();
     Q_INVOKABLE void cancelBatch();
+    Q_INVOKABLE bool pauseBatch();
+    Q_INVOKABLE bool resumeBatch();
+    Q_INVOKABLE bool togglePause();
+    Q_INVOKABLE bool setItemTrim(const QString &itemId, bool enabled, qint64 startMs, qint64 endMs);
+    Q_INVOKABLE bool setItemTrimByIndex(int index, bool enabled, qint64 startMs, qint64 endMs);
+    Q_INVOKABLE int setTrimForSelected(const QVariantList &itemIds, bool enabled, qint64 startMs, qint64 endMs);
     Q_INVOKABLE QVariantMap exportDraftState() const;
     Q_INVOKABLE bool restoreDraftState(const QVariantMap &draftState);
     Q_INVOKABLE QVariantMap currentReport() const;
@@ -302,6 +358,8 @@ public:
     Q_INVOKABLE bool canMoveItemDown(const QString &itemId) const;
     Q_INVOKABLE bool removeItemById(const QString &itemId);
     Q_INVOKABLE int removeItemsById(const QVariantList &itemIds);
+    Q_INVOKABLE bool removeItem(const QString &itemId) { return removeItemById(itemId); }
+    Q_INVOKABLE int removeItems(const QVariantList &itemIds) { return removeItemsById(itemIds); }
     Q_INVOKABLE int clearFailedItems();
     Q_INVOKABLE int clearCompletedItems();
     Q_INVOKABLE bool retryItemById(const QString &itemId);
@@ -335,6 +393,16 @@ public slots:
     void setChannelMode(const QString &channelMode);
     void setPlaybackRate(double playbackRate);
     void setPitchSemitones(int pitchSemitones);
+    void setSpeed(double speed);
+    void setTempo(double tempo);
+    void setTonalitySemitones(double tonalitySemitones);
+    void setEchoMix(double echoMix);
+    void setChorusMix(double chorusMix);
+    void setFlangerMix(double flangerMix);
+    void setReverbMix(double reverbMix);
+    void setBass(double bass);
+    void setStereoWidth(double stereoWidth);
+    void setVoiceSuppression(bool voiceSuppression);
     void setApplyEqualizer(bool applyEqualizer);
     void setEqualizerBandGains(const QVariantList &gains);
     void setApplyReverb(bool applyReverb);
@@ -348,6 +416,7 @@ signals:
     void settingsChanged();
     void jobMetadataChanged();
     void isRunningChanged();
+    void isPausedChanged();
     void cancelRequestedChanged();
     void batchProgressChanged();
     void statusTextChanged();
@@ -365,6 +434,16 @@ signals:
     void channelModeChanged();
     void playbackRateChanged();
     void pitchSemitonesChanged();
+    void speedChanged();
+    void tempoChanged();
+    void tonalitySemitonesChanged();
+    void echoMixChanged();
+    void chorusMixChanged();
+    void flangerMixChanged();
+    void reverbMixChanged();
+    void bassChanged();
+    void stereoWidthChanged();
+    void voiceSuppressionChanged();
     void applyEqualizerChanged();
     void equalizerBandGainsChanged();
     void applyReverbChanged();
@@ -497,6 +576,7 @@ private:
     QList<BatchAudioConversionItem> m_items;
     QPointer<AudioConverterService> m_worker;
     bool m_isRunning = false;
+    bool m_isPaused = false;
     bool m_cancelRequested = false;
     double m_batchProgress = 0.0;
     QString m_statusText;

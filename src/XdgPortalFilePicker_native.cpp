@@ -200,6 +200,18 @@ void XdgPortalFilePicker::openImageFile(const QString &title)
     }
 }
 
+void XdgPortalFilePicker::saveImageFile(const QString &title, const QString &defaultName)
+{
+    const QString path = QFileDialog::getSaveFileName(
+        nullptr,
+        title,
+        defaultName,
+        QStringLiteral("JPEG Image (*.jpg *.jpeg);;PNG Image (*.png);;All files (*)"));
+    if (!path.isEmpty()) {
+        emit saveImageFileSelected(QUrl::fromLocalFile(path));
+    }
+}
+
 void XdgPortalFilePicker::openExecutableFile(const QString &title)
 {
 #ifdef Q_OS_WIN

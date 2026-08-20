@@ -3,11 +3,13 @@
 #include "AudioEngine.h"
 #include "AppSettingsManager.h"
 #include "PlaybackController.h"
+#include "TrackModel.h"
 
 #include <QAction>
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QEvent>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QMenu>
@@ -30,7 +32,8 @@ TrayManager::~TrayManager()
 void TrayManager::initialize(QWindow *mainWindow,
                              AudioEngine *audioEngine,
                              PlaybackController *playbackController,
-                             AppSettingsManager *settingsManager)
+                             AppSettingsManager *settingsManager,
+                             TrackModel *trackModel)
 {
     if (m_mainWindow && m_mainWindow != mainWindow) {
         m_mainWindow->removeEventFilter(this);
@@ -40,6 +43,7 @@ void TrayManager::initialize(QWindow *mainWindow,
     m_audioEngine = audioEngine;
     m_playbackController = playbackController;
     m_settingsManager = settingsManager;
+    m_trackModel = trackModel;
 
     if (m_mainWindow) {
         m_mainWindow->installEventFilter(this);
@@ -63,6 +67,14 @@ void TrayManager::initialize(QWindow *mainWindow,
     if (m_audioEngine) {
         connect(m_audioEngine, &AudioEngine::stateChanged, this, [this]() {
             updatePlayPauseActionText();
+        });
+    }
+
+    if (m_trackModel) {
+        connect(m_trackModel, &TrackModel::currentTrackChanged, this, [this]() {
+            if (m_audioEngine && m_audioEngine->state() == AudioEngine::PlayingState) {
+                showTrackNotification();
+            }
         });
     }
 
@@ -295,4 +307,71 @@ QString TrayManager::translateKey(const QString &key) const
         return key;
     }
     return m_settingsManager->translate(key);
+}
+
+void TrayManager::showTrackNotification()
+{
+    if (!m_settingsManager || !m_settingsManager->notifyOnTrackChange() || !m_trackModel) {
+        return;
+    }
+    if (m_trackModel->currentIndex() < 0 || m_trackModel->rowCount() <= 0) {
+        return;
+    }
+
+    const QString title = m_trackModel->currentTitle().trimmed();
+    const QString artist = m_trackModel->currentArtist().trimmed();
+    const QString album = m_trackModel->currentAlbum().trimmed();
+    const qint64 durationMs = m_trackModel->currentDuration();
+    const QString filePath = m_trackModel->currentFilePath().trimmed();
+
+    QString titleLine;
+    QString bodyLine;
+
+    QString durationStr;
+    if (durationMs > 0) {
+        qint64 totalSec = durationMs / 1000;
+        int hours = static_cast<int>(totalSec / 3600);
+        int mins = static_cast<int>((totalSec % 3600) / 60);
+        int secs = static_cast<int>(totalSec % 60);
+        if (hours > 0) {
+            durationStr = QStringLiteral("%1:%2:%3")
+                .arg(hours)
+                .arg(mins, 2, 10, QLatin1Char('0'))
+                .arg(secs, 2, 10, QLatin1Char('0'));
+        } else {
+            durationStr = QStringLiteral("%1:%2")
+                .arg(mins)
+                .arg(secs, 2, 10, QLatin1Char('0'));
+        }
+    }
+
+    if (!title.isEmpty()) {
+        titleLine = title;
+        QStringList details;
+        if (!artist.isEmpty()) {
+            details << artist;
+        }
+        if (!album.isEmpty()) {
+            details << album;
+        }
+        if (!durationStr.isEmpty()) {
+            details << durationStr;
+        }
+        bodyLine = details.join(QStringLiteral(" • "));
+    } else if (!artist.isEmpty()) {
+        titleLine = artist;
+        if (!durationStr.isEmpty()) {
+            bodyLine = durationStr;
+        }
+    } else {
+        QFileInfo fi(filePath);
+        titleLine = fi.fileName().isEmpty() ? filePath : fi.fileName();
+        if (!durationStr.isEmpty()) {
+            bodyLine = durationStr;
+        }
+    }
+
+    if (m_trayIcon && m_trayIcon->isVisible()) {
+        m_trayIcon->showMessage(titleLine, bodyLine, QSystemTrayIcon::Information, 3500);
+    }
 }

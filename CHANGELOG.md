@@ -5,143 +5,179 @@ All notable changes to this project are documented in this file.
 The format is based on Keep a Changelog, and this project follows semantic
 versioning where practical.
 
-## [1.3.9-dev] 2026-07-02 - 2026-08-17
+## [1.4.0] 2026-08-20
 
 ### Added
 
-- Implemented comprehensive Playlist Column Customization system (`PlaylistColumnLayoutManager`) per specification:
-  - **Catalog of 24 Column Types**: Added full support for metadata columns (`playlistPosition`, `trackSummary`, `title`, `artist`, `album`, `duration`, `bitrate`, `trackNumber`, `year`, `genre`, `description`, `composer`, `originalArtist`, `copyright`, `url`, `encoder`) and technical audio columns (`format`, `sampleRate`, `bitDepth`, `bpm`, `channelCount`, `fileName`, `filePath`, `dateAdded`).
-  - **Independent Skin Layouts**: Independent column visibility, arrangement, and default layouts for Standard (Normal) and Compact skins, persisted in `QSettings`.
-  - **Three Visibility Modes**: Configurable `Shown` (always visible), `Automatic` (responsive display based on discrete viewport width breakpoints), and `Hidden` modes per column.
-  - **Playlist Columns Configuration Dialog (`PlaylistColumnsDialog`)**:
-    - Interactive dialog accessible via menu bar, playlist toolbar, and table header context menus.
-    - Skin tabs switcher with cross-skin layout copying (`Copy from Standard/Compact`) and skin reset actions.
-    - Compact skin header display modes (`Automatic`, `Always Shown`, `Always Hidden`).
-    - Column reordering (Move Up / Move Down) and visibility combo selectors with responsive wrapping.
-    - All-hidden warning banner with one-click restoration of default columns.
-    - Full Breeze SVG themed icons, dark/light theme integration, and complete Russian/English localization.
-  - **Interactive Header Context Menu**: Right-click context menu on any playlist column header for quick column toggling, column reset, and direct access to the configuration dialog.
-  - **Metadata Pipeline & Security**: Extended `TrackModel` with TagLib extraction for composer, original artist, copyright, and encoder, plus secure URL validation (`isUrlSchemeAllowed`) with clickable links and copy actions.
-  - **Hover Tooltips**: Integrated automatic hover tooltips for truncated column cells to inspect full text content without modifying column width.
-  - **High-Performance Rendering**: Implemented discrete width bucketing and SceneGraph caching in `PlaylistColumnLayoutManager` alongside lazy context menu loaders and optimized cell layouts to ensure smooth 60 FPS window resizing and zero column-switching lag.
-  - **Unit Test Coverage**: Added comprehensive test suite `tst_PlaylistColumnLayoutManager` covering catalog completeness, formatting, persistence, sanitization, copy/reset, responsive bucketing, and visibility toggling.
-
-- Added comprehensive track chapter support and visualization for files containing embedded chapters (ID3v2 `CHAP`/`CTOC` frames, MP4/M4A chapters, and Vorbis comments):
-  - **InfoSidebar**: Added an interactive "CHAPTERS" list displaying all chapter names, start times, and durations with active chapter tracking/highlighting and click-to-seek functionality.
-  - **WaveformView & CompactSkin**: Added visual chapter overlays featuring boundary marker lines, notch ticks, active segment tinting, and chapter title labels on the waveform.
-  - **Waveform Hover Tooltip & Overlays**: Enhanced waveform hover preview and track info templates (`%h` placeholder) to display the chapter name at the cursor or playback position.
-  - **Playback Transport & Navigation**: Added "Previous Chapter" (`Alt+PageUp`) and "Next Chapter" (`Alt+PageDown`) navigation actions in Main playback menus, HeaderBar, ControlBar, and Waveform context menus.
-  - **ControlBar**: Added real-time chapter indicator badge with chapter popup navigation menu.
-  - **Playlist Table**: Added `CHAP` indicator badge for chapter-bearing tracks and a dedicated "Chapters" right-click context submenu to instantly jump into any chapter of a playlist track.
-
-- Implemented centralized UI metrics and design token system (`UiMetrics`) available across C++ and QML, exposing semantic typography roles (`micro`, `caption`, `body`, `bodyStrong`, `subtitle`, `title`, `display`), proportional spacing tokens (`spaceXXS` through `spaceXXL`), standard control/icon heights, and font-aware responsive breakpoints.
-- Added font-metrics-aware scaling engine in `ThemeManager` deriving `fontMetricsScale` and `playlistFontMetricsScale` from real line-spacing ratios against baseline system fonts rather than naive point size multipliers.
-- Added support for independent playlist font family selection (`playlistFontFamily`) and dedicated playlist line-height/scale metrics calculation.
-- Added real-time application font updates across all UI views and dialogs without requiring application restarts.
-- Added automated unit test suite `tst_ThemeManagerUiMetrics` and static `font.pixelSize` regression audit in `tst_AppDialog` ensuring zero unmigrated pixel sizes across the codebase.
-- Added Track Fragment Repeat mode (A-B Loop) allowing looped playback of a user-defined section between boundary A and boundary B with forward/reverse loop enforcement and seamless EOS handling.
-- Added visual interactive draggable boundary bars (Bar A and Bar B) on the Waveform with shaded loop region highlights, real-time zoom/pan synchronization, and hover removal shortcuts (`Delete` / `Backspace`).
-- Added right-click context menu on the Waveform for setting and clearing fragment boundaries, toggling repeat mode, and accessing boundary configuration.
-- Added dedicated Fragment Repeat configuration dialog (`FragmentRepeatDialog`) with integrated playback transport controls, position scrubbing slider, boundary steppers, and per-track loop persistence.
-- Optimized track search for large playlists (3,000+ tracks) with precomputed search blobs, a dedicated filtered proxy model, cached match maps, and background evaluation that avoids zero-height delegate storms and UI freezes.
-- Accelerated playlist metadata ingestion for large libraries with ordered multi-core TagLib workers, small first-result batches, bounded I/O concurrency, $O(1)$ path-to-index lookups, and coalesced UI updates so tags become visible almost immediately.
-- Added CMake build speed optimizations including Unity builds (`WAVEFLUX_ENABLE_UNITY_BUILD`), LLD linker support (`-fuse-ld=lld`), compiler `-pipe` flag, and precompiled headers (PCH) for Qt core/GUI headers.
-- Added Reset Playlist action across all skins (Normal skin File & Library menus, HeaderBar popup menu, CompactSkin hamburger menu, PlaylistView sort & context menus, and PlaylistTable context menus) with configurable `Ctrl+Alt+R` shortcut and localized strings (EN/RU).
-- Implemented baseline playlist snapshot tracking and restoration in `TrackModel` (`resetPlaylist()`, `canResetPlaylist`, `captureBaselineSnapshot()`, `exportBaselineSnapshot()`) to seamlessly revert user reordering, custom drag-and-drop changes, column sorting, and deleted tracks back to initial ingestion/addition order while preserving currently playing track continuity without interrupting audio playback.
-- Added Breeze-compatible themed reset/revert SVG icons (`document-revert-dark.svg` and `document-revert-light.svg`).
-- Implemented unit test coverage in `tst_TrackModel` verifying playlist order restoration after drag-and-drop moves, sorting by name/date/duration/bitrate, track deletions, incremental additions, snapshot restorations, and active playing track index tracking.
-- Added Reset Playlist toolbar button in `PlaylistView` next to Shuffle and Sort.
-- Added visible Current Playlist entry in `CollectionsSidebar` showing real-time track count, active status highlight, and one-click "Save as playlist" action.
-- Added automatic named playlist profile generation upon adding folders to an empty working playlist, immediately creating and selecting a persistent, autosaved playlist named after the added folder.
-- Added Ogg Vorbis (`.ogg`) as an audio converter output format with capability detection, bitrate selection, and automatic output-extension handling.
-- Added a System setting, disabled by default, to open application modal dialogs as separate top-level windows.
-- Centralized QML modal dialogs on a shared `AppDialog` base so the separate-window preference applies consistently across the app.
+- Track change notifications (`DesktopNotificationService`) on Linux (via DBus `org.freedesktop.Notifications.Notify`) and Windows (via `QSystemTrayIcon::showMessage`). Displays track title/artist/filename, album, duration, cover art (`image-path`), and the `waveflux` icon, with debouncing for rapid track switches.
+- `playback.notifyOnTrackChange` setting in `AppSettingsManager` (enabled by default, stored in `QSettings`), configurable under *Audio Presentation* in `PlaybackSettingsPage.qml` with search indexing and reset support.
+- English and Russian translations for track change notification settings and labels.
+- Dedicated unit tests in `tests/tst_DesktopNotificationService.cpp`, verified in `tests/tst_AppSettingsManager.cpp` and `tests/tst_SettingsRegistry.cpp`.
+- Redesigned URL import dialog (`YtDlpImportDialog.qml`) with a four-tab layout: *Queue & Sources*, *Active Downloads*, *Format & Settings*, and *Report & History*.
+- Custom yt-dlp CLI arguments support: probe flags (`probeCustomArgs`) for metadata inspection and download flags (`downloadCustomArgs`) for audio extraction, with quote-aware tokenization and instant typing updates.
+- Post-processing options for URL imports: metadata embedding (`--embed-metadata`), thumbnail embedding (`--embed-thumbnail`), 1:1 square cover cropping via FFmpeg postprocessor arguments, and metadata stripping (`--no-write-comments`, TagLib pass for comments and download URLs).
+- Optional `aria2c` multi-connection downloader integration (`--downloader aria2c`) with configurable connections (1 to 16, default 16) and minimum split size (1 to 100 MiB, default 20 MiB).
+- Persistent storage for URL import preferences in `AppSettingsManager` across restarts.
+- Fallback icon aliases in `IconResolver.js` for missing SVG icons across themes (`download`, `network-workgroup`, `system-search`, `view-refresh`, `dialog-ok`, `folder`, `view-hidden`, `document-open-recent`, `transform-crop-and-resize`).
+- Unit tests in `tests/tst_YtDlpImportService.cpp` covering post-processing options, CLI argument generation, and preset persistence.
+- Extended metadata editing in single (`TagEditorDialog.qml`) and batch (`BulkTagEditorDialog.qml`) tag editors: Genre, Comment, Composer, Original Artist, Copyright, URL, Encoder, and BPM via ID3v2 frames and Vorbis comments.
+- Cover image export (`exportCoverImage`, `suggestedCoverFileName`) to disk via native file dialogs, with support for UTF-8 and percent-encoded non-Latin paths.
+- Chapter marker editor configured in seconds, writing to ID3v2 `CHAP`/`CTOC` frames and Vorbis `CHAPTERxxx` tags.
+- Technical audio info tab in `TagEditorDialog` displaying format, bitrate, sample rate, channels, file size, duration, and path.
+- Warning banner when editing tracker modules (MOD, XM, S3M, IT) where standard tags are not supported.
+- Multi-track selection in playlist tables using `Ctrl` and `Shift`, with proxy index mapping during search and sorting, and fast selection lookups.
+- Tag editor unit tests in `tests/tst_TagEditor.cpp`.
+- Four-tab layouts for single (`AudioConverterDialog.qml`) and batch (`BatchAudioConverterDialog.qml`) audio converters: Format & Quality / Format & Output, Trim & DSP / DSP & Enhancements, Live Simulation, and Source Info / Queue & Logs.
+- Built-in DSP effects in audio conversion: speed (0.25x-3.00x), tempo (0.50x-3.00x), pitch shifting (-10.0 to +10.0 semitones), echo (0%-100%), reverb (0%-100%), chorus (0%-100%), flanger (0%-100%), bass shelf (0.00x-2.00x), stereo width (1.00x-5.00x), center-channel voice suppression, and EQ bake-in.
+- Single-track converter trim controls configured in seconds (`00:00`).
+- Batch converter queue management: toolbar actions (*Add Files*, *Add Folder*, *Remove Selected*, *Clear Queue*), status filter chips (*All*, *Pending*, *Succeeded*, *Failed*), and per-item retry/removal.
+- Real-time format and quality simulation in audio converter preview (`WaveFlux::Dsp::FormatQualitySimulator`), modeling low-pass cutoffs by bitrate, quantization noise for lossy codecs (MP3, OGG, AAC, Opus), sample rate decimation (8 kHz to 32 kHz), mono downmixing, and 10-band EQ without restarting playback.
+- Sample fragment looping (`previewLoop`) and scrubber slider (`previewSeekSlider`) in the audio converter preview player.
+- Right-click and long-press context menu to reset individual parameters to default in `AudioConverterDialog` (`AudioConverterService::resetParameter`).
+- "Refresh Playlist" action (`F5`, `file.refreshPlaylist`) in standard and compact skins to rescan folders, pick up new or removed files, refresh metadata, and maintain the current playback position.
+- Dedicated preview player in `AudioConverterDialog` with configurable start/end boundaries (`previewStartMs`, `previewEndMs`), accurate GStreamer flush seeking, and auto-pausing of main playback during preview.
+- OGG Vorbis format option for audio extraction and postprocessing in `YtDlpImportService`, `AppSettingsManager`, and `YtDlpImportDialog`.
+- Redesigned Settings dialog (`SettingsDialog.qml`) with two-pane navigation, instant search with match highlighting, and 9 category pages (`qml/settings/`): General, Appearance, Playlist, Playback, Waveform, Track Info, System & Tools, Shortcuts, and Advanced & Reset.
+- Centralized settings registry (`SettingsRegistry`) defining setting metadata, keywords, control types, dependencies, and reset scopes.
+- Reusable settings UI components in `qml/components/` for toggle switches, sliders, combo boxes, color pickers, file paths, and action buttons.
+- Keyboard shortcut editor with live key capture (`shortcutCaptureDialog`), conflict detection (`shortcutConflictDialog`), and per-action reset.
+- Unit tests in `tst_SettingsRegistry` and `tst_AppSettingsManager`.
+- Playlist column customization manager (`PlaylistColumnLayoutManager`) with 24 metadata and technical audio columns.
+- Independent column layouts, ordering, and visibility modes (Shown, Automatic, Hidden) for standard and compact player skins.
+- Playlist columns configuration dialog (`PlaylistColumnsDialog`) with column reordering, layout copying between skins, and default restoration.
+- Header context menu for quick column toggling and reset.
+- Hover tooltips for truncated text in playlist cells.
+- Unit tests in `tst_PlaylistColumnLayoutManager`.
+- Embedded chapter support (ID3v2 `CHAP`/`CTOC`, MP4/M4A, and Vorbis comments) with seeking from the InfoSidebar chapter list.
+- Visual chapter markers, notch ticks, and title labels on waveforms (`WaveformView` and `CompactSkin`).
+- Chapter navigation shortcuts: "Previous Chapter" (`Alt+PageUp`) and "Next Chapter" (`Alt+PageDown`).
+- Chapter indicator badge and navigation popup in the control bar, plus a `CHAP` badge and chapter jump menu in the playlist table.
+- Centralized UI metrics system (`UiMetrics`) exposing semantic typography roles, spacing tokens, standard control heights, and responsive breakpoints.
+- Line-spacing-based font scaling engine in `ThemeManager` with support for an independent playlist font family (`playlistFontFamily`).
+- Dynamic application font updates across views and dialogs without restarting.
+- Unit tests in `tst_ThemeManagerUiMetrics` and font audit tests in `tst_AppDialog`.
+- A-B fragment loop playback between user-defined start and end boundaries, with forward and reverse playback support.
+- Interactive draggable boundary markers on the waveform with region highlighting, zoom synchronization, and removal via `Delete` or `Backspace`.
+- Waveform context menu for setting and clearing loop points.
+- Fragment repeat configuration dialog (`FragmentRepeatDialog`) with playback controls, scrub slider, and per-track loop persistence.
+- Search indexing optimization for large playlists (3,000+ tracks) using precomputed search blobs, cached match maps, and background evaluation.
+- Multi-threaded TagLib metadata loading with bounded I/O concurrency and batched UI updates for large music libraries.
+- Build performance options in CMake: Unity builds (`WAVEFLUX_ENABLE_UNITY_BUILD`), LLD linker support (`-fuse-ld=lld`), compiler `-pipe` flag, and precompiled headers for Qt headers.
+- "Reset Playlist" action (`Ctrl+Alt+R`) in standard and compact skins to revert user reordering, sorting, and track deletions back to the initial folder order without interrupting playback.
+- Snapshot tracking and restoration in `TrackModel` (`resetPlaylist()`, `canResetPlaylist`), verified in `tst_TrackModel`.
+- Active playlist item in `CollectionsSidebar` with track count and "Save as playlist" action.
+- Automatic playlist profile creation when adding a folder to an empty playlist.
+- OGG Vorbis (`.ogg`) output format support in the audio converter.
+- Option in System settings to open modal dialogs as separate top-level windows instead of in-window overlays.
+- Migrated modal dialogs to a shared `AppDialog` component.
+- Redesigned DSP Manager dialog (`DspManagerDialog.qml`) with five tabs: General, EQ, Volume, Mix, and Silence Removal.
+- Audio effects in the General tab: Echo, Chorus, Speed (0.25-3.00x), Reverb, Bass shelf, Tempo (0.50-3.00x), Flanger, Stereo Width (1.00-5.00x), Pitch shifting (-10.0 to +10.0 semitones), center-channel voice suppression, and pause/track fade transitions.
+- 10-band graphic equalizer with preset management (create, rename, delete, import, export) in the EQ tab.
+- Volume and dynamics controls: logarithmic volume curves, loudness compensation, peak amplitude normalization, and ReplayGain (Track/Album modes with preamp adjustment).
+- Track transition controls: manual and automatic crossfades, fade-in, and fade-out durations in the Mix tab.
+- Silence removal filter with configurable duration threshold (50-5000 ms) and noise floor (-90 to -20 dBFS).
+- Persistent DSP settings manager (`DspSettingsManager`) with preset import/export and parameter reset scopes.
+- Real-time PCM processing pipeline (`DspProcessor`) hooked into GStreamer and OpenMPT audio backends.
+- Unit tests in `tst_DspSettingsManager`, `tst_DspProcessor`, and `tst_SilenceRemoval`.
 
 ### Changed
 
-- Raised the minimum Qt requirement to 6.8 because separate-window QML popups rely on `Popup.Window`.
-- Migrated 100% of QML files to semantic point sizes (`font.pointSize: UiMetrics.*PointSize`) and metric tokens, completely eliminating hardcoded `font.pixelSize` and deprecated `fontSizeMultiplier` throughout the entire application.
-- Refactored responsive layout thresholds across normal and compact skins (`Main.qml`, `ControlBar.qml`, `WaveformView.qml`, and all dialogs) to use font-aware dynamic breakpoints (`UiMetrics.breakpoint(...)`), preventing clipping or overlapping at large font sizes (8–24 pt).
-- Standardized all modal and standalone dialogs on bounded dynamic scaling (`boundedDialogSize` / `fitDialogSize`) with `ScrollView` content wrapping to ensure accessibility on small viewports and high font scales.
+- Raised the minimum Qt requirement to 6.8 for `Popup.Window` support in separate-window dialogs.
+- Switched QML text elements to semantic point sizes (`UiMetrics.*PointSize`) and metric tokens, replacing fixed pixel sizes and `fontSizeMultiplier`.
+- Updated responsive layout breakpoints across normal and compact skins (`Main.qml`, `ControlBar.qml`, `WaveformView.qml`, and dialogs) using dynamic font-aware breakpoints (`UiMetrics.breakpoint`).
+- Standardized dialog sizing (`boundedDialogSize` / `fitDialogSize`) with `ScrollView` wrappers to prevent content overflow at larger font sizes or smaller screen resolutions.
 
 ### Fixed
 
-- Fixed false-positive chapter detection on tracks without chapters by strictly validating Vorbis chapter tag keys and timestamps, and added a user setting (`settings.showPlaylistChapterBadge`) to toggle the `CHAP` badge in the playlist table.
-- Fixed vertical scrollbar overlapping track duration timestamps in the right-hand InfoSidebar chapters section by adjusting delegate margins to accommodate the scrollbar.
-- Fixed empty chapters submenu when right-clicking tracks in playlist table and playlist view by dynamically populating chapter menu items with accurate start timestamps and titles upon menu activation.
-- Fixed a critical regression in Playlist Profile editing where clicking "Save changes" in the Edit Playlist dialog would be overwritten upon reloading the active profile due to an unconditional stale in-memory autosave flush.
-- Fixed search input text clipping and horizontal truncation in HeaderBar, PlaylistView, and CompactSkin across all font sizes and zoom levels by clearing restrictive internal padding, aligning vertically to center, and ensuring proper font metrics and container dimensions.
-- Fixed font family and font size reactivity in drop-down lists (`AccentComboBox`, `SettingComboRow`), buttons, switches, checkboxes, radio buttons, and menus when changing font settings in preferences.
-- Fixed QML module singleton type registration for `UiMetrics` in CMake, eliminating startup `undefined` property evaluations and associated layout calculation freezes.
+- Fixed dialog title text overlapping content in Reset Confirmation (`resetConfirmDialog`), Factory Reset (`factoryResetDialog`), Shortcut Capture (`shortcutCaptureDialog`), and Shortcut Conflict (`shortcutConflictDialog`) dialogs by removing unstyled default Qt Quick dialog headers.
+- Fixed duplicate headers in `DspManagerDialog` by disabling the default Qt Quick title bar (`header: null`).
+- Fixed DSP Manager parameters not affecting playback by instantiating `DspSettingsManager` before `AudioEngine`, routing speed/tempo/tonality to the playback transport, and applying DSP filters via a GStreamer pad probe on a stable identity element.
+- Fixed waveform playhead seeking and marker drift when adjusting Speed or Tempo in DSP Manager: rate and tempo now compose multiplicatively into the pipeline segment rate via `GST_SEEK_FLAG_INSTANT_RATE_CHANGE` rather than modifying SoundTouch stream time ratios.
+- Fixed inverted vertical slider behavior in `AccentSlider` by aligning handle and fill geometry with Qt's vertical `position` mapping.
+- Fixed DSP parameter sliders ignoring mouse drag input by replacing conflicting `TapHandler`s with a right-click and long-press `MouseArea`.
+- Fixed clipped EQ preset lists in `DspManagerDialog` by replacing the stacked layout with an auto-sizing `Flickable`/`Repeater` list.
+- Fixed runtime warnings (`Unable to assign [undefined] to bool`) in `DspEqualizerPage` when initialized without an engine or preset manager.
+- Fixed MPRIS track duration staying stuck after changing playback rate by refreshing `durationChanged` in `AudioEngine::setPlaybackRate` and updating `mpris:length` in `MprisService`.
+- Fixed blank Playback settings page caused by unhandled JavaScript capability lookups and missing `matchesSearch` visibility bindings in `SettingRow.qml`.
+- Fixed Settings dialog search bar overlapping the window header by suppressing default Qt Quick dialog title bars.
+- Fixed reactive language switching in Settings dialog by binding pages and setting rows to `appSettings.translationRevision`.
+- Fixed untranslated localization keys in English and Russian catalogs (`dialogs.close`, `menu.settings`, `menu.tools`, `settings.closeToTray`, `settings.minimizeToTray`, `settings.startMinimizedToTray`, `settings.compactPlaylistTrackNumberVisible`, `settings.confirmTrash`).
+- Fixed layout overflow and misaligned action buttons in Keyboard Shortcuts settings page when using localized text.
+- Fixed false-positive chapter detection on tracks without chapters by strictly validating Vorbis chapter tag keys and timestamps, and added a setting (`settings.showPlaylistChapterBadge`) to toggle the `CHAP` badge in the playlist table.
+- Fixed vertical scrollbar overlapping track duration timestamps in the InfoSidebar chapters list by adding margin clearance.
+- Fixed empty chapters submenu when right-clicking tracks in the playlist table by populating chapter items on menu open.
+- Fixed a bug where saving changes in the Edit Playlist dialog could be overwritten by a stale autosave flush on active profile reload.
+- Fixed search input text clipping in HeaderBar, PlaylistView, and CompactSkin across large font sizes.
+- Fixed font family and size updates not applying dynamically to drop-down lists (`AccentComboBox`, `SettingComboRow`), buttons, switches, checkboxes, radio buttons, and menus.
+- Fixed `UiMetrics` singleton registration in CMake, resolving startup evaluation errors.
 - Resolved ToolButton dimension binding loops in `VolumeStrip` and `PlaybackAdjustStrip`.
-- Added missing Breeze-compatible themed SVG icons (`media-playlist-consecutive-dark.svg` and `media-playlist-consecutive-light.svg`).
-- Restored a smooth, capped waveform-generation animation for uncached tracks, including responsive placeholder shimmer, progressive waveform reveal, and correct repaint regions without stale progress from a previous track.
-- Fixed custom button implicit sizing and responsive dialog footers so translated action labels remain visible instead of being clipped in Help, Fragment Boundaries, and tag-editing dialogs.
-- Improved the Fragment Boundaries mini-player with a clearly visible interactive hover border, a working play/pause action, and concise `A`/`B` boundary controls.
-- Replaced legacy stock confirmation controls throughout playlist, converter, equalizer, import, and smart-collection dialogs with the application's Accent-styled buttons.
-- Fixed application startup failures related to `TrackFilterProxyModel` QML type/module resolution by exposing dedicated C++-owned filter proxies directly to each playlist view.
-- Fixed blank or vertically displaced playlist contents after searching, clearing search text, or switching skins by using dedicated compact/normal proxy models and origin-aware ListView viewport restoration.
-- Replaced emoji and font-glyph UI icons with Breeze-compatible themed SVG assets and aligned playback/error and URL dialogs with the application dialog style.
-- Stabilized the responsive information sidebar during window resizing by removing recursive layout pressure, keeping the panel instance alive across breakpoints, and preventing album-art redecodes on every resize step.
-- Fixed runtime changes to the separate-dialog-windows option by deferring popup reparenting until each open dialog closes, preventing invisible or left-docked windows.
-- Fixed audio converter drop-down controls consuming mouse-wheel events so the surrounding converter page continues scrolling normally.
-
+- Added missing themed SVG icons: `media-playlist-consecutive-dark.svg` and `media-playlist-consecutive-light.svg`.
+- Restored waveform generation shimmer animation for uncached tracks without stale progress from previously loaded tracks.
+- Fixed button sizing and responsive dialog footers clipping localized labels in Help, Fragment Boundaries, and tag-editing dialogs.
+- Fixed Fragment Boundaries mini-player hover border, play/pause action, and `A`/`B` boundary controls.
+- Replaced default stock confirmation buttons with Accent buttons across playlist, converter, equalizer, import, and smart-collection dialogs.
+- Fixed startup failure related to `TrackFilterProxyModel` QML type resolution by exposing C++ filter proxies directly to each playlist view.
+- Fixed blank or displaced playlist views after searching or switching skins by restoring the viewport origin on dedicated proxy models.
+- Replaced font-glyph and emoji icons with Breeze SVG assets across playback, error, and URL dialogs.
+- Fixed responsive InfoSidebar layout jitter and prevented redundant album art redecodes during window resizing.
+- Fixed runtime switching of the separate-dialog-windows setting by deferring popup reparenting until open dialogs close.
+- Fixed audio converter drop-down controls intercepting mouse wheel scroll events from the parent page.
 
 ## [1.3.1] - 2026-05-30
 
 ### Added
 
-- Added GitHub Releases update checker service (`UpdateChecker`) with manual and automatic background update checks.
-- Added global keyboard shortcut management (`ShortcutManager` and `ShortcutRegistry`) with customizable hotkeys.
-- Introduced `TrackInfoOverlay`, `VolumeStrip`, `PlaybackAdjustStrip`, and `WaveformHoverTooltip` UI components.
-- Added portable ZIP packaging script (`build-portable-zip.ps1`) and WiX 6 MSI installer configuration (`build-wix-installer.ps1`).
-- Added automated memory budget check tooling (`check-memory-budgets.ps1`).
+- GitHub Releases update checker service (`UpdateChecker`) with manual and background checks.
+- Global keyboard shortcut manager (`ShortcutManager`, `ShortcutRegistry`) with customizable hotkeys.
+- UI components: `TrackInfoOverlay`, `VolumeStrip`, `PlaybackAdjustStrip`, and `WaveformHoverTooltip`.
+- Packaging scripts for portable ZIP (`build-portable-zip.ps1`) and WiX 6 MSI installer (`build-wix-installer.ps1`).
+- Memory budget validation script (`check-memory-budgets.ps1`).
 
 ### Fixed
 
 - Fixed AppImage dependency scan and runtime library bundling in `build-appimage.sh`.
-- Improved Windows SMTC media controls session initialization and track metadata sync.
+- Fixed Windows SMTC media controls session initialization and metadata synchronization.
 
 ## [1.3.0] - 2026-05-23
 
 ### Added
 
-- Added libopenmpt tracker module playback backend supporting `.mod`, `.xm`, `.s3m`, `.it`, `.669`, `.amf`, and `.stm` files.
-- Added single-track (`AudioConverterService`) and batch (`BatchAudioConverterService`) audio conversion with pitch/speed adjustment and preset management.
-- Integrated `yt-dlp` import service (`YtDlpImportService`) supporting URL metadata parsing, format selection, and playlist extraction.
-- Added playback backend routing abstraction (`PlaybackBackendRouting`) for seamless switching between GStreamer PCM and OpenMPT tracker engines.
+- libopenmpt tracker module playback backend supporting `.mod`, `.xm`, `.s3m`, `.it`, `.669`, `.amf`, and `.stm` files.
+- Single-track (`AudioConverterService`) and batch (`BatchAudioConverterService`) audio conversion with pitch/speed adjustment and preset management.
+- `yt-dlp` import service (`YtDlpImportService`) with URL metadata extraction, format selection, and playlist downloading.
+- Playback backend router (`PlaybackBackendRouting`) for switching between GStreamer PCM and OpenMPT tracker engines.
 
 ### Changed
 
-- Refactored `TrackModel` and `PlaybackController` to support hybrid PCM/tracker track pipelines.
+- Refactored `TrackModel` and `PlaybackController` to support hybrid PCM and tracker playback pipelines.
 
 ## [1.2.0] - 2026-05-10
 
 ### Added
 
-- Added MPRIS desktop integration (`MprisService`) and XDG Portal file picker (`XdgPortalFilePicker`) for Linux environments.
-- Added performance profiler module (`PerformanceProfiler`) with overlay display, memory checkpoints, and JSON/CSV export.
-- Introduced playlist profiles manager (`PlaylistProfilesManager`) for snapshotting and restoring named playlist states.
-- Added CUE sheet parser (`CueSheetParser`) and XSPF playlist parser (`XspfPlaylistParser`).
+- MPRIS desktop integration (`MprisService`) and XDG Portal file picker (`XdgPortalFilePicker`) on Linux.
+- Performance profiler (`PerformanceProfiler`) with overlay display, memory checkpoints, and JSON/CSV export.
+- Playlist profiles manager (`PlaylistProfilesManager`) for saving and restoring named playlist snapshots.
+- CUE sheet (`CueSheetParser`) and XSPF playlist (`XspfPlaylistParser`) parsers.
 
 ### Fixed
 
-- Resolved Linux AppImage runtime dependency bundling issues.
+- Fixed Linux AppImage runtime dependency bundling issues.
 
 ## [1.1.0] - 2026-03-15
 
 ### Added
 
-- Added distribution packaging scripts for Linux: AppImage (`build-appimage.sh`), Debian (`build-debian-package.sh`), RPM (`build-rpm-package.sh`), and Arch Linux (`build-pacman-package.sh`).
-- Added application icon set in SVG/ICO formats and license documentation.
+- Linux packaging scripts for AppImage (`build-appimage.sh`), Debian (`build-debian-package.sh`), RPM (`build-rpm-package.sh`), and Arch Linux (`build-pacman-package.sh`).
+- Application icon set in SVG/ICO formats and license documentation.
 
 ## [1.0.0] - 2026-02-18
 
 ### Added
 
 - Initial release of WaveFlux desktop audio player built with C++20, Qt 6.5, Kirigami, GStreamer 1.0, and SQLite.
-- Waveform-driven UI scrubbing with cached peak rendering (`WaveformItem`, `WaveformProvider`).
-- Local music library search and field-aware smart collections powered by SQLite (`LibraryRepository`, `SmartCollectionsEngine`).
-- 10-band audio equalizer with built-in presets (`EqualizerPresetManager`).
-- Metadata tag editor supporting ID3v2, FLAC, Vorbis, and MP4 art tags (`TagEditor`).
-- Normal and Compact layout modes with customizable Kirigami themes (`ThemeManager`).
+- Waveform-driven playback scrubbing with cached peak rendering (`WaveformItem`, `WaveformProvider`).
+- Local music library search and smart collections backed by SQLite (`LibraryRepository`, `SmartCollectionsEngine`).
+- 10-band audio equalizer with preset management (`EqualizerPresetManager`).
+- Tag editor supporting ID3v2, FLAC, Vorbis, and MP4 tags (`TagEditor`).
+- Standard and Compact layout modes with customizable themes (`ThemeManager`).

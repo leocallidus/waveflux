@@ -42,12 +42,14 @@
 #include "PlaylistProfilesManager.h"
 #include "YtDlpImportService.h"
 #include "EqualizerPresetManager.h"
+#include "DspSettingsManager.h"
 #include "BatchAudioConverterPresetManager.h"
 #include "AppSettingsManager.h"
 #include "UpdateChecker.h"
 #include "ShortcutManager.h"
 #include "GlobalKeyMonitor.h"
 #include "MprisService.h"
+#include "DesktopNotificationService.h"
 #include "TrayManager.h"
 #include "XdgPortalFilePicker.h"
 #include "PerformanceProfiler.h"
@@ -55,6 +57,7 @@
 #include "library/DatabaseManager.h"
 #include "library/MigrationManager.h"
 #include "library/SmartCollectionsEngine.h"
+#include "SettingsRegistry.h"
 
 #ifdef Q_OS_WIN
 #include <shobjidl.h>
@@ -283,7 +286,9 @@ int main(int argc, char *argv[])
         // Register QML types
         qmlRegisterType<WaveformItem>("WaveFlux", 1, 2, "WaveformItem");
 
-        // Create backend instances
+        // Create backend instances. DSP settings must exist before AudioEngine
+        // so the engine can bind to DspSettingsManager::instance().
+        DspSettingsManager dspSettingsManager;
         AudioEngine audioEngine;
         AudioConverterService audioConverterService;
         BatchAudioConverterService batchAudioConverterService;
@@ -333,6 +338,7 @@ int main(int argc, char *argv[])
         SmartCollectionsEngine smartCollectionsEngine;
         MprisService mprisService(&audioEngine, &trackModel, &playbackController);
         TrayManager trayManager;
+        DesktopNotificationService desktopNotificationService(&audioEngine, &trackModel, &playbackController, &appSettingsManager, &trayManager);
         XdgPortalFilePicker xdgPortalFilePicker;
         PerformanceProfiler performanceProfiler;
         PlaylistColumnLayoutManager playlistColumnLayoutManager;
@@ -660,6 +666,8 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("playlistProfilesManager", &playlistProfilesManager);
         engine.rootContext()->setContextProperty("ytDlpImportService", &ytDlpImportService);
         engine.rootContext()->setContextProperty("equalizerPresetManager", &equalizerPresetManager);
+        engine.rootContext()->setContextProperty("dspSettings", &dspSettingsManager);
+        engine.rootContext()->setContextProperty("dspSettingsManager", &dspSettingsManager);
         engine.rootContext()->setContextProperty("batchAudioConverterPresetManager",
                                                  &batchAudioConverterPresetManager);
         engine.rootContext()->setContextProperty("appSettings", &appSettingsManager);
@@ -671,6 +679,7 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("performanceProfiler", &performanceProfiler);
         engine.rootContext()->setContextProperty("playlistColumnLayoutManager", &playlistColumnLayoutManager);
         engine.rootContext()->setContextProperty("smartCollectionsEngine", &smartCollectionsEngine);
+        engine.rootContext()->setContextProperty("settingsRegistry", SettingsRegistry::instance());
 
         // Load main QML file
         const QUrl mainQmlUrl(QStringLiteral("qrc:/WaveFlux/qml/Main.qml"));
@@ -691,7 +700,7 @@ int main(int argc, char *argv[])
         xdgPortalFilePicker.setMainWindow(mainWindow);
         globalKeyMonitor.setMainWindow(mainWindow);
         performanceProfiler.attachWindow(qobject_cast<QQuickWindow *>(mainWindow));
-        trayManager.initialize(mainWindow, &audioEngine, &playbackController, &appSettingsManager);
+        trayManager.initialize(mainWindow, &audioEngine, &playbackController, &appSettingsManager, &trackModel);
 #ifdef Q_OS_WIN
         windowsMediaControlsService.setMainWindow(mainWindow);
 #endif

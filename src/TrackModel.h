@@ -294,6 +294,7 @@ public:
     Q_INVOKABLE void shuffleOrder();
     Q_INVOKABLE bool canResetPlaylist() const;
     Q_INVOKABLE bool resetPlaylist();
+    Q_INVOKABLE void refreshPlaylist();
     Q_INVOKABLE void captureBaselineSnapshot();
     Q_INVOKABLE QVariantList exportBaselineSnapshot() const;
     Q_INVOKABLE QVariantList exportTracksSnapshot() const;
@@ -513,6 +514,7 @@ private:
     QFileSystemWatcher m_playlistFolderWatcher;
     QTimer m_playlistFolderRescanTimer;
     QString m_watchedPlaylistFolder;
+    QStringList m_sourceFolders;
     QSet<QString> m_knownWatchedFolderEntries;
     QVector<Track> m_baselineTracks;
 };

@@ -28,6 +28,7 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(bool cueWaveformOverlayLabelsEnabled READ cueWaveformOverlayLabelsEnabled WRITE setCueWaveformOverlayLabelsEnabled NOTIFY cueWaveformOverlayLabelsEnabledChanged)
     Q_PROPERTY(bool cueWaveformOverlayAutoHideOnZoom READ cueWaveformOverlayAutoHideOnZoom WRITE setCueWaveformOverlayAutoHideOnZoom NOTIFY cueWaveformOverlayAutoHideOnZoomChanged)
     Q_PROPERTY(bool showSpeedPitchControls READ showSpeedPitchControls WRITE setShowSpeedPitchControls NOTIFY showSpeedPitchControlsChanged)
+    Q_PROPERTY(bool notifyOnTrackChange READ notifyOnTrackChange WRITE setNotifyOnTrackChange NOTIFY notifyOnTrackChangeChanged)
     Q_PROPERTY(bool fragmentRepeatEnabled READ fragmentRepeatEnabled WRITE setFragmentRepeatEnabled NOTIFY fragmentRepeatEnabledChanged)
     Q_PROPERTY(bool persistFragmentLoopPerTrack READ persistFragmentLoopPerTrack WRITE setPersistFragmentLoopPerTrack NOTIFY persistFragmentLoopPerTrackChanged)
     Q_PROPERTY(QVariantMap trackFragmentLoops READ trackFragmentLoops WRITE setTrackFragmentLoops NOTIFY trackFragmentLoopsChanged)
@@ -100,6 +101,7 @@ public:
     bool cueWaveformOverlayLabelsEnabled() const { return m_cueWaveformOverlayLabelsEnabled; }
     bool cueWaveformOverlayAutoHideOnZoom() const { return m_cueWaveformOverlayAutoHideOnZoom; }
     bool showSpeedPitchControls() const { return m_showSpeedPitchControls; }
+    bool notifyOnTrackChange() const { return m_notifyOnTrackChange; }
     bool fragmentRepeatEnabled() const { return m_fragmentRepeatEnabled; }
     bool persistFragmentLoopPerTrack() const { return m_persistFragmentLoopPerTrack; }
     QVariantMap trackFragmentLoops() const { return m_trackFragmentLoops; }
@@ -196,6 +198,7 @@ public slots:
     void setCueWaveformOverlayLabelsEnabled(bool enabled);
     void setCueWaveformOverlayAutoHideOnZoom(bool enabled);
     void setShowSpeedPitchControls(bool show);
+    void setNotifyOnTrackChange(bool enabled);
     void setFragmentRepeatEnabled(bool enabled);
     void setPersistFragmentLoopPerTrack(bool enabled);
     void setTrackFragmentLoops(const QVariantMap &loops);
@@ -266,6 +269,7 @@ signals:
     void cueWaveformOverlayLabelsEnabledChanged();
     void cueWaveformOverlayAutoHideOnZoomChanged();
     void showSpeedPitchControlsChanged();
+    void notifyOnTrackChangeChanged();
     void fragmentRepeatEnabledChanged();
     void persistFragmentLoopPerTrackChanged();
     void trackFragmentLoopsChanged();
@@ -356,6 +360,7 @@ private:
     bool m_cueWaveformOverlayLabelsEnabled = true;
     bool m_cueWaveformOverlayAutoHideOnZoom = true;
     bool m_showSpeedPitchControls = false;
+    bool m_notifyOnTrackChange = true;
     bool m_fragmentRepeatEnabled = false;
     bool m_persistFragmentLoopPerTrack = false;
     QVariantMap m_trackFragmentLoops;

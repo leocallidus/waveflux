@@ -119,6 +119,7 @@ private slots:
     void cancelsDuringSecondItemAndKeepsFirstResult();
     void cancelStopsCurrentAndRemainingItems();
     void cancelsLongQueueAndMarksPendingTail();
+    void supportsPerItemFragmentTrimAndPauseControls();
 };
 
 void BatchAudioConverterServiceTest::initTestCase()
@@ -1758,6 +1759,60 @@ void BatchAudioConverterServiceTest::cancelsLongQueueAndMarksPendingTail()
     QCOMPARE(service.canceledCount(), pendingTailCount + 1);
     QCOMPARE(service.finalSummary().value(QStringLiteral("totalCount")).toInt(), pendingTailCount + 1);
     QCOMPARE(service.finalSummary().value(QStringLiteral("canceledCount")).toInt(), pendingTailCount + 1);
+}
+
+void BatchAudioConverterServiceTest::supportsPerItemFragmentTrimAndPauseControls()
+{
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString path1 = tempDir.filePath(QStringLiteral("track1.wav"));
+    const QString path2 = tempDir.filePath(QStringLiteral("track2.wav"));
+    writeSilentWavFile(path1, 44100, 2, 5000);
+    writeSilentWavFile(path2, 44100, 2, 8000);
+
+    BatchAudioConverterService service;
+    service.setOutputDirectory(tempDir.path());
+    service.setSourceFiles(QStringList{path1, path2});
+
+    QCOMPARE(service.totalCount(), 2);
+    QCOMPARE(service.progress(), 0.0);
+    QCOMPARE(service.isPaused(), false);
+
+    const QString id1 = service.itemIdAt(0);
+    const QString id2 = service.itemIdAt(1);
+    QVERIFY(!id1.isEmpty());
+    QVERIFY(!id2.isEmpty());
+
+    // Test per-item trim configuration
+    QVERIFY(service.setItemTrim(id1, true, 1000, 4000));
+    QVERIFY(service.setItemTrimByIndex(1, true, 2000, 6000));
+
+    const QVariantList items = service.items();
+    QCOMPARE(items.size(), 2);
+    const QVariantMap item1 = items.at(0).toMap();
+    const QVariantMap item2 = items.at(1).toMap();
+
+    QCOMPARE(item1.value(QStringLiteral("trimEnabled")).toBool(), true);
+    QCOMPARE(item1.value(QStringLiteral("trimStartMs")).toLongLong(), 1000);
+    QCOMPARE(item1.value(QStringLiteral("trimEndMs")).toLongLong(), 4000);
+    QCOMPARE(item1.value(QStringLiteral("trimStartSec")).toDouble(), 1.0);
+    QCOMPARE(item1.value(QStringLiteral("trimEndSec")).toDouble(), 4.0);
+
+    QCOMPARE(item2.value(QStringLiteral("trimEnabled")).toBool(), true);
+    QCOMPARE(item2.value(QStringLiteral("trimStartMs")).toLongLong(), 2000);
+    QCOMPARE(item2.value(QStringLiteral("trimEndMs")).toLongLong(), 6000);
+
+    // Test batch selection trim update
+    const int modified = service.setTrimForSelected(QVariantList{id1, id2}, false, 0, 0);
+    QCOMPARE(modified, 2);
+    const QVariantList itemsReset = service.items();
+    QCOMPARE(itemsReset.at(0).toMap().value(QStringLiteral("trimEnabled")).toBool(), false);
+    QCOMPARE(itemsReset.at(1).toMap().value(QStringLiteral("trimEnabled")).toBool(), false);
+
+    // Test pause state signals when not running vs running
+    QCOMPARE(service.pauseBatch(), false);
+    QCOMPARE(service.resumeBatch(), false);
 }
 
 QTEST_GUILESS_MAIN(BatchAudioConverterServiceTest)

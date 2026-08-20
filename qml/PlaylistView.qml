@@ -843,6 +843,14 @@ Item {
             enabled: trackModel.canResetPlaylist
             onTriggered: trackModel.resetPlaylist()
         }
+
+        AccentMenuItem {
+            text: root.tr("playlist.refreshPlaylist")
+            icon.source: IconResolver.themed("view-refresh", themeManager.darkMode)
+            icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
+            enabled: trackModel.count > 0
+            onTriggered: trackModel.refreshPlaylist()
+        }
     }
 
     AppDialog {

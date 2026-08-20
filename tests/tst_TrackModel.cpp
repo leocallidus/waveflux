@@ -83,6 +83,8 @@ private slots:
     void resetPlaylistPreservesCanResetAfterModifyingAndThenAddingTracks();
     void loadsChaptersFromMp3Track();
     void sortByColumnAndCustomRoles();
+    void initialTrackTitleFallbackToFileName();
+    void refreshPlaylistRescansFolderAndSortsNaturally();
 };
 
 void tst_TrackModel::insertsDroppedUrlsAtRequestedIndex()
@@ -785,6 +787,71 @@ void tst_TrackModel::sortByColumnAndCustomRoles()
     QCOMPARE(model.getFilePath(0), QStringLiteral("/music/track1.flac"));
     QCOMPARE(model.getFilePath(1), QStringLiteral("/music/track2.flac"));
     QCOMPARE(model.getFilePath(2), QStringLiteral("/music/track3.flac"));
+}
+
+void tst_TrackModel::initialTrackTitleFallbackToFileName()
+{
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "temporary dir should be valid");
+
+    const QString testFile = tempDir.filePath(QStringLiteral("Symphony_No_9.wav"));
+    QVERIFY(writePlaceholderFile(testFile));
+
+    TrackModel model;
+    model.addFiles({testFile});
+
+    QCOMPARE(model.rowCount(), 1);
+    const QModelIndex idx = model.index(0, 0);
+    // TitleRole should immediately return base name without waiting for tag reader
+    QCOMPARE(model.data(idx, TrackModel::TitleRole).toString(), QStringLiteral("Symphony_No_9"));
+    QCOMPARE(model.data(idx, TrackModel::DisplayNameRole).toString(), QStringLiteral("Symphony_No_9"));
+    QCOMPARE(model.data(idx, TrackModel::FileNameRole).toString(), QStringLiteral("Symphony_No_9.wav"));
+}
+
+void tst_TrackModel::refreshPlaylistRescansFolderAndSortsNaturally()
+{
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "temporary dir should be valid");
+
+    const QString track1 = tempDir.filePath(QStringLiteral("01_intro.wav"));
+    const QString track3 = tempDir.filePath(QStringLiteral("03_outro.wav"));
+    QVERIFY(writeShortWaveFile(track1));
+    QVERIFY(writeShortWaveFile(track3));
+
+    TrackModel model;
+    model.addFolder(QUrl::fromLocalFile(tempDir.path()));
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.getFilePath(0), QDir::cleanPath(track1));
+    QCOMPARE(model.getFilePath(1), QDir::cleanPath(track3));
+
+    // Simulate user adding a new file in between: "02_middle.wav"
+    const QString track2 = tempDir.filePath(QStringLiteral("02_middle.wav"));
+    QVERIFY(writeShortWaveFile(track2));
+
+    // Auto-folder scan or manual addition appends it at the end
+    model.addFiles({track2});
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(model.getFilePath(0), QDir::cleanPath(track1));
+    QCOMPARE(model.getFilePath(1), QDir::cleanPath(track3));
+    QCOMPARE(model.getFilePath(2), QDir::cleanPath(track2));
+
+    // Select track3 as currently playing
+    model.setCurrentIndex(1);
+    QCOMPARE(model.currentFilePath(), QDir::cleanPath(track3));
+
+    // Now user clicks Refresh Playlist
+    model.refreshPlaylist();
+
+    // Verify all 3 tracks are now in natural order: 01, 02, 03
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(model.getFilePath(0), QDir::cleanPath(track1));
+    QCOMPARE(model.getFilePath(1), QDir::cleanPath(track2));
+    QCOMPARE(model.getFilePath(2), QDir::cleanPath(track3));
+
+    // Verify currently playing track is preserved and index updated
+    QCOMPARE(model.currentIndex(), 2);
+    QCOMPARE(model.currentFilePath(), QDir::cleanPath(track3));
 }
 
 QTEST_MAIN(tst_TrackModel)

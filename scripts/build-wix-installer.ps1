@@ -172,15 +172,27 @@ function Write-DirectoryXml {
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
 $distDir = Resolve-NormalizedPath -PathValue $DistDir
-$wixExePath = Resolve-NormalizedPath -PathValue $WixExe
+$wixExePath = if (-not [string]::IsNullOrWhiteSpace($WixExe) -and (Test-Path -LiteralPath $WixExe)) {
+    Resolve-NormalizedPath -PathValue $WixExe
+} elseif (-not [string]::IsNullOrWhiteSpace($WixExe) -and (Test-Path -LiteralPath (Resolve-NormalizedPath -PathValue $WixExe))) {
+    Resolve-NormalizedPath -PathValue $WixExe
+} elseif (Get-Command wix.exe -ErrorAction SilentlyContinue) {
+    (Get-Command wix.exe).Source
+} elseif (Get-Command wix -ErrorAction SilentlyContinue) {
+    (Get-Command wix).Source
+} elseif (Test-Path "C:\Program Files\WiX Toolset v6.0\bin\wix.exe") {
+    "C:\Program Files\WiX Toolset v6.0\bin\wix.exe"
+} elseif (Test-Path "C:\Program Files\WiX Toolset v5.0\bin\wix.exe") {
+    "C:\Program Files\WiX Toolset v5.0\bin\wix.exe"
+} elseif (Test-Path "C:\Program Files\WiX Toolset v4.0\bin\wix.exe") {
+    "C:\Program Files\WiX Toolset v4.0\bin\wix.exe"
+} else {
+    throw "wix.exe was not found. Please install WiX (e.g. dotnet tool install --global wix) or specify -WixExe."
+}
 $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) {
     Get-ProjectVersion -RepoRoot $repoRoot
 } else {
     $Version.Trim()
-}
-
-if (-not (Test-Path -LiteralPath $wixExePath)) {
-    throw "wix.exe was not found at '$wixExePath'."
 }
 
 $portableScriptPath = Join-Path $PSScriptRoot "build-portable-zip.ps1"

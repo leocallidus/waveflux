@@ -28,6 +28,7 @@ public:
     Q_INVOKABLE void openPresetFile(const QString &title);
     Q_INVOKABLE void savePresetFile(const QString &title, const QString &defaultName);
     Q_INVOKABLE void openImageFile(const QString &title);
+    Q_INVOKABLE void saveImageFile(const QString &title, const QString &defaultName);
     Q_INVOKABLE void openExecutableFile(const QString &title);
     Q_INVOKABLE bool openInFileManager(const QString &filePath);
     Q_INVOKABLE bool moveFileToTrash(const QString &filePath);
@@ -43,6 +44,7 @@ signals:
     void presetFileSelected(const QUrl &fileUrl);
     void savePresetFileSelected(const QUrl &fileUrl);
     void imageFileSelected(const QUrl &fileUrl);
+    void saveImageFileSelected(const QUrl &fileUrl);
     void executableFileSelected(const QUrl &fileUrl);
     void pickerFailed(const QString &message);
 
@@ -59,6 +61,7 @@ private:
         OpenPresetFile,
         SavePresetFile,
         OpenImageFile,
+        SaveImageFile,
         OpenExecutableFile
     };
 

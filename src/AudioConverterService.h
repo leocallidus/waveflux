@@ -7,17 +7,17 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <gst/gst.h>
+#include "dsp/DspProcessor.h"
 
 class TrackModel;
-typedef struct _GstElement GstElement;
-typedef struct _GstBus GstBus;
-typedef struct _GstMessage GstMessage;
 
 class AudioConverterService : public QObject
 {
     Q_OBJECT
 
     Q_PROPERTY(QString sourceFile READ sourceFile WRITE setSourceFile NOTIFY sourceFileChanged)
+    Q_PROPERTY(qint64 sourceDurationMs READ sourceDurationMs NOTIFY sourceDurationMsChanged)
     Q_PROPERTY(QString outputFile READ outputFile WRITE setOutputFile NOTIFY outputFileChanged)
     Q_PROPERTY(QString format READ format WRITE setFormat NOTIFY formatChanged)
     Q_PROPERTY(int bitrate READ bitrate WRITE setBitrate NOTIFY bitrateChanged)
@@ -25,6 +25,22 @@ class AudioConverterService : public QObject
     Q_PROPERTY(QString channelMode READ channelMode WRITE setChannelMode NOTIFY channelModeChanged)
     Q_PROPERTY(double playbackRate READ playbackRate WRITE setPlaybackRate NOTIFY playbackRateChanged)
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
+    Q_PROPERTY(double speed READ speed WRITE setSpeed NOTIFY speedChanged)
+    Q_PROPERTY(double tempo READ tempo WRITE setTempo NOTIFY tempoChanged)
+    Q_PROPERTY(double tonalitySemitones READ tonalitySemitones WRITE setTonalitySemitones NOTIFY tonalitySemitonesChanged)
+    Q_PROPERTY(double echoMix READ echoMix WRITE setEchoMix NOTIFY echoMixChanged)
+    Q_PROPERTY(double chorusMix READ chorusMix WRITE setChorusMix NOTIFY chorusMixChanged)
+    Q_PROPERTY(double flangerMix READ flangerMix WRITE setFlangerMix NOTIFY flangerMixChanged)
+    Q_PROPERTY(double reverbMix READ reverbMix WRITE setReverbMix NOTIFY reverbMixChanged)
+    Q_PROPERTY(double bass READ bass WRITE setBass NOTIFY bassChanged)
+    Q_PROPERTY(double stereoWidth READ stereoWidth WRITE setStereoWidth NOTIFY stereoWidthChanged)
+    Q_PROPERTY(bool voiceSuppression READ voiceSuppression WRITE setVoiceSuppression NOTIFY voiceSuppressionChanged)
+    Q_PROPERTY(bool isPreviewPlaying READ isPreviewPlaying NOTIFY isPreviewPlayingChanged)
+    Q_PROPERTY(double previewProgress READ previewProgress NOTIFY previewProgressChanged)
+    Q_PROPERTY(qint64 previewPositionMs READ previewPositionMs NOTIFY previewPositionMsChanged)
+    Q_PROPERTY(qint64 previewStartMs READ previewStartMs WRITE setPreviewStartMs NOTIFY previewStartMsChanged)
+    Q_PROPERTY(qint64 previewEndMs READ previewEndMs WRITE setPreviewEndMs NOTIFY previewEndMsChanged)
+    Q_PROPERTY(bool previewLoop READ previewLoop WRITE setPreviewLoop NOTIFY previewLoopChanged)
     Q_PROPERTY(bool applyEqualizer READ applyEqualizer WRITE setApplyEqualizer NOTIFY applyEqualizerChanged)
     Q_PROPERTY(QVariantList equalizerBandGains READ equalizerBandGains WRITE setEqualizerBandGains NOTIFY equalizerBandGainsChanged)
     Q_PROPERTY(bool applyReverb READ applyReverb WRITE setApplyReverb NOTIFY applyReverbChanged)
@@ -35,6 +51,8 @@ class AudioConverterService : public QObject
     Q_PROPERTY(qint64 trimStartMs READ trimStartMs WRITE setTrimStartMs NOTIFY trimStartMsChanged)
     Q_PROPERTY(qint64 trimEndMs READ trimEndMs WRITE setTrimEndMs NOTIFY trimEndMsChanged)
     Q_PROPERTY(bool isRunning READ isRunning NOTIFY isRunningChanged)
+    Q_PROPERTY(bool isPaused READ isPaused NOTIFY isPausedChanged)
+    Q_PROPERTY(bool isPreviewPaused READ isPreviewPaused NOTIFY isPreviewPausedChanged)
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QVariantMap statusPresentation READ statusPresentation NOTIFY statusPresentationChanged)
@@ -64,10 +82,12 @@ public:
     };
 
     explicit AudioConverterService(QObject *parent = nullptr);
+    ~AudioConverterService() override;
 
     void initialize(TrackModel *trackModel);
 
     QString sourceFile() const { return m_sourceFile; }
+    qint64 sourceDurationMs() const { return m_sourceDurationMs; }
     QString outputFile() const { return m_outputFile; }
     QString format() const { return m_format; }
     int bitrate() const { return m_bitrate; }
@@ -75,6 +95,22 @@ public:
     QString channelMode() const { return m_channelMode; }
     double playbackRate() const { return m_playbackRate; }
     int pitchSemitones() const { return m_pitchSemitones; }
+    double speed() const { return m_speed; }
+    double tempo() const { return m_tempo; }
+    double tonalitySemitones() const { return m_tonalitySemitones; }
+    double echoMix() const { return m_echoMix; }
+    double chorusMix() const { return m_chorusMix; }
+    double flangerMix() const { return m_flangerMix; }
+    double reverbMix() const { return m_reverbMix; }
+    double bass() const { return m_bass; }
+    double stereoWidth() const { return m_stereoWidth; }
+    bool voiceSuppression() const { return m_voiceSuppression; }
+    bool isPreviewPlaying() const { return m_isPreviewPlaying; }
+    double previewProgress() const { return m_previewProgress; }
+    qint64 previewPositionMs() const { return m_previewPositionMs; }
+    qint64 previewStartMs() const { return m_previewStartMs; }
+    qint64 previewEndMs() const { return m_previewEndMs; }
+    bool previewLoop() const { return m_previewLoop; }
     bool applyEqualizer() const { return m_applyEqualizer; }
     QVariantList equalizerBandGains() const { return m_equalizerBandGains; }
     bool applyReverb() const { return m_applyReverb; }
@@ -85,6 +121,8 @@ public:
     qint64 trimStartMs() const { return m_trimStartMs; }
     qint64 trimEndMs() const { return m_trimEndMs; }
     bool isRunning() const { return m_isRunning; }
+    bool isPaused() const { return m_isPaused; }
+    bool isPreviewPaused() const { return m_isPreviewPaused; }
     double progress() const { return m_progress; }
     QString statusText() const { return m_statusText; }
     QVariantMap statusPresentation() const;
@@ -98,7 +136,21 @@ public:
 
     Q_INVOKABLE bool startConversion();
     Q_INVOKABLE void cancelConversion();
+    Q_INVOKABLE bool pauseConversion();
+    Q_INVOKABLE bool resumeConversion();
+    Q_INVOKABLE bool togglePauseConversion();
     Q_INVOKABLE void resetTransientState();
+    Q_INVOKABLE void resetDspSettings();
+    Q_INVOKABLE void resetParameter(const QString &paramId);
+    Q_INVOKABLE void resetPreviewRange();
+    Q_INVOKABLE bool startPreview(qint64 startMs = -1, qint64 endMs = -1);
+    Q_INVOKABLE void stopPreview();
+    Q_INVOKABLE void togglePreview();
+    Q_INVOKABLE bool pausePreview();
+    Q_INVOKABLE bool resumePreview();
+    Q_INVOKABLE bool togglePreviewPause();
+    Q_INVOKABLE bool seekPreview(qint64 positionMs);
+    Q_INVOKABLE bool seekPreviewProgress(double progress);
     Q_INVOKABLE QString suggestOutputFilePath(const QString &directoryOverride = QString()) const;
     Q_INVOKABLE bool supportsCurrentFormatBitrate() const;
     Q_INVOKABLE bool supportsCurrentFormatSampleRate() const;
@@ -114,6 +166,19 @@ public slots:
     void setChannelMode(const QString &channelMode);
     void setPlaybackRate(double playbackRate);
     void setPitchSemitones(int pitchSemitones);
+    void setSpeed(double speed);
+    void setTempo(double tempo);
+    void setTonalitySemitones(double tonalitySemitones);
+    void setEchoMix(double echoMix);
+    void setChorusMix(double chorusMix);
+    void setFlangerMix(double flangerMix);
+    void setReverbMix(double reverbMix);
+    void setBass(double bass);
+    void setStereoWidth(double stereoWidth);
+    void setVoiceSuppression(bool voiceSuppression);
+    void setPreviewStartMs(qint64 startMs);
+    void setPreviewEndMs(qint64 endMs);
+    void setPreviewLoop(bool previewLoop);
     void setApplyEqualizer(bool applyEqualizer);
     void setEqualizerBandGains(const QVariantList &gains);
     void setApplyReverb(bool applyReverb);
@@ -127,6 +192,7 @@ public slots:
 
 signals:
     void sourceFileChanged();
+    void sourceDurationMsChanged();
     void outputFileChanged();
     void formatChanged();
     void bitrateChanged();
@@ -134,6 +200,22 @@ signals:
     void channelModeChanged();
     void playbackRateChanged();
     void pitchSemitonesChanged();
+    void speedChanged();
+    void tempoChanged();
+    void tonalitySemitonesChanged();
+    void echoMixChanged();
+    void chorusMixChanged();
+    void flangerMixChanged();
+    void reverbMixChanged();
+    void bassChanged();
+    void stereoWidthChanged();
+    void voiceSuppressionChanged();
+    void isPreviewPlayingChanged();
+    void previewProgressChanged();
+    void previewPositionMsChanged();
+    void previewStartMsChanged();
+    void previewEndMsChanged();
+    void previewLoopChanged();
     void applyEqualizerChanged();
     void equalizerBandGainsChanged();
     void applyReverbChanged();
@@ -144,6 +226,8 @@ signals:
     void trimStartMsChanged();
     void trimEndMsChanged();
     void isRunningChanged();
+    void isPausedChanged();
+    void isPreviewPausedChanged();
     void progressChanged();
     void statusTextChanged();
     void statusPresentationChanged();
@@ -191,8 +275,15 @@ private:
     void setProgress(double progress);
     void setIsRunning(bool running);
     void teardownConversionPipeline();
+    void teardownPreviewPipeline();
     void handleBusMessage(GstMessage *message);
     bool setupConversionPipeline(QString *errorMessage);
+    static GstPadProbeReturn converterDspPadProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData);
+    static GstPadProbeReturn previewDspPadProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData);
+    void processConverterDspBuffer(GstPad *pad, GstBuffer *buffer);
+    void processPreviewDspBuffer(GstPad *pad, GstBuffer *buffer);
+    void applyPreviewPitchParameters();
+    void pollPreviewProgress();
     QString createTemporaryOutputPath() const;
     QString createTemporaryTrackerRenderPath() const;
     void finalizeSuccessfulConversion();
@@ -216,6 +307,51 @@ private:
     QString m_channelMode = QStringLiteral("stereo");
     double m_playbackRate = 1.0;
     int m_pitchSemitones = 0;
+    double m_speed = 1.0;
+    double m_tempo = 1.0;
+    double m_tonalitySemitones = 0.0;
+    double m_echoMix = 0.0;
+    double m_chorusMix = 0.0;
+    double m_flangerMix = 0.0;
+    double m_reverbMix = 0.0;
+    double m_bass = 1.0;
+    double m_stereoWidth = 1.0;
+    bool m_voiceSuppression = false;
+    WaveFlux::Dsp::LowShelfFilter m_bassFilter;
+    WaveFlux::Dsp::DelayEffect m_echoEffect;
+    WaveFlux::Dsp::ModulatedDelayEffect m_chorusEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Chorus};
+    WaveFlux::Dsp::ModulatedDelayEffect m_flangerEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Flanger};
+    WaveFlux::Dsp::SimpleReverb m_reverbEffect;
+    int m_dspSampleRate = 44100;
+    GstElement *m_dspIdentityElement = nullptr;
+    GstElement *m_dspCapsFilterElement = nullptr;
+    gulong m_dspProbeId = 0;
+
+    GstElement *m_previewPipeline = nullptr;
+    GstElement *m_previewPitchElement = nullptr;
+    GstElement *m_previewConvert1Element = nullptr;
+    GstElement *m_previewDspIdentityElement = nullptr;
+    GstBus *m_previewBus = nullptr;
+    gulong m_previewDspProbeId = 0;
+    QTimer m_previewPollTimer;
+    bool m_isPreviewPlaying = false;
+    bool m_previewLoop = false;
+    double m_previewProgress = 0.0;
+    qint64 m_previewPositionMs = 0;
+    qint64 m_previewStartMs = 0;
+    qint64 m_previewEndMs = 15000;
+    qint64 m_previewActualStartMs = 0;
+    qint64 m_previewActualEndMs = 15000;
+    qint64 m_previewDurationMs = 15000;
+    qint64 m_previewPendingSeekMs = -1;
+    WaveFlux::Dsp::LowShelfFilter m_previewBassFilter;
+    WaveFlux::Dsp::DelayEffect m_previewEchoEffect;
+    WaveFlux::Dsp::ModulatedDelayEffect m_previewChorusEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Chorus};
+    WaveFlux::Dsp::ModulatedDelayEffect m_previewFlangerEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Flanger};
+    WaveFlux::Dsp::SimpleReverb m_previewReverbEffect;
+    WaveFlux::Dsp::FormatQualitySimulator m_previewQualitySimulator;
+    int m_previewDspSampleRate = 44100;
+
     bool m_applyEqualizer = false;
     QVariantList m_equalizerBandGains;
     bool m_applyReverb = false;
@@ -226,6 +362,8 @@ private:
     qint64 m_trimStartMs = 0;
     qint64 m_trimEndMs = 0;
     bool m_isRunning = false;
+    bool m_isPaused = false;
+    bool m_isPreviewPaused = false;
     double m_progress = 0.0;
     QString m_statusText;
     QString m_statusMessageKey;

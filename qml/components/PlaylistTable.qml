@@ -56,6 +56,13 @@ Item {
     property int appliedSearchRevision: searchRevision
     readonly property bool searchFiltersActive: searchFieldMask !== 0 || searchQuickFilterMask !== 0
     readonly property int selectedCount: selectedFilePaths.length
+    readonly property var selectedPathsSet: {
+        const set = {}
+        for (let i = 0; i < selectedFilePaths.length; ++i) {
+            set[selectedFilePaths[i]] = true
+        }
+        return set
+    }
 
     readonly property var filteredTrackModel: playlistTableFilterModel
 
@@ -1111,7 +1118,10 @@ Item {
     }
 
     function isFileSelected(filePath) {
-        return selectedFilePaths.indexOf(filePath) >= 0
+        if (!filePath || filePath.length === 0) {
+            return false
+        }
+        return Boolean(selectedPathsSet[filePath])
     }
 
     function normalizeSelectedFilePaths() {
@@ -1197,18 +1207,31 @@ Item {
         ctrlDragConsumeClick = false
     }
 
-    function updateCtrlDragSelectionAt(index) {
-        if (!ctrlDragSelecting || index < 0) {
+    function updateCtrlDragSelectionAt(sourceIndex) {
+        if (!ctrlDragSelecting || sourceIndex < 0) {
             return
         }
-        if (index !== ctrlDragAnchorIndex) {
+        if (sourceIndex !== ctrlDragAnchorIndex) {
             ctrlDragMoved = true
         }
         if (!ctrlDragMoved) {
             return
         }
-        addIndexToSelection(ctrlDragAnchorIndex)
-        addIndexToSelection(index)
+        const anchorProxy = filteredTrackModel.proxyIndexForSource(ctrlDragAnchorIndex)
+        const currentProxy = filteredTrackModel.proxyIndexForSource(sourceIndex)
+        if (anchorProxy >= 0 && currentProxy >= 0) {
+            const fromProxy = Math.min(anchorProxy, currentProxy)
+            const toProxy = Math.max(anchorProxy, currentProxy)
+            for (let p = fromProxy; p <= toProxy; ++p) {
+                const srcIdx = filteredTrackModel.sourceIndexAt(p)
+                if (srcIdx >= 0) {
+                    addIndexToSelection(srcIdx)
+                }
+            }
+        } else {
+            addIndexToSelection(ctrlDragAnchorIndex)
+            addIndexToSelection(sourceIndex)
+        }
     }
 
     function endCtrlDragSelection() {
@@ -1229,22 +1252,25 @@ Item {
         return true
     }
 
-    function selectRangeToIndex(index) {
-        const anchor = selectionAnchorIndex >= 0 ? selectionAnchorIndex : index
-        const from = Math.min(anchor, index)
-        const to = Math.max(anchor, index)
+    function selectRangeToIndex(sourceIndex) {
+        const anchorSource = selectionAnchorIndex >= 0 ? selectionAnchorIndex : sourceIndex
+        const anchorProxy = filteredTrackModel.proxyIndexForSource(anchorSource)
+        const targetProxy = filteredTrackModel.proxyIndexForSource(sourceIndex)
+        const fromProxy = (anchorProxy >= 0 && targetProxy >= 0) ? Math.min(anchorProxy, targetProxy) : 0
+        const toProxy = (anchorProxy >= 0 && targetProxy >= 0) ? Math.max(anchorProxy, targetProxy) : 0
+
         const next = []
         const seen = {}
-        for (let i = from; i <= to; ++i) {
-            const filePath = trackModel.getFilePath(i)
-            if (!filePath || seen[filePath]) {
-                continue
-            }
+        for (let p = fromProxy; p <= toProxy; ++p) {
+            const srcIdx = filteredTrackModel.sourceIndexAt(p)
+            if (srcIdx < 0) continue
+            const filePath = trackModel.getFilePath(srcIdx)
+            if (!filePath || seen[filePath]) continue
             next.push(filePath)
             seen[filePath] = true
         }
         selectedFilePaths = next
-        selectionAnchorIndex = anchor
+        selectionAnchorIndex = anchorSource
     }
 
     function selectedModelIndices() {
@@ -1556,17 +1582,29 @@ Item {
 
                 background: Rectangle {
                     color: {
-                        if (trackDelegate.highlighted) {
-                            return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.10)
+                        if (trackDelegate.selectedInBatch) {
+                            return Qt.rgba(themeManager.primaryColor.r,
+                                           themeManager.primaryColor.g,
+                                           themeManager.primaryColor.b,
+                                           trackDelegate.activeTrack ? 0.28 : 0.20)
+                        }
+                        if (trackDelegate.activeTrack) {
+                            return Qt.rgba(themeManager.primaryColor.r,
+                                           themeManager.primaryColor.g,
+                                           themeManager.primaryColor.b,
+                                           0.12)
                         }
                         if (trackDelegate.pendingTrack) {
-                            return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.07)
+                            return Qt.rgba(themeManager.primaryColor.r,
+                                           themeManager.primaryColor.g,
+                                           themeManager.primaryColor.b,
+                                           0.08)
                         }
-                        if (trackDelegate.selectedInBatch) {
-                            return Qt.rgba(themeManager.primaryColor.r, themeManager.primaryColor.g, themeManager.primaryColor.b, 0.18)
-                        }
-                        if (trackDelegate.hovered) {
-                            return Qt.rgba(themeManager.surfaceColor.r, themeManager.surfaceColor.g, themeManager.surfaceColor.b, 0.5)
+                        if (delegateMouseArea.containsMouse) {
+                            return Qt.rgba(themeManager.textColor.r,
+                                           themeManager.textColor.g,
+                                           themeManager.textColor.b,
+                                           0.06)
                         }
                         return "transparent"
                     }
@@ -1623,10 +1661,10 @@ Item {
                                 "hasChapters": trackDelegate.hasChapters
                             })
                             alignment: String(desc.alignment || "left")
-                            isHighlighted: trackDelegate.highlighted
+                            isHighlighted: trackDelegate.activeTrack || trackDelegate.selectedInBatch
                             isPlaying: trackDelegate.activeTrack && playbackController.playbackState === 1
                             isCueSegment: false
-                            textColor: trackDelegate.highlighted
+                            textColor: (trackDelegate.activeTrack || trackDelegate.selectedInBatch)
                                        ? themeManager.primaryColor
                                        : (colId === "artist" || colId === "duration" ? themeManager.textSecondaryColor : (colId === "album" || colId === "format" || colId === "bitrate" ? themeManager.textMutedColor : themeManager.textColor))
                             Layout.preferredWidth: Number(modelData.computedWidth || modelData.width || (desc ? desc.defaultWidth : 100))
@@ -1642,36 +1680,50 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
+
                     onPressed: function(mouse) {
                         root.tablePressed()
                         if (mouse.button !== Qt.LeftButton) {
                             return
                         }
-                        if ((mouse.modifiers & Qt.ControlModifier) === 0) {
+                        const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0 ||
+                                       (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0
+                        if (!isCtrl) {
                             return
                         }
                         root.beginCtrlDragSelection(trackDelegate.sourceIndex)
                     }
+
                     onPositionChanged: function(mouse) {
                         if (!root.ctrlDragSelecting || (mouse.buttons & Qt.LeftButton) === 0) {
                             return
                         }
                         const pointInList = delegateMouseArea.mapToItem(playlistView.contentItem, mouse.x, mouse.y)
                         const targetProxyIndex = playlistView.indexAt(10, pointInList.y)
-                        root.updateCtrlDragSelectionAt(filteredTrackModel.sourceIndexAt(targetProxyIndex))
+                        if (targetProxyIndex >= 0) {
+                            root.updateCtrlDragSelectionAt(filteredTrackModel.sourceIndexAt(targetProxyIndex))
+                        }
                     }
+
                     onReleased: function(mouse) {
                         if (mouse.button === Qt.LeftButton) {
                             root.endCtrlDragSelection()
                         }
                     }
+
                     onCanceled: root.endCtrlDragSelection()
+
                     onClicked: function(mouse) {
                         if (mouse.button === Qt.LeftButton) {
-                            if (mouse.modifiers & Qt.ShiftModifier) {
+                            const isShift = (mouse.modifiers & Qt.ShiftModifier) !== 0 ||
+                                            (Qt.application.keyboardModifiers & Qt.ShiftModifier) !== 0
+                            const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0 ||
+                                           (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0
+
+                            if (isShift) {
                                 root.selectRangeToIndex(trackDelegate.sourceIndex)
                                 return
-                            } else if (mouse.modifiers & Qt.ControlModifier) {
+                            } else if (isCtrl) {
                                 if (root.consumeCtrlDragClick()) {
                                     return
                                 }
@@ -1699,7 +1751,11 @@ Item {
                         if (mouse.button !== Qt.LeftButton) {
                             return
                         }
-                        if ((mouse.modifiers & Qt.ControlModifier) || (mouse.modifiers & Qt.ShiftModifier)) {
+                        const isMod = (mouse.modifiers & Qt.ControlModifier) !== 0 ||
+                                      (mouse.modifiers & Qt.ShiftModifier) !== 0 ||
+                                      (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0 ||
+                                      (Qt.application.keyboardModifiers & Qt.ShiftModifier) !== 0
+                        if (isMod) {
                             return
                         }
                         if (!root.isFileSelected(trackDelegate.filePath)) {

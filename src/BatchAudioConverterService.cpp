@@ -311,6 +311,16 @@ QVariantMap BatchAudioConverterService::settings() const
     result.insert(QStringLiteral("channelMode"), m_settings.channelMode);
     result.insert(QStringLiteral("playbackRate"), m_settings.playbackRate);
     result.insert(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones);
+    result.insert(QStringLiteral("speed"), m_settings.speed);
+    result.insert(QStringLiteral("tempo"), m_settings.tempo);
+    result.insert(QStringLiteral("tonalitySemitones"), m_settings.tonalitySemitones);
+    result.insert(QStringLiteral("echoMix"), m_settings.echoMix);
+    result.insert(QStringLiteral("chorusMix"), m_settings.chorusMix);
+    result.insert(QStringLiteral("flangerMix"), m_settings.flangerMix);
+    result.insert(QStringLiteral("reverbMix"), m_settings.reverbMix);
+    result.insert(QStringLiteral("bass"), m_settings.bass);
+    result.insert(QStringLiteral("stereoWidth"), m_settings.stereoWidth);
+    result.insert(QStringLiteral("voiceSuppression"), m_settings.voiceSuppression);
     result.insert(QStringLiteral("applyEqualizer"), m_settings.applyEqualizer);
     result.insert(QStringLiteral("equalizerBandGains"), m_settings.equalizerBandGains);
     result.insert(QStringLiteral("applyReverb"), m_settings.applyReverb);
@@ -862,6 +872,8 @@ bool BatchAudioConverterService::startBatch()
     resetFinalSummary();
     setLastError(QString());
     setCancelRequested(false);
+    m_isPaused = false;
+    emit isPausedChanged();
     setBatchProgress(0.0);
     setJobStartedNow();
     beginRuntimeMeasurements();
@@ -890,6 +902,78 @@ void BatchAudioConverterService::cancelBatch()
     }
 
     finalizeBatchRun(true);
+}
+
+bool BatchAudioConverterService::pauseBatch()
+{
+    if (!m_isRunning || m_isPaused) {
+        return false;
+    }
+    m_isPaused = true;
+    if (m_worker && m_worker->isRunning()) {
+        m_worker->pauseConversion();
+    }
+    setStatusText(localizedBatchText(QStringLiteral("batchAudioConverter.statePaused")));
+    emit isPausedChanged();
+    return true;
+}
+
+bool BatchAudioConverterService::resumeBatch()
+{
+    if (!m_isRunning || !m_isPaused) {
+        return false;
+    }
+    m_isPaused = false;
+    emit isPausedChanged();
+    if (m_worker && m_worker->isRunning()) {
+        m_worker->resumeConversion();
+    } else {
+        startNextPendingItem();
+    }
+    return true;
+}
+
+bool BatchAudioConverterService::togglePause()
+{
+    return m_isPaused ? resumeBatch() : pauseBatch();
+}
+
+bool BatchAudioConverterService::setItemTrim(const QString &itemId, bool enabled, qint64 startMs, qint64 endMs)
+{
+    return setItemTrimByIndex(indexOfItemIdInternal(itemId), enabled, startMs, endMs);
+}
+
+bool BatchAudioConverterService::setItemTrimByIndex(int index, bool enabled, qint64 startMs, qint64 endMs)
+{
+    if (index < 0 || index >= m_items.size()) {
+        return false;
+    }
+    m_items[index].trimEnabled = enabled;
+    m_items[index].trimStartMs = qMax<qint64>(0, startMs);
+    m_items[index].trimEndMs = endMs > 0 ? qMax(m_items[index].trimStartMs, endMs) : m_items[index].sourceDurationMs;
+    touchItem(m_items[index]);
+    emit itemsChanged();
+    return true;
+}
+
+int BatchAudioConverterService::setTrimForSelected(const QVariantList &itemIds, bool enabled, qint64 startMs, qint64 endMs)
+{
+    int modified = 0;
+    for (const QVariant &idVal : itemIds) {
+        const QString id = idVal.toString();
+        const int idx = indexOfItemIdInternal(id);
+        if (idx >= 0) {
+            m_items[idx].trimEnabled = enabled;
+            m_items[idx].trimStartMs = qMax<qint64>(0, startMs);
+            m_items[idx].trimEndMs = endMs > 0 ? qMax(m_items[idx].trimStartMs, endMs) : m_items[idx].sourceDurationMs;
+            touchItem(m_items[idx]);
+            ++modified;
+        }
+    }
+    if (modified > 0) {
+        emit itemsChanged();
+    }
+    return modified;
 }
 
 QVariantMap BatchAudioConverterService::exportPresetSettings() const
@@ -924,6 +1008,16 @@ bool BatchAudioConverterService::applySettingsMap(const QVariantMap &settings)
     setChannelMode(settings.value(QStringLiteral("channelMode")).toString());
     setPlaybackRate(settings.value(QStringLiteral("playbackRate"), m_settings.playbackRate).toDouble());
     setPitchSemitones(settings.value(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones).toInt());
+    setSpeed(settings.value(QStringLiteral("speed"), m_settings.speed).toDouble());
+    setTempo(settings.value(QStringLiteral("tempo"), m_settings.tempo).toDouble());
+    setTonalitySemitones(settings.value(QStringLiteral("tonalitySemitones"), m_settings.tonalitySemitones).toDouble());
+    setEchoMix(settings.value(QStringLiteral("echoMix"), m_settings.echoMix).toDouble());
+    setChorusMix(settings.value(QStringLiteral("chorusMix"), m_settings.chorusMix).toDouble());
+    setFlangerMix(settings.value(QStringLiteral("flangerMix"), m_settings.flangerMix).toDouble());
+    setReverbMix(settings.value(QStringLiteral("reverbMix"), m_settings.reverbMix).toDouble());
+    setBass(settings.value(QStringLiteral("bass"), m_settings.bass).toDouble());
+    setStereoWidth(settings.value(QStringLiteral("stereoWidth"), m_settings.stereoWidth).toDouble());
+    setVoiceSuppression(settings.value(QStringLiteral("voiceSuppression"), m_settings.voiceSuppression).toBool());
     setApplyEqualizer(settings.value(QStringLiteral("applyEqualizer"), m_settings.applyEqualizer).toBool());
     if (settings.contains(QStringLiteral("equalizerBandGains"))) {
         setEqualizerBandGains(settings.value(QStringLiteral("equalizerBandGains")).toList());
@@ -1453,6 +1547,145 @@ void BatchAudioConverterService::setPitchSemitones(int pitchSemitones)
     }
     m_settings.pitchSemitones = normalized;
     emit pitchSemitonesChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setSpeed(double speed)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.25, speed, 3.0);
+    if (qFuzzyCompare(m_settings.speed, clamped)) {
+        return;
+    }
+    m_settings.speed = clamped;
+    emit speedChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setTempo(double tempo)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.5, tempo, 3.0);
+    if (qFuzzyCompare(m_settings.tempo, clamped)) {
+        return;
+    }
+    m_settings.tempo = clamped;
+    emit tempoChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setTonalitySemitones(double tonalitySemitones)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(-10.0, tonalitySemitones, 10.0);
+    if (qFuzzyCompare(m_settings.tonalitySemitones, clamped)) {
+        return;
+    }
+    m_settings.tonalitySemitones = clamped;
+    emit tonalitySemitonesChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setEchoMix(double echoMix)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.0, echoMix, 100.0);
+    if (qFuzzyCompare(m_settings.echoMix, clamped)) {
+        return;
+    }
+    m_settings.echoMix = clamped;
+    emit echoMixChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setChorusMix(double chorusMix)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.0, chorusMix, 100.0);
+    if (qFuzzyCompare(m_settings.chorusMix, clamped)) {
+        return;
+    }
+    m_settings.chorusMix = clamped;
+    emit chorusMixChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setFlangerMix(double flangerMix)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.0, flangerMix, 100.0);
+    if (qFuzzyCompare(m_settings.flangerMix, clamped)) {
+        return;
+    }
+    m_settings.flangerMix = clamped;
+    emit flangerMixChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setReverbMix(double reverbMix)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.0, reverbMix, 100.0);
+    if (qFuzzyCompare(m_settings.reverbMix, clamped)) {
+        return;
+    }
+    m_settings.reverbMix = clamped;
+    emit reverbMixChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setBass(double bass)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(0.0, bass, 2.0);
+    if (qFuzzyCompare(m_settings.bass, clamped)) {
+        return;
+    }
+    m_settings.bass = clamped;
+    emit bassChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setStereoWidth(double stereoWidth)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    const double clamped = qBound(1.0, stereoWidth, 5.0);
+    if (qFuzzyCompare(m_settings.stereoWidth, clamped)) {
+        return;
+    }
+    m_settings.stereoWidth = clamped;
+    emit stereoWidthChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setVoiceSuppression(bool voiceSuppression)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    if (m_settings.voiceSuppression == voiceSuppression) {
+        return;
+    }
+    m_settings.voiceSuppression = voiceSuppression;
+    emit voiceSuppressionChanged();
     emitSettingsChanged();
 }
 
@@ -2069,6 +2302,11 @@ QVariantMap BatchAudioConverterService::toVariantMap(const BatchAudioConversionI
     result.insert(QStringLiteral("updatedAtMs"), item.updatedAtMs);
     result.insert(QStringLiteral("terminalResult"), item.terminalResult);
     result.insert(QStringLiteral("failureType"), failureTypeKey(item.failureType));
+    result.insert(QStringLiteral("trimEnabled"), item.trimEnabled);
+    result.insert(QStringLiteral("trimStartMs"), item.trimStartMs);
+    result.insert(QStringLiteral("trimEndMs"), item.trimEndMs);
+    result.insert(QStringLiteral("trimStartSec"), item.trimStartMs / 1000.0);
+    result.insert(QStringLiteral("trimEndSec"), item.trimEndMs / 1000.0);
     result.insert(QStringLiteral("itemActionability"), runtimeState.value(QStringLiteral("itemActionability")));
     result.insert(QStringLiteral("effectiveSettingsSnapshot"),
                   runtimeState.value(QStringLiteral("effectiveSettingsSnapshot")));
@@ -3541,6 +3779,10 @@ void BatchAudioConverterService::startNextPendingItem()
         return;
     }
 
+    if (m_isPaused) {
+        return;
+    }
+
     int nextIndex = -1;
     for (int i = 0; i < m_items.size(); ++i) {
         if (m_items.at(i).state == Pending) {
@@ -3590,6 +3832,16 @@ void BatchAudioConverterService::startNextPendingItem()
     m_worker->setChannelMode(m_settings.channelMode);
     m_worker->setPlaybackRate(m_settings.playbackRate);
     m_worker->setPitchSemitones(m_settings.pitchSemitones);
+    m_worker->setSpeed(m_settings.speed);
+    m_worker->setTempo(m_settings.tempo);
+    m_worker->setTonalitySemitones(m_settings.tonalitySemitones);
+    m_worker->setEchoMix(m_settings.echoMix);
+    m_worker->setChorusMix(m_settings.chorusMix);
+    m_worker->setFlangerMix(m_settings.flangerMix);
+    m_worker->setReverbMix(m_settings.reverbMix);
+    m_worker->setBass(m_settings.bass);
+    m_worker->setStereoWidth(m_settings.stereoWidth);
+    m_worker->setVoiceSuppression(m_settings.voiceSuppression);
     m_worker->setApplyEqualizer(m_settings.applyEqualizer);
     m_worker->setEqualizerBandGains(m_settings.equalizerBandGains);
     m_worker->setApplyReverb(m_settings.applyReverb);
@@ -3597,6 +3849,16 @@ void BatchAudioConverterService::startNextPendingItem()
     m_worker->setReverbDamping(m_settings.reverbDamping);
     m_worker->setReverbWetLevel(m_settings.reverbWetLevel);
     m_worker->setOverwriteExisting(m_items[nextIndex].conflictResolution.willOverwriteExisting);
+
+    const bool itemTrim = m_items[nextIndex].trimEnabled;
+    m_worker->setTrimEnabled(itemTrim);
+    if (itemTrim) {
+        m_worker->setTrimStartMs(m_items[nextIndex].trimStartMs);
+        m_worker->setTrimEndMs(m_items[nextIndex].trimEndMs);
+    } else {
+        m_worker->setTrimStartMs(0);
+        m_worker->setTrimEndMs(0);
+    }
 
     if (!m_worker->startConversion()) {
         if (!hasItemAt(nextIndex) || m_items.at(nextIndex).state != Running) {
@@ -3639,6 +3901,8 @@ void BatchAudioConverterService::finalizeBatchRun(bool canceled)
     m_runtimeMeasurementCpuFinishedAtMs = currentProcessCpuTimeMs();
     updateAggregateProgress();
     setIsRunning(false);
+    m_isPaused = false;
+    emit isPausedChanged();
     setCancelRequested(false);
     setJobFinishedNow();
     if (canceled) {

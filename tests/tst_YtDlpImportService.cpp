@@ -748,6 +748,8 @@ private slots:
     void restoresPersistedDraftAfterReopen();
     void restoringDraftDoesNotReviveActiveRuntimeState();
     void clearResetsCompletedImportState();
+    void supportsOggFormatPlanAndExecution();
+    void supportsPostProcessingAndAria2cOptions();
 };
 
 void YtDlpImportServiceTest::initTestCase()
@@ -2973,6 +2975,126 @@ void YtDlpImportServiceTest::clearResetsCompletedImportState()
     QVERIFY(service.lastError().isEmpty());
     QVERIFY(service.statusText().isEmpty());
     QCOMPARE(service.batchProgress(), 0.0);
+}
+
+void YtDlpImportServiceTest::supportsOggFormatPlanAndExecution()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString payloadPath = testDataPath(QStringLiteral("yt_dlp/single_video.json"));
+    const QString scriptPath = createFakeYtDlpScript(tempDir.path(), payloadPath);
+    QVERIFY(!scriptPath.isEmpty());
+
+    AppSettingsManager settings;
+    settings.setYtDlpExecutablePath(scriptPath);
+    settings.setFfmpegExecutablePath(scriptPath);
+
+    YtDlpImportService service;
+    service.setAppSettingsManager(&settings);
+    service.setOutputDirectory(QDir(tempDir.path()).filePath(QStringLiteral("downloads")));
+    service.setSelectedFormat(QStringLiteral("ogg"));
+
+    QCOMPARE(service.selectedFormat(), QStringLiteral("ogg"));
+
+    QVERIFY(service.probeSourceUrl(QStringLiteral("https://youtu.be/vid123")));
+    QTRY_VERIFY_WITH_TIMEOUT(service.hasProbeResult(), 5000);
+
+    QVERIFY(service.startImport());
+    QTRY_VERIFY_WITH_TIMEOUT(!service.isRunning(), 5000);
+    QVERIFY(!service.finalSummary().isEmpty());
+    QVERIFY(!service.items().isEmpty());
+}
+
+void YtDlpImportServiceTest::supportsPostProcessingAndAria2cOptions()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString payloadPath = testDataPath(QStringLiteral("yt_dlp/single_video.json"));
+    const QString scriptPath = createFakeYtDlpScript(tempDir.path(), payloadPath);
+    QVERIFY(!scriptPath.isEmpty());
+
+    AppSettingsManager settings;
+    settings.setYtDlpExecutablePath(scriptPath);
+    settings.setFfmpegExecutablePath(scriptPath);
+
+    YtDlpImportService service;
+    service.setAppSettingsManager(&settings);
+
+    // Default values verification
+    QVERIFY(service.embedMetadata());
+    QVERIFY(service.embedThumbnail());
+    QVERIFY(!service.cropCoverArt());
+    QVERIFY(!service.removeSourceMetadata());
+    QVERIFY(!service.useAria2c());
+    QCOMPARE(service.aria2cMaxConnections(), 16);
+    QCOMPARE(service.aria2cMinSplitSizeMb(), 20);
+    QVERIFY(service.probeCustomArgs().isEmpty());
+    QVERIFY(service.downloadCustomArgs().isEmpty());
+
+    // Setting bounds & properties
+    service.setProbeCustomArgs(QStringLiteral("--cookies-from-browser firefox --geo-bypass"));
+    service.setDownloadCustomArgs(QStringLiteral("--limit-rate 5M"));
+    service.setEmbedMetadata(true);
+    service.setEmbedThumbnail(true);
+    service.setCropCoverArt(true);
+    service.setRemoveSourceMetadata(true);
+    service.setUseAria2c(true);
+    service.setAria2cMaxConnections(8);
+    service.setAria2cMinSplitSizeMb(30);
+
+    // Verify probe arguments contain custom probe args
+    const QStringList probeArgs = service.probeArgumentsForSourceUrl(QStringLiteral("https://youtu.be/vid123"));
+    QVERIFY(probeArgs.contains(QStringLiteral("--cookies-from-browser")));
+    QVERIFY(probeArgs.contains(QStringLiteral("firefox")));
+    QVERIFY(probeArgs.contains(QStringLiteral("--geo-bypass")));
+
+    // Preset save and restore
+    const QVariantMap preset = service.currentSettingsPreset();
+    QCOMPARE(preset.value(QStringLiteral("probeCustomArgs")).toString(), QStringLiteral("--cookies-from-browser firefox --geo-bypass"));
+    QCOMPARE(preset.value(QStringLiteral("downloadCustomArgs")).toString(), QStringLiteral("--limit-rate 5M"));
+    QVERIFY(preset.value(QStringLiteral("embedMetadata")).toBool());
+    QVERIFY(preset.value(QStringLiteral("embedThumbnail")).toBool());
+    QVERIFY(preset.value(QStringLiteral("cropCoverArt")).toBool());
+    QVERIFY(preset.value(QStringLiteral("removeSourceMetadata")).toBool());
+    QVERIFY(preset.value(QStringLiteral("useAria2c")).toBool());
+    QCOMPARE(preset.value(QStringLiteral("aria2cMaxConnections")).toInt(), 8);
+    QCOMPARE(preset.value(QStringLiteral("aria2cMinSplitSizeMb")).toInt(), 30);
+
+    // Reset service and apply preset
+    YtDlpImportService restoredService;
+    restoredService.setAppSettingsManager(&settings);
+    QVERIFY(restoredService.applySettingsPreset(preset));
+    QCOMPARE(restoredService.probeCustomArgs(), QStringLiteral("--cookies-from-browser firefox --geo-bypass"));
+    QCOMPARE(restoredService.downloadCustomArgs(), QStringLiteral("--limit-rate 5M"));
+    QVERIFY(restoredService.embedMetadata());
+    QVERIFY(restoredService.embedThumbnail());
+    QVERIFY(restoredService.cropCoverArt());
+    QVERIFY(restoredService.removeSourceMetadata());
+    QVERIFY(restoredService.useAria2c());
+    QCOMPARE(restoredService.aria2cMaxConnections(), 8);
+    QCOMPARE(restoredService.aria2cMinSplitSizeMb(), 30);
+
+    // Perform import and verify logged CLI arguments
+    service.setOutputDirectory(QDir(tempDir.path()).filePath(QStringLiteral("downloads")));
+    QVERIFY(service.probeSourceUrl(QStringLiteral("https://youtu.be/vid123")));
+    QTRY_VERIFY_WITH_TIMEOUT(service.hasProbeResult(), 5000);
+
+    QVERIFY(service.startImport());
+    QTRY_VERIFY_WITH_TIMEOUT(!service.isRunning(), 5000);
+    QVERIFY(!service.finalSummary().isEmpty());
+
+    const QString argsLogPath = QDir(tempDir.path()).filePath(QStringLiteral("last-args.txt"));
+    QFile argsLog(argsLogPath);
+    QVERIFY(argsLog.open(QIODevice::ReadOnly));
+    const QString loggedArgs = QString::fromUtf8(argsLog.readAll());
+    QVERIFY(loggedArgs.contains(QStringLiteral("--embed-metadata")));
+    QVERIFY(loggedArgs.contains(QStringLiteral("--embed-thumbnail")));
+    QVERIFY(loggedArgs.contains(QStringLiteral("--downloader")));
+    QVERIFY(loggedArgs.contains(QStringLiteral("aria2c")));
+    QVERIFY(loggedArgs.contains(QStringLiteral("--limit-rate")));
+    QVERIFY(loggedArgs.contains(QStringLiteral("5M")));
 }
 
 QTEST_MAIN(YtDlpImportServiceTest)

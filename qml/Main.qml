@@ -22,17 +22,32 @@ Kirigami.ApplicationWindow {
                                                && audioEngine.state === 1)
     flags: Qt.Window
 
+    property bool isQuittingWithFade: false
+
+    Timer {
+        id: quitFadeTimer
+        interval: 260
+        repeat: false
+        onTriggered: Qt.quit()
+    }
+
     // Handle window close based on actual tray runtime state.
     onClosing: function(close) {
         if (appSettings.trayEnabled && trayManager.enabled) {
             // Tray is enabled - hide window instead of closing
             close.accepted = false
             root.hide()
-        } else {
-            // Tray is disabled - quit the application
-            close.accepted = true
-            Qt.quit()
+            return
         }
+        if (audioEngine && audioEngine.state === 1 && !root.isQuittingWithFade) {
+            close.accepted = false
+            root.isQuittingWithFade = true
+            audioEngine.fadeOut(250)
+            quitFadeTimer.start()
+            return
+        }
+        close.accepted = true
+        Qt.quit()
     }
 
     // Theme colors from backend
@@ -1502,9 +1517,14 @@ Kirigami.ApplicationWindow {
             return false
         }
 
+        const info = (trackModel.trackInfoAt ? trackModel.trackInfoAt(safeIndex) : null) || ({})
         const isCurrentTrack = safeIndex === trackModel.currentIndex
         let sourceDisplayName = fileNameFromPath(sourceFile)
-        if (isCurrentTrack && trackModel.currentTitle && trackModel.currentTitle.length > 0) {
+        if (info.artist && info.title) {
+            sourceDisplayName = info.artist + " - " + info.title
+        } else if (info.title) {
+            sourceDisplayName = info.title
+        } else if (isCurrentTrack && trackModel.currentTitle && trackModel.currentTitle.length > 0) {
             if (trackModel.currentArtist && trackModel.currentArtist.length > 0) {
                 sourceDisplayName = trackModel.currentArtist + " - " + trackModel.currentTitle
             } else {
@@ -1512,14 +1532,18 @@ Kirigami.ApplicationWindow {
             }
         }
 
+        const trackDuration = Number(info.duration || 0) > 0
+            ? Number(info.duration)
+            : (isCurrentTrack ? audioEngine.duration : 0)
+
         audioConverterDialog.prepareForSource({
             sourceFile: sourceFile,
             sourceDisplayName: sourceDisplayName,
             sourceMetaText: audioConverterSourceMeta(safeIndex),
-            sourceFormatText: isCurrentTrack ? trackModel.currentFormat : "",
-            sourceBitrateKbps: isCurrentTrack ? trackModel.currentBitrate : 0,
-            sourceSampleRateHz: isCurrentTrack ? trackModel.currentSampleRate : 0,
-            sourceDurationMs: isCurrentTrack ? audioEngine.duration : 0
+            sourceFormatText: String(info.format || (isCurrentTrack ? trackModel.currentFormat : "")),
+            sourceBitrateKbps: Number(info.bitrate || (isCurrentTrack ? trackModel.currentBitrate : 0)),
+            sourceSampleRateHz: Number(info.sampleRate || (isCurrentTrack ? trackModel.currentSampleRate : 0)),
+            sourceDurationMs: trackDuration
         })
         return true
     }
@@ -1954,6 +1978,12 @@ Kirigami.ApplicationWindow {
     }
 
     function cmdQuit() {
+        if (audioEngine && audioEngine.state === 1 && !root.isQuittingWithFade) {
+            root.isQuittingWithFade = true
+            audioEngine.fadeOut(250)
+            quitFadeTimer.start()
+            return
+        }
         Qt.quit()
     }
 
@@ -2481,6 +2511,7 @@ Kirigami.ApplicationWindow {
         readonly property var fileOpenUrl: actionFileOpenUrl
         readonly property var fileImportUrl: actionFileImportUrl
         readonly property var fileResetPlaylist: actionFileResetPlaylist
+        readonly property var fileRefreshPlaylist: actionFileRefreshPlaylist
         readonly property var fileExportPlaylist: actionFileExportPlaylist
         readonly property var fileClearPlaylist: actionFileClearPlaylist
         readonly property var fileSettings: actionFileSettings
@@ -2549,6 +2580,7 @@ Kirigami.ApplicationWindow {
             actionFileImportUrl,
             actionFileShowUrlImportSession,
             actionFileResetPlaylist,
+            actionFileRefreshPlaylist,
             actionFileExportPlaylist,
             actionFileClearPlaylist,
             actionFileSettings,
@@ -2679,6 +2711,16 @@ Kirigami.ApplicationWindow {
         shortcut: root.actionShortcut(objectName)
         enabled: trackModel.canResetPlaylist
         onTriggered: root.cmdResetPlaylist()
+    }
+
+    Action {
+        id: actionFileRefreshPlaylist
+        objectName: "file.refreshPlaylist"
+        text: root.tr("menu.refreshPlaylist")
+        icon.source: IconResolver.themed("view-refresh", themeManager.darkMode)
+        shortcut: root.actionShortcut(objectName)
+        enabled: trackModel.count > 0
+        onTriggered: trackModel.refreshPlaylist()
     }
 
     Action {
@@ -3068,10 +3110,8 @@ Kirigami.ApplicationWindow {
     Action {
         id: actionPlaybackOpenEqualizer
         objectName: "playback.openEqualizer"
-        text: audioEngine.equalizerAvailable
-              ? root.tr("player.equalizer")
-              : root.tr("player.equalizerUnavailable")
-        enabled: audioEngine.equalizerAvailable
+        text: root.tr("player.dspManager")
+        enabled: true
         onTriggered: root.cmdPlaybackOpenEqualizer()
     }
 
@@ -3518,7 +3558,7 @@ Kirigami.ApplicationWindow {
         sequence: root.shortcutSequence("playback.speedUp")
         enabled: root.shortcutActive("playback.speedUp") && audioEngine.rateAvailable
         onActivated: {
-            const nextRate = Math.min(2.0, Math.round((audioEngine.playbackRate + 0.1) * 100) / 100)
+            const nextRate = Math.min(3.0, Math.round((audioEngine.playbackRate + 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
             root.showSpeedShortcutBadge(nextRate)
         }
@@ -3535,7 +3575,7 @@ Kirigami.ApplicationWindow {
         sequence: root.shortcutSequence("playback.pitchDown")
         enabled: root.shortcutActive("playback.pitchDown") && audioEngine.pitchAvailable
         onActivated: {
-            const nextPitch = Math.max(-6, audioEngine.pitchSemitones - 1)
+            const nextPitch = Math.max(-10, audioEngine.pitchSemitones - 1)
             audioEngine.pitchSemitones = nextPitch
             root.showPitchShortcutBadge(nextPitch)
         }
@@ -3544,7 +3584,7 @@ Kirigami.ApplicationWindow {
         sequence: root.shortcutSequence("playback.pitchUp")
         enabled: root.shortcutActive("playback.pitchUp") && audioEngine.pitchAvailable
         onActivated: {
-            const nextPitch = Math.min(6, audioEngine.pitchSemitones + 1)
+            const nextPitch = Math.min(10, audioEngine.pitchSemitones + 1)
             audioEngine.pitchSemitones = nextPitch
             root.showPitchShortcutBadge(nextPitch)
         }

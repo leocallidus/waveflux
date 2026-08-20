@@ -198,7 +198,7 @@ jobs:
           if (-not $msysRoot) { $msysRoot = "C:\msys64\ucrt64" }
           Write-Host "Detected MSYS2 UCRT64 root: $msysRoot"
 
-          $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl)') })
+          $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl|llvm)') })
           $env:PATH = "$msysRoot\bin;$msysRoot\..\usr\bin;" + ($filtered -join ';')
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix $msysRoot
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix $msysRoot -SkipBuild

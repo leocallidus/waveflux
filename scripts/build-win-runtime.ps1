@@ -59,24 +59,36 @@ $ctestPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "ctest.exe")) {
 }
 
 if (Test-Path -LiteralPath $msysBinDir) {
-    $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl)') })
+    $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl|llvm)') })
     $env:PATH = "$msysBinDir;$msysPrefix\..\usr\bin;" + ($filtered -join ';')
 }
 
-$cCompiler = if (Test-Path (Join-Path $msysBinDir "gcc.exe")) {
-    (Join-Path $msysBinDir "gcc.exe").Replace("\", "/")
-} else {
-    ""
+$cCandidateNames = @("gcc.exe", "x86_64-w64-mingw32-gcc.exe", "clang.exe")
+$cxxCandidateNames = @("g++.exe", "c++.exe", "x86_64-w64-mingw32-g++.exe", "x86_64-w64-mingw32-c++.exe", "clang++.exe")
+
+$cCompiler = ""
+foreach ($name in $cCandidateNames) {
+    $p = Join-Path $msysBinDir $name
+    if (Test-Path -LiteralPath $p) {
+        $cCompiler = $p.Replace("\", "/")
+        break
+    }
 }
 
-$cxxCompiler = if (Test-Path (Join-Path $msysBinDir "g++.exe")) {
-    (Join-Path $msysBinDir "g++.exe").Replace("\", "/")
-} elseif (Test-Path (Join-Path $msysBinDir "c++.exe")) {
-    (Join-Path $msysBinDir "c++.exe").Replace("\", "/")
-} else {
-    ""
+$cxxCompiler = ""
+foreach ($name in $cxxCandidateNames) {
+    $p = Join-Path $msysBinDir $name
+    if (Test-Path -LiteralPath $p) {
+        $cxxCompiler = $p.Replace("\", "/")
+        break
+    }
 }
 $cmakePrefixPath = $msysPrefix.Replace("\", "/")
+
+Write-Host "MSYS2 prefix: $msysPrefix"
+Write-Host "C compiler: $cCompiler"
+Write-Host "CXX compiler: $cxxCompiler"
+Write-Host "CMake path: $cmakePath"
 
 if (-not $SkipBuild) {
     $cmakeArgs = @(
@@ -89,6 +101,10 @@ if (-not $SkipBuild) {
         "-DCMAKE_FIND_ROOT_PATH=$cmakePrefixPath",
         "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$cmakePrefixPath"
     )
+
+    if (Test-Path -LiteralPath (Join-Path $msysPrefix "lib\cmake\Qt6")) {
+        $cmakeArgs += "-DQt6_DIR=$cmakePrefixPath/lib/cmake/Qt6"
+    }
 
     if ($cCompiler) {
         $cmakeArgs += "-DCMAKE_C_COMPILER=$cCompiler"

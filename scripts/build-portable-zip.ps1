@@ -76,13 +76,19 @@ $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) {
 
 $effectiveMsysPrefix = $MsysPrefix
 if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
-    $gccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
-    if ($gccCmd) {
-        $effectiveMsysPrefix = Split-Path -Parent (Split-Path -Parent $gccCmd.Source)
-    } elseif (Test-Path "C:\msys64\ucrt64") {
-        $effectiveMsysPrefix = "C:\msys64\ucrt64"
-    } elseif (Test-Path "C:\tools\msys64\ucrt64") {
-        $effectiveMsysPrefix = "C:\tools\msys64\ucrt64"
+    $candidates = @()
+    if ($env:RUNNER_TEMP) {
+        $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+    }
+    $candidates += @(
+        "C:\msys64\ucrt64",
+        "C:\tools\msys64\ucrt64"
+    )
+    foreach ($cand in $candidates) {
+        if ($cand -and (Test-Path -LiteralPath $cand)) {
+            $effectiveMsysPrefix = $cand
+            break
+        }
     }
 }
 

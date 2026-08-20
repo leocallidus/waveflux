@@ -156,6 +156,7 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
+          location: 'C:\msys64'
           msystem: UCRT64
           update: true
           install: >-
@@ -186,10 +187,11 @@ jobs:
       - name: Build Windows Portable ZIP & MSI
         shell: pwsh
         run: |
+          $msysRoot = if (Test-Path "C:\msys64\ucrt64") { "C:\msys64\ucrt64" } elseif ($env:RUNNER_TEMP -and (Test-Path (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64"))) { Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64" } else { "C:\msys64\ucrt64" }
           $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl)') })
-          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;" + ($filtered -join ';')
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "C:\msys64\ucrt64"
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "C:\msys64\ucrt64" -SkipBuild
+          $env:PATH = "$msysRoot\bin;$msysRoot\..\usr\bin;" + ($filtered -join ';')
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix $msysRoot
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix $msysRoot -SkipBuild
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

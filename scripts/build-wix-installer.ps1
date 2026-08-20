@@ -223,9 +223,16 @@ if (-not (Test-Path -LiteralPath $iconPath)) {
     throw "Installer icon was not found at '$iconPath'."
 }
 
-$powershellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-if (-not (Test-Path -LiteralPath $powershellExe)) {
-    throw "powershell.exe was not found at '$powershellExe'."
+$powershellExe = if (Get-Command pwsh.exe -ErrorAction SilentlyContinue) {
+    (Get-Command pwsh.exe).Source
+} elseif (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    (Get-Command pwsh).Source
+} elseif (Get-Command powershell.exe -ErrorAction SilentlyContinue) {
+    (Get-Command powershell.exe).Source
+} elseif (Test-Path "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe") {
+    "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+} else {
+    throw "PowerShell executable was not found."
 }
 
 $portableScriptArgs = @(

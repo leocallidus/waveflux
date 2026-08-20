@@ -53,7 +53,8 @@ $ctestPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "ctest.exe")) {
 }
 
 if (Test-Path -LiteralPath $msysBinDir) {
-    $env:PATH = "$msysBinDir;$env:PATH"
+    $filteredPath = ($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)[\\/]mingw64[\\/]?bin?') }) -join ';'
+    $env:PATH = "$msysBinDir;$filteredPath"
 }
 
 $cCompiler = Join-Path $msysBinDir "gcc.exe"
@@ -68,6 +69,7 @@ if (-not $SkipBuild) {
         "-DCMAKE_BUILD_TYPE=Release",
         "-DBUILD_TESTING=ON",
         "-DCMAKE_PREFIX_PATH=$cmakePrefixPath",
+        "-DCMAKE_FIND_ROOT_PATH=$cmakePrefixPath",
         "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$cmakePrefixPath"
     )
 

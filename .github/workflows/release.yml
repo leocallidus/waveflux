@@ -186,8 +186,9 @@ jobs:
       - name: Build Windows Portable ZIP & MSI
         shell: pwsh
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "C:\msys64\ucrt64"
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "C:\msys64\ucrt64" -SkipBuild
+          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;" + ($env:PATH -split ';' | Where-Object { $_ -notmatch '(?i)[\\/]mingw64[\\/]?bin?' } -join ';')
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "C:\msys64\ucrt64"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "C:\msys64\ucrt64" -SkipBuild
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

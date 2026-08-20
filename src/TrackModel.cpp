@@ -57,6 +57,7 @@
 #include <taglib/mp4file.h>
 #if __has_include(<taglib/mp4chapter.h>)
 #include <taglib/mp4chapter.h>
+#define WAVEFLUX_HAVE_TAGLIB_MP4_CHAPTER 1
 #endif
 #include <taglib/mpegfile.h>
 #if __has_include(<taglib/shortenproperties.h>)
@@ -550,6 +551,7 @@ QVector<TrackChapter> extractId3v2Chapters(TagLib::ID3v2::Tag *id3v2)
 QVector<TrackChapter> extractMp4Chapters(const QString &localPath)
 {
     QVector<TrackChapter> chapters;
+#if defined(WAVEFLUX_HAVE_TAGLIB_MP4_CHAPTER)
     const WaveFlux::TagLibPath::NativePath nativePath(localPath);
     TagLib::MP4::File mp4File(nativePath.fileName(), false);
     if (!mp4File.isValid()) {
@@ -583,6 +585,9 @@ QVector<TrackChapter> extractMp4Chapters(const QString &localPath)
             chapters[i].endTimeMs = chapters[i + 1].startTimeMs;
         }
     }
+#else
+    Q_UNUSED(localPath);
+#endif
     return chapters;
 }
 

@@ -186,7 +186,8 @@ jobs:
       - name: Build Windows Portable ZIP & MSI
         shell: pwsh
         run: |
-          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;" + ($env:PATH -split ';' | Where-Object { $_ -notmatch '(?i)[\\/]mingw64[\\/]?bin?' } -join ';')
+          $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch 'mingw64') })
+          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;" + ($filtered -join ';')
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "C:\msys64\ucrt64"
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "C:\msys64\ucrt64" -SkipBuild
 

@@ -53,8 +53,8 @@ $ctestPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "ctest.exe")) {
 }
 
 if (Test-Path -LiteralPath $msysBinDir) {
-    $filteredPath = ($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)[\\/]mingw64[\\/]?bin?') }) -join ';'
-    $env:PATH = "$msysBinDir;$filteredPath"
+    $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch 'mingw64') })
+    $env:PATH = "$msysBinDir;" + ($filtered -join ';')
 }
 
 $cCompiler = Join-Path $msysBinDir "gcc.exe"

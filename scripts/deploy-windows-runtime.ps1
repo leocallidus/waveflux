@@ -79,19 +79,37 @@ function Copy-GStreamerPluginIfPresent {
 
 $exePath = Resolve-NormalizedPath -PathValue $ExePath
 $qmlDir = Resolve-NormalizedPath -PathValue $QmlDir
-$msysPrefix = Resolve-NormalizedPath -PathValue $MsysPrefix
+
+$effectiveMsysPrefix = $MsysPrefix
+if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
+    $gccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
+    if ($gccCmd) {
+        $effectiveMsysPrefix = Split-Path -Parent (Split-Path -Parent $gccCmd.Source)
+    } elseif (Test-Path "C:\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\msys64\ucrt64"
+    } elseif (Test-Path "C:\tools\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\tools\msys64\ucrt64"
+    }
+}
+
+$msysPrefix = Resolve-NormalizedPath -PathValue $effectiveMsysPrefix
 $deployDir = Split-Path -Parent $exePath
 $msysBinDir = Join-Path $msysPrefix "bin"
 $qtShareDir = Join-Path $msysPrefix "share\qt6"
 $qtPluginsSourceDir = Join-Path $qtShareDir "plugins"
 $qtQmlSourceDir = Join-Path $qtShareDir "qml"
 $gstPluginSourceDir = Join-Path $msysPrefix "lib\gstreamer-1.0"
-$objdumpPath = Join-Path $msysBinDir "objdump.exe"
 
-$env:PATH = "$msysBinDir;$env:PATH"
+$objdumpPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "objdump.exe")) {
+    Join-Path $msysBinDir "objdump.exe"
+} elseif (Get-Command objdump.exe -ErrorAction SilentlyContinue) {
+    (Get-Command objdump.exe).Source
+} else {
+    "objdump.exe"
+}
 
-if (-not (Test-Path -LiteralPath $objdumpPath)) {
-    throw "objdump was not found at '$objdumpPath'."
+if (Test-Path -LiteralPath $msysBinDir) {
+    $env:PATH = "$msysBinDir;$env:PATH"
 }
 
 if (-not (Test-Path -LiteralPath $qtPluginsSourceDir)) {

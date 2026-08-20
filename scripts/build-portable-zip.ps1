@@ -74,6 +74,18 @@ $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version.Trim()
 }
 
+$effectiveMsysPrefix = $MsysPrefix
+if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
+    $gccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
+    if ($gccCmd) {
+        $effectiveMsysPrefix = Split-Path -Parent (Split-Path -Parent $gccCmd.Source)
+    } elseif (Test-Path "C:\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\msys64\ucrt64"
+    } elseif (Test-Path "C:\tools\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\tools\msys64\ucrt64"
+    }
+}
+
 $buildScriptPath = Join-Path $PSScriptRoot "build-win-runtime.ps1"
 if (-not (Test-Path -LiteralPath $buildScriptPath)) {
     throw "Windows runtime build script was not found at '$buildScriptPath'."
@@ -90,7 +102,7 @@ $buildScriptArgs = @(
     "-File", $buildScriptPath,
     "-BuildDir", $buildDir,
     "-Target", $Target,
-    "-MsysPrefix", $MsysPrefix
+    "-MsysPrefix", $effectiveMsysPrefix
 )
 if ($RunTests) {
     $buildScriptArgs += "-RunTests"

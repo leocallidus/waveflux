@@ -20,20 +20,41 @@ function Resolve-NormalizedPath {
 
 $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$msysPrefix = Resolve-NormalizedPath -PathValue $MsysPrefix
+
+$effectiveMsysPrefix = $MsysPrefix
+if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
+    $gccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
+    if ($gccCmd) {
+        $effectiveMsysPrefix = Split-Path -Parent (Split-Path -Parent $gccCmd.Source)
+    } elseif (Test-Path "C:\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\msys64\ucrt64"
+    } elseif (Test-Path "C:\tools\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\tools\msys64\ucrt64"
+    }
+}
+
+$msysPrefix = Resolve-NormalizedPath -PathValue $effectiveMsysPrefix
 $msysBinDir = Join-Path $msysPrefix "bin"
-$cmakePath = Join-Path $msysBinDir "cmake.exe"
-$ctestPath = Join-Path $msysBinDir "ctest.exe"
 
-if (-not (Test-Path -LiteralPath $msysBinDir)) {
-    throw "MSYS2 UCRT64 bin directory was not found at '$msysBinDir'."
+$cmakePath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "cmake.exe")) {
+    Join-Path $msysBinDir "cmake.exe"
+} elseif (Get-Command cmake.exe -ErrorAction SilentlyContinue) {
+    (Get-Command cmake.exe).Source
+} else {
+    throw "cmake.exe was not found."
 }
 
-if (-not (Test-Path -LiteralPath $cmakePath)) {
-    throw "cmake.exe was not found at '$cmakePath'."
+$ctestPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "ctest.exe")) {
+    Join-Path $msysBinDir "ctest.exe"
+} elseif (Get-Command ctest.exe -ErrorAction SilentlyContinue) {
+    (Get-Command ctest.exe).Source
+} else {
+    "ctest.exe"
 }
 
-$env:PATH = "$msysBinDir;$env:PATH"
+if (Test-Path -LiteralPath $msysBinDir) {
+    $env:PATH = "$msysBinDir;$env:PATH"
+}
 
 if (-not $SkipBuild) {
     & $cmakePath -S $repoRoot -B $buildDir -G Ninja `

@@ -172,6 +172,19 @@ function Write-DirectoryXml {
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
 $distDir = Resolve-NormalizedPath -PathValue $DistDir
+
+$effectiveMsysPrefix = $MsysPrefix
+if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
+    $gccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
+    if ($gccCmd) {
+        $effectiveMsysPrefix = Split-Path -Parent (Split-Path -Parent $gccCmd.Source)
+    } elseif (Test-Path "C:\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\msys64\ucrt64"
+    } elseif (Test-Path "C:\tools\msys64\ucrt64") {
+        $effectiveMsysPrefix = "C:\tools\msys64\ucrt64"
+    }
+}
+
 $wixExePath = if (-not [string]::IsNullOrWhiteSpace($WixExe) -and (Test-Path -LiteralPath $WixExe)) {
     Resolve-NormalizedPath -PathValue $WixExe
 } elseif (-not [string]::IsNullOrWhiteSpace($WixExe) -and (Test-Path -LiteralPath (Resolve-NormalizedPath -PathValue $WixExe))) {
@@ -211,13 +224,17 @@ if (-not (Test-Path -LiteralPath $iconPath)) {
 }
 
 $powershellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+if (-not (Test-Path -LiteralPath $powershellExe)) {
+    throw "powershell.exe was not found at '$powershellExe'."
+}
+
 $portableScriptArgs = @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", $portableScriptPath,
     "-BuildDir", $buildDir,
     "-Target", $Target,
-    "-MsysPrefix", $MsysPrefix,
+    "-MsysPrefix", $effectiveMsysPrefix,
     "-DistDir", $distDir,
     "-Version", $effectiveVersion,
     "-SkipZip"

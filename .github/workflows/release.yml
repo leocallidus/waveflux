@@ -187,7 +187,16 @@ jobs:
       - name: Build Windows Portable ZIP & MSI
         shell: pwsh
         run: |
-          $msysRoot = if (Test-Path "C:\msys64\ucrt64") { "C:\msys64\ucrt64" } elseif ($env:RUNNER_TEMP -and (Test-Path (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64"))) { Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64" } else { "C:\msys64\ucrt64" }
+          $candidates = @()
+          if ($env:RUNNER_TEMP) { $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64") }
+          $candidates += @("C:\msys64\ucrt64", "C:\tools\msys64\ucrt64")
+          $msysRoot = ""
+          foreach ($c in $candidates) {
+            if ($c -and (Test-Path "$c\bin\gcc.exe")) { $msysRoot = $c; break }
+          }
+          if (-not $msysRoot) { $msysRoot = "C:\msys64\ucrt64" }
+          Write-Host "Detected MSYS2 UCRT64 root: $msysRoot"
+
           $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl)') })
           $env:PATH = "$msysRoot\bin;$msysRoot\..\usr\bin;" + ($filtered -join ';')
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix $msysRoot

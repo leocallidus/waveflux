@@ -174,7 +174,7 @@ $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
 $distDir = Resolve-NormalizedPath -PathValue $DistDir
 
 $effectiveMsysPrefix = $MsysPrefix
-if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
+if (-not (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe"))) {
     $candidates = @()
     if ($env:RUNNER_TEMP) {
         $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
@@ -184,7 +184,7 @@ if (-not (Test-Path -LiteralPath $effectiveMsysPrefix)) {
         "C:\tools\msys64\ucrt64"
     )
     foreach ($cand in $candidates) {
-        if ($cand -and (Test-Path -LiteralPath $cand)) {
+        if ($cand -and (Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe"))) {
             $effectiveMsysPrefix = $cand
             break
         }

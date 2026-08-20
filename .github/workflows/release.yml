@@ -17,29 +17,26 @@ permissions:
 jobs:
   build-appimage:
     name: Build AppImage
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake ninja-build pkgconf \
-            qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-tools-dev-tools qt6-base-dev-tools \
-            libqt6core6t64 libqt6gui6 libqt6widgets6 libqt6qml6 libqt6quick6 libqt6multimedia6 libqt6sql6 libqt6dbus6 \
-            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates qml6-module-qtcore qml6-module-org-kde-kirigami \
-            extra-cmake-modules libkirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev libgstreamer-plugins-bad1.0-dev \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-            libopenmpt-dev libtag1-dev patchelf file desktop-file-utils zsync wget
-          echo "/usr/lib/qt6/bin" >> $GITHUB_PATH
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git cmake ninja gcc pkgconf \
+            qt6-base qt6-declarative qt6-multimedia qt6-tools \
+            kirigami kcoreaddons ki18n \
+            gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
+            libopenmpt taglib patchelf file desktop-file-utils zsync wget tar gzip awk
+          git config --global --add safe.directory '*'
 
       - name: Install appimagetool
         run: |
-          sudo wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
-          sudo chmod +x /usr/local/bin/appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
+          chmod +x /usr/local/bin/appimagetool
 
       - name: Build AppImage
         env:
@@ -56,21 +53,22 @@ jobs:
 
   build-deb:
     name: Build Debian Package
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container: debian:testing
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake ninja-build pkgconf dpkg-dev \
+          apt-get update
+          apt-get install -y \
+            build-essential cmake ninja-build pkgconf dpkg-dev git \
             qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-base-dev-tools \
-            extra-cmake-modules libkirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
+            extra-cmake-modules libkf6kirigami-dev libkf6coreaddons-dev libkf6i18n-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libopenmpt-dev libtag1-dev
-          echo "/usr/lib/qt6/bin" >> $GITHUB_PATH
+          git config --global --add safe.directory '*'
 
       - name: Build DEB package
         run: |
@@ -95,7 +93,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed git cmake ninja gcc pkgconf \
-            qt6-base qt6-declarative qt6-multimedia qt6-quickcontrols2 \
+            qt6-base qt6-declarative qt6-multimedia \
             kirigami kcoreaddons ki18n \
             gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
             libopenmpt taglib sudo tar gzip awk
@@ -165,10 +163,9 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-qt6-declarative
             mingw-w64-ucrt-x86_64-qt6-multimedia
-            mingw-w64-ucrt-x86_64-qt6-quickcontrols2
-            mingw-w64-ucrt-x86_64-kf6-kirigami
-            mingw-w64-ucrt-x86_64-kf6-kcoreaddons
-            mingw-w64-ucrt-x86_64-kf6-ki18n
+            mingw-w64-ucrt-x86_64-kirigami
+            mingw-w64-ucrt-x86_64-kcoreaddons
+            mingw-w64-ucrt-x86_64-ki18n
             mingw-w64-ucrt-x86_64-gstreamer
             mingw-w64-ucrt-x86_64-gst-plugins-base
             mingw-w64-ucrt-x86_64-gst-plugins-good

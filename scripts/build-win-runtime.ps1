@@ -63,8 +63,19 @@ if (Test-Path -LiteralPath $msysBinDir) {
     $env:PATH = "$msysBinDir;$msysPrefix\..\usr\bin;" + ($filtered -join ';')
 }
 
-$cCompiler = (Join-Path $msysBinDir "gcc.exe").Replace("\", "/")
-$cxxCompiler = (Join-Path $msysBinDir "g++.exe").Replace("\", "/")
+$cCompiler = if (Test-Path (Join-Path $msysBinDir "gcc.exe")) {
+    (Join-Path $msysBinDir "gcc.exe").Replace("\", "/")
+} else {
+    ""
+}
+
+$cxxCompiler = if (Test-Path (Join-Path $msysBinDir "g++.exe")) {
+    (Join-Path $msysBinDir "g++.exe").Replace("\", "/")
+} elseif (Test-Path (Join-Path $msysBinDir "c++.exe")) {
+    (Join-Path $msysBinDir "c++.exe").Replace("\", "/")
+} else {
+    ""
+}
 $cmakePrefixPath = $msysPrefix.Replace("\", "/")
 
 if (-not $SkipBuild) {
@@ -74,12 +85,17 @@ if (-not $SkipBuild) {
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DBUILD_TESTING=ON",
-        "-DCMAKE_C_COMPILER=$cCompiler",
-        "-DCMAKE_CXX_COMPILER=$cxxCompiler",
         "-DCMAKE_PREFIX_PATH=$cmakePrefixPath",
         "-DCMAKE_FIND_ROOT_PATH=$cmakePrefixPath",
         "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$cmakePrefixPath"
     )
+
+    if ($cCompiler) {
+        $cmakeArgs += "-DCMAKE_C_COMPILER=$cCompiler"
+    }
+    if ($cxxCompiler) {
+        $cmakeArgs += "-DCMAKE_CXX_COMPILER=$cxxCompiler"
+    }
 
     & $cmakePath @cmakeArgs
     if ($LASTEXITCODE -ne 0) {

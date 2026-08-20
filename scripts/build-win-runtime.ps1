@@ -53,12 +53,12 @@ $ctestPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "ctest.exe")) {
 }
 
 if (Test-Path -LiteralPath $msysBinDir) {
-    $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch 'mingw64') })
-    $env:PATH = "$msysBinDir;" + ($filtered -join ';')
+    $filtered = @($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)(mingw|strawberry|perl)') })
+    $env:PATH = "$msysBinDir;$msysPrefix\..\usr\bin;" + ($filtered -join ';')
 }
 
-$cCompiler = Join-Path $msysBinDir "gcc.exe"
-$cxxCompiler = Join-Path $msysBinDir "g++.exe"
+$cCompiler = (Join-Path $msysBinDir "gcc.exe").Replace("\", "/")
+$cxxCompiler = (Join-Path $msysBinDir "g++.exe").Replace("\", "/")
 $cmakePrefixPath = $msysPrefix.Replace("\", "/")
 
 if (-not $SkipBuild) {
@@ -68,17 +68,12 @@ if (-not $SkipBuild) {
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DBUILD_TESTING=ON",
+        "-DCMAKE_C_COMPILER=$cCompiler",
+        "-DCMAKE_CXX_COMPILER=$cxxCompiler",
         "-DCMAKE_PREFIX_PATH=$cmakePrefixPath",
         "-DCMAKE_FIND_ROOT_PATH=$cmakePrefixPath",
         "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$cmakePrefixPath"
     )
-
-    if (Test-Path -LiteralPath $cCompiler) {
-        $cmakeArgs += "-DCMAKE_C_COMPILER=$($cCompiler.Replace('\', '/'))"
-    }
-    if (Test-Path -LiteralPath $cxxCompiler) {
-        $cmakeArgs += "-DCMAKE_CXX_COMPILER=$($cxxCompiler.Replace('\', '/'))"
-    }
 
     & $cmakePath @cmakeArgs
     if ($LASTEXITCODE -ne 0) {

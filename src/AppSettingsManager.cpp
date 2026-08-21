@@ -4471,16 +4471,19 @@ QString AppSettingsManager::translate(const QString &key) const
     return key;
 }
 
-QString AppSettingsManager::translateForCurrentLanguage(const QString &key)
+QString AppSettingsManager::translateKey(const QString &key, const QString &language)
 {
-    QSettings settings(QStringLiteral("WaveFlux"), QStringLiteral("WaveFlux"));
-    settings.beginGroup(QStringLiteral("App"));
-    const QString language = normalizeLanguage(
-        settings.value(QStringLiteral("language"), QStringLiteral("auto")).toString());
-    settings.endGroup();
+    QString lang = language;
+    if (lang.isEmpty()) {
+        QSettings settings(QStringLiteral("WaveFlux"), QStringLiteral("WaveFlux"));
+        settings.beginGroup(QStringLiteral("App"));
+        lang = normalizeLanguage(
+            settings.value(QStringLiteral("language"), QStringLiteral("auto")).toString());
+        settings.endGroup();
+    }
 
     const QHash<QString, QString> &primary =
-        resolveLanguage(language) == QStringLiteral("ru") ? russianTexts() : englishTexts();
+        resolveLanguage(lang) == QStringLiteral("ru") ? russianTexts() : englishTexts();
     auto primaryIt = primary.constFind(key);
     if (primaryIt != primary.constEnd()) {
         return primaryIt.value();
@@ -4492,6 +4495,11 @@ QString AppSettingsManager::translateForCurrentLanguage(const QString &key)
     }
 
     return key;
+}
+
+QString AppSettingsManager::translateForCurrentLanguage(const QString &key)
+{
+    return translateKey(key, QString());
 }
 
 QStringList AppSettingsManager::supportedLanguages() const

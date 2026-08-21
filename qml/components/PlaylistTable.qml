@@ -219,8 +219,8 @@ Item {
     readonly property int responsiveWidthBucket: playlistColumnLayoutManager.widthBucket("normal", width - horizontalPadding * 2)
     readonly property var effectiveColumns: {
         const _rev = playlistColumnLayoutManager.layoutRevision
-        const _bucket = root.responsiveWidthBucket
-        return playlistColumnLayoutManager.effectiveVisibleColumns("normal", _bucket)
+        const _avail = Math.max(0, width - horizontalPadding * 2)
+        return playlistColumnLayoutManager.effectiveVisibleColumns("normal", _avail)
     }
     readonly property int visibleColumnCount: effectiveColumns.length
 

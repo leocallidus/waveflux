@@ -182,6 +182,7 @@ public:
     Q_INVOKABLE void removeTrackFragmentLoop(const QString &filePath);
     Q_INVOKABLE QVariantMap getTrackFragmentLoop(const QString &filePath) const;
     bool fullApplicationResetPending() const { return m_fullApplicationResetPending; }
+    static QString translateKey(const QString &key, const QString &language = QString());
     static QString translateForCurrentLanguage(const QString &key);
 
 public slots:

@@ -11,6 +11,8 @@ depends=(
   'qt6-declarative'
   'qt6-multimedia'
   'kirigami'
+  'qqc2-desktop-style'
+  'breeze-icons'
   'kcoreaddons'
   'ki18n'
   'gstreamer'

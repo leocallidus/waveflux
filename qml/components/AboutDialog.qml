@@ -117,8 +117,10 @@ AppDialog {
             spacing: UiMetrics.spaceL
 
             Image {
-                Layout.preferredWidth: root.compactLayout ? Math.round(42 * UiMetrics.fontScale) : Math.round(52 * UiMetrics.fontScale)
-                Layout.preferredHeight: Layout.preferredWidth
+                width: root.compactLayout ? Math.round(42 * UiMetrics.fontScale) : Math.round(52 * UiMetrics.fontScale)
+                height: width
+                Layout.preferredWidth: width
+                Layout.preferredHeight: height
                 source: "qrc:/WaveFlux/resources/icons/waveflux.svg"
                 sourceSize.width: width
                 sourceSize.height: height

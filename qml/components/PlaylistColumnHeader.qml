@@ -52,11 +52,13 @@ Rectangle {
         Image {
             id: sortIcon
             visible: root.sortActive
+            width: UiMetrics.playlistSortIconSize
+            height: UiMetrics.playlistSortIconSize
             Layout.preferredWidth: UiMetrics.playlistSortIconSize
             Layout.preferredHeight: UiMetrics.playlistSortIconSize
             source: IconResolver.themed(root.sortOrder === Qt.AscendingOrder ? "go-up" : "go-down", themeManager.darkMode)
-            sourceSize.width: width
-            sourceSize.height: height
+            sourceSize.width: UiMetrics.playlistSortIconSize
+            sourceSize.height: UiMetrics.playlistSortIconSize
             fillMode: Image.PreserveAspectFit
             opacity: 0.9
         }

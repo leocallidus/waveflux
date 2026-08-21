@@ -28,7 +28,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed git cmake ninja gcc pkgconf \
             qt6-base qt6-declarative qt6-multimedia qt6-tools \
-            kirigami kcoreaddons ki18n \
+            kirigami qqc2-desktop-style breeze-icons kcoreaddons ki18n \
             gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
             libopenmpt taglib patchelf file desktop-file-utils zsync wget tar gzip awk
           git config --global --add safe.directory '*'

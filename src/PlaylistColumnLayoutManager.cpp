@@ -892,6 +892,9 @@ QVariantList PlaylistColumnLayoutManager::effectiveVisibleColumns(const QString 
         result.push_back(map);
     }
 
+    if (m_effectiveColumnsCache.size() > 64) {
+        m_effectiveColumnsCache.clear();
+    }
     m_effectiveColumnsCache.insert(cacheKey, result);
     return result;
 }

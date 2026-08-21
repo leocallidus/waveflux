@@ -41,11 +41,13 @@ Item {
         // Speaker icon for current playing track in position column
         Image {
             visible: root.columnId === "playlistPosition" && root.isHighlighted
+            width: UiMetrics.iconSizeSmall
+            height: UiMetrics.iconSizeSmall
             Layout.preferredWidth: UiMetrics.iconSizeSmall
             Layout.preferredHeight: UiMetrics.iconSizeSmall
             source: IconResolver.themed("audio-volume-high", themeManager.darkMode)
-            sourceSize.width: width
-            sourceSize.height: height
+            sourceSize.width: UiMetrics.iconSizeSmall
+            sourceSize.height: UiMetrics.iconSizeSmall
             fillMode: Image.PreserveAspectFit
             opacity: 0.95
         }

@@ -56,11 +56,13 @@ AppDialog {
             spacing: UiMetrics.spaceL
 
             Image {
+                width: UiMetrics.iconSizeLarge
+                height: UiMetrics.iconSizeLarge
                 Layout.preferredWidth: UiMetrics.iconSizeLarge
                 Layout.preferredHeight: UiMetrics.iconSizeLarge
                 source: IconResolver.themed(root.iconName, themeManager.darkMode)
-                sourceSize.width: width
-                sourceSize.height: height
+                sourceSize.width: UiMetrics.iconSizeLarge
+                sourceSize.height: UiMetrics.iconSizeLarge
                 fillMode: Image.PreserveAspectFit
             }
 

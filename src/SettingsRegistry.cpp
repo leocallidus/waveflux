@@ -354,10 +354,10 @@ QVariantList SettingsRegistry::search(const QString &query, const QString &langu
         const CategoryDescriptor *cat = getCategory(setting.categoryId);
         const GroupDescriptor *grp = getGroup(setting.groupId);
 
-        const QString title = AppSettingsManager::translateForCurrentLanguage(setting.titleKey);
-        const QString desc = setting.descriptionKey.isEmpty() ? QString() : AppSettingsManager::translateForCurrentLanguage(setting.descriptionKey);
-        const QString catTitle = cat ? AppSettingsManager::translateForCurrentLanguage(cat->titleKey) : QString();
-        const QString grpTitle = grp ? AppSettingsManager::translateForCurrentLanguage(grp->titleKey) : QString();
+        const QString title = AppSettingsManager::translateKey(setting.titleKey, language);
+        const QString desc = setting.descriptionKey.isEmpty() ? QString() : AppSettingsManager::translateKey(setting.descriptionKey, language);
+        const QString catTitle = cat ? AppSettingsManager::translateKey(cat->titleKey, language) : QString();
+        const QString grpTitle = grp ? AppSettingsManager::translateKey(grp->titleKey, language) : QString();
 
         const QString lowerTitle = title.toLower();
         const QString lowerDesc = desc.toLower();
@@ -395,7 +395,7 @@ QVariantList SettingsRegistry::search(const QString &query, const QString &langu
         // 4. Keyword match
         if (score < 400) {
             for (const QString &key : setting.keywordKeys) {
-                const QString kw = AppSettingsManager::translateForCurrentLanguage(key).toLower();
+                const QString kw = AppSettingsManager::translateKey(key, language).toLower();
                 if (kw == normalizedQuery || kw.startsWith(normalizedQuery)) {
                     score = std::max(score, 400);
                     break;

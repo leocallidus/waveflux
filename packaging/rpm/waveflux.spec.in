@@ -28,6 +28,8 @@ Requires:       qt6-qtbase
 Requires:       qt6-qtdeclarative
 Requires:       qt6-qtmultimedia
 Requires:       kf6-kirigami
+Requires:       kf6-qqc2-desktop-style
+Requires:       breeze-icon-theme
 Requires:       kf6-kcoreaddons
 Requires:       kf6-ki18n
 Requires:       gstreamer1

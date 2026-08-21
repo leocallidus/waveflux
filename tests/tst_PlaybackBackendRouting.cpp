@@ -1138,6 +1138,10 @@ void PlaybackBackendRoutingTest::audioEngine_repeatedTrackerOrdinaryBackendSwitc
 
 void PlaybackBackendRoutingTest::audioEngine_dspSpeedAndTempoChangeDoesNotWarpDurationOrPosition()
 {
+    if (QMediaDevices::defaultAudioOutput().isNull()) {
+        QSKIP("Default audio output device is not available in this environment.");
+    }
+
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 

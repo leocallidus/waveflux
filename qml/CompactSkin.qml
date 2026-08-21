@@ -152,8 +152,8 @@ Item {
     readonly property int responsiveWidthBucket: playlistColumnLayoutManager.widthBucket("compact", compactPlaylist.width - (appSettings.playlistScrollBarVisible ? 8 : 0))
     readonly property var effectiveColumns: {
         const _rev = playlistColumnLayoutManager.layoutRevision
-        const _bucket = root.responsiveWidthBucket
-        return playlistColumnLayoutManager.effectiveVisibleColumns("compact", _bucket)
+        const _avail = Math.max(0, compactPlaylist.width - (appSettings.playlistScrollBarVisible ? 8 : 0))
+        return playlistColumnLayoutManager.effectiveVisibleColumns("compact", _avail)
     }
     readonly property bool compactHeaderVisible: {
         const mode = playlistColumnLayoutManager.compactHeaderMode

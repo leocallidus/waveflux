@@ -449,9 +449,19 @@ rm -f \
     "${APPDIR}/usr/plugins/imageformats/kimg_jxr.so"
 
 bundle_qml_imports "${ROOT_DIR}/qml" "${QT_QML_DIR}"
-copy_qml_module "${QT_QML_DIR}" "org/kde/desktop"
-copy_qml_module "${QT_QML_DIR}" "org/kde/qqc2desktopstyle"
-copy_qml_module "${QT_QML_DIR}" "org/kde/sonnet"
+if [[ -d "${QT_QML_DIR}/org/kde" ]]; then
+    log "Bundling KDE / Kirigami QML modules from ${QT_QML_DIR}/org/kde"
+    copy_tree "${QT_QML_DIR}/org/kde" "${APPDIR}/usr/qml/org/kde"
+fi
+
+if [[ -d "/usr/share/icons/breeze" ]]; then
+    log "Bundling breeze icons"
+    copy_tree "/usr/share/icons/breeze" "${APPDIR}/usr/share/icons/breeze"
+fi
+if [[ -d "/usr/share/icons/breeze-dark" ]]; then
+    log "Bundling breeze-dark icons"
+    copy_tree "/usr/share/icons/breeze-dark" "${APPDIR}/usr/share/icons/breeze-dark"
+fi
 
 if [[ -n "${QT_TRANSLATIONS_DIR}" && -d "${QT_TRANSLATIONS_DIR}" ]]; then
     log "Bundling Qt translations"
@@ -554,6 +564,7 @@ append_ld_path "${APPDIR}/lib/aarch64-linux-gnu/pulseaudio"
 
 export QT_PLUGIN_PATH="${APPDIR}/usr/plugins${QT_PLUGIN_PATH:+:${QT_PLUGIN_PATH}}"
 export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/plugins/platforms"
+export QML_IMPORT_PATH="${APPDIR}/usr/qml${QML_IMPORT_PATH:+:${QML_IMPORT_PATH}}"
 export QML2_IMPORT_PATH="${APPDIR}/usr/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}"
 export XDG_DATA_DIRS="${APPDIR}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
 

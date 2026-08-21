@@ -417,10 +417,12 @@ Rectangle {
                 spacing: UiMetrics.spaceS
 
                 Image {
+                    width: UiMetrics.iconSizeCompact
+                    height: UiMetrics.iconSizeCompact
                     Layout.preferredWidth: UiMetrics.iconSizeCompact
                     Layout.preferredHeight: UiMetrics.iconSizeCompact
-                    sourceSize.width: width
-                    sourceSize.height: height
+                    sourceSize.width: UiMetrics.iconSizeCompact
+                    sourceSize.height: UiMetrics.iconSizeCompact
                     source: "qrc:/WaveFlux/resources/icons/waveflux.svg"
                     fillMode: Image.PreserveAspectFit
                     mipmap: true

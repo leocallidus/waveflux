@@ -117,8 +117,14 @@ Item {
                         stepSize: 0.05
                         stripWidth: root.compactMode ? 84 : 112
                         compactMode: root.veryCompactMode
-                        onValueEdited: function(nextValue) { audioEngine.playbackRate = nextValue }
-                        onResetRequested: audioEngine.playbackRate = 1.0
+                        onValueEdited: function(nextValue) {
+                            audioEngine.playbackRate = nextValue
+                            if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.speed = nextValue
+                        }
+                        onResetRequested: {
+                            audioEngine.playbackRate = 1.0
+                            if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.speed = 1.0
+                        }
                     }
                 }
 
@@ -140,8 +146,15 @@ Item {
                         stepSize: 1
                         stripWidth: root.compactMode ? 84 : 112
                         compactMode: root.compactMode
-                        onValueEdited: function(nextValue) { audioEngine.pitchSemitones = Math.round(nextValue) }
-                        onResetRequested: audioEngine.pitchSemitones = 0
+                        onValueEdited: function(nextValue) {
+                            const p = Math.round(nextValue)
+                            audioEngine.pitchSemitones = p
+                            if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.tonalitySemitones = p
+                        }
+                        onResetRequested: {
+                            audioEngine.pitchSemitones = 0
+                            if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.tonalitySemitones = 0
+                        }
                     }
                 }
 

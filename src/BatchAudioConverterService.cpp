@@ -311,6 +311,7 @@ QVariantMap BatchAudioConverterService::settings() const
     result.insert(QStringLiteral("channelMode"), m_settings.channelMode);
     result.insert(QStringLiteral("playbackRate"), m_settings.playbackRate);
     result.insert(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones);
+    result.insert(QStringLiteral("reversePlayback"), m_settings.reversePlayback);
     result.insert(QStringLiteral("speed"), m_settings.speed);
     result.insert(QStringLiteral("tempo"), m_settings.tempo);
     result.insert(QStringLiteral("tonalitySemitones"), m_settings.tonalitySemitones);
@@ -1008,6 +1009,7 @@ bool BatchAudioConverterService::applySettingsMap(const QVariantMap &settings)
     setChannelMode(settings.value(QStringLiteral("channelMode")).toString());
     setPlaybackRate(settings.value(QStringLiteral("playbackRate"), m_settings.playbackRate).toDouble());
     setPitchSemitones(settings.value(QStringLiteral("pitchSemitones"), m_settings.pitchSemitones).toInt());
+    setReversePlayback(settings.value(QStringLiteral("reversePlayback"), m_settings.reversePlayback).toBool());
     setSpeed(settings.value(QStringLiteral("speed"), m_settings.speed).toDouble());
     setTempo(settings.value(QStringLiteral("tempo"), m_settings.tempo).toDouble());
     setTonalitySemitones(settings.value(QStringLiteral("tonalitySemitones"), m_settings.tonalitySemitones).toDouble());
@@ -1547,6 +1549,19 @@ void BatchAudioConverterService::setPitchSemitones(int pitchSemitones)
     }
     m_settings.pitchSemitones = normalized;
     emit pitchSemitonesChanged();
+    emitSettingsChanged();
+}
+
+void BatchAudioConverterService::setReversePlayback(bool reversePlayback)
+{
+    if (!canMutateConfiguration()) {
+        return;
+    }
+    if (m_settings.reversePlayback == reversePlayback) {
+        return;
+    }
+    m_settings.reversePlayback = reversePlayback;
+    emit reversePlaybackChanged();
     emitSettingsChanged();
 }
 
@@ -2170,6 +2185,7 @@ QVariantMap BatchAudioConverterService::effectiveSettingsToVariantMap(
     result.insert(QStringLiteral("channelMode"), settings.channelMode);
     result.insert(QStringLiteral("playbackRate"), settings.playbackRate);
     result.insert(QStringLiteral("pitchSemitones"), settings.pitchSemitones);
+    result.insert(QStringLiteral("reversePlayback"), settings.reversePlayback);
     result.insert(QStringLiteral("applyEqualizer"), settings.applyEqualizer);
     result.insert(QStringLiteral("equalizerBandGains"), settings.equalizerBandGains);
     result.insert(QStringLiteral("applyReverb"), settings.applyReverb);
@@ -2200,6 +2216,7 @@ BatchAudioConverterService::effectiveSettingsFromVariantMap(const QVariantMap &s
     snapshot.playbackRate = normalizePlaybackRate(settings.value(QStringLiteral("playbackRate"), 1.0).toDouble());
     snapshot.pitchSemitones = normalizePitchSemitones(
         settings.value(QStringLiteral("pitchSemitones")).toInt());
+    snapshot.reversePlayback = settings.value(QStringLiteral("reversePlayback"), false).toBool();
     snapshot.applyEqualizer = settings.value(QStringLiteral("applyEqualizer"), false).toBool();
     snapshot.equalizerBandGains = normalizeEqualizerBandGains(
         settings.value(QStringLiteral("equalizerBandGains")).toList());
@@ -3175,6 +3192,7 @@ BatchAudioConverterService::currentSettingsSnapshot() const
     snapshot.channelMode = m_settings.channelMode;
     snapshot.playbackRate = m_settings.playbackRate;
     snapshot.pitchSemitones = m_settings.pitchSemitones;
+    snapshot.reversePlayback = m_settings.reversePlayback;
     snapshot.applyEqualizer = m_settings.applyEqualizer;
     snapshot.equalizerBandGains = m_settings.equalizerBandGains;
     snapshot.applyReverb = m_settings.applyReverb;
@@ -3832,6 +3850,7 @@ void BatchAudioConverterService::startNextPendingItem()
     m_worker->setChannelMode(m_settings.channelMode);
     m_worker->setPlaybackRate(m_settings.playbackRate);
     m_worker->setPitchSemitones(m_settings.pitchSemitones);
+    m_worker->setReversePlayback(m_settings.reversePlayback);
     m_worker->setSpeed(m_settings.speed);
     m_worker->setTempo(m_settings.tempo);
     m_worker->setTonalitySemitones(m_settings.tonalitySemitones);

@@ -993,6 +993,8 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("ytDlpImport.summaryAria2c"), QStringLiteral("Downloader")},
         {QStringLiteral("ytDlpImport.summaryAria2cEnabled"), QStringLiteral("aria2c (-x %1, %2 MiB split)")},
         {QStringLiteral("ytDlpImport.summaryAria2cDisabled"), QStringLiteral("yt-dlp built-in")},
+        {QStringLiteral("ytDlpImport.summaryTags"), QStringLiteral("Tags & Cover")},
+        {QStringLiteral("ytDlpImport.summaryTagsDetails"), QStringLiteral("Tags: %1, Cover: %2")},
         {QStringLiteral("ytDlpImport.queueSection"), QStringLiteral("Queue preview")},
         {QStringLiteral("ytDlpImport.queueHint"),
          QStringLiteral("Before start this list shows probe entries. During import it switches to runtime queue state.")},
@@ -1093,7 +1095,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Light")},
         {QStringLiteral("settings.reset"), QStringLiteral("Reset")},
         {QStringLiteral("settings.close"), QStringLiteral("Close")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.4.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.4.1")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("A minimalist audio player with waveform visualization")},
         {QStringLiteral("player.previous"), QStringLiteral("Previous")},
@@ -1226,6 +1228,10 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("audioConverter.transformSectionHint"), QStringLiteral("Adjust playback speed and pitch only if you want the converted file to sound different from the source.")},
         {QStringLiteral("audioConverter.speed"), QStringLiteral("Speed: ")},
         {QStringLiteral("audioConverter.pitch"), QStringLiteral("Pitch: ")},
+        {QStringLiteral("audioConverter.reversePlayback"), QStringLiteral("Reverse playback")},
+        {QStringLiteral("audioConverter.reversePlaybackDescription"), QStringLiteral("Play and convert the audio backwards in reverse.")},
+        {QStringLiteral("audioConverter.reversePlaybackActive"), QStringLiteral("Reverse: on")},
+        {QStringLiteral("audioConverter.reversePlaybackInactive"), QStringLiteral("Reverse: off")},
         {QStringLiteral("audioConverter.applyCurrentEqualizer"), QStringLiteral("Apply current equalizer")},
         {QStringLiteral("audioConverter.applyCurrentEqualizerHint"), QStringLiteral("Bake the current equalizer band gains into the converted file.")},
         {QStringLiteral("audioConverter.equalizerCurrent"), QStringLiteral("Equalizer: current")},
@@ -1630,6 +1636,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.sidebarPlaylistsSectionDescription"), QStringLiteral("Display the playlists section in the left sidebar.")},
         {QStringLiteral("settings.sidebarCollectionsSectionTitle"), QStringLiteral("Show collections block")},
         {QStringLiteral("settings.sidebarCollectionsSectionDescription"), QStringLiteral("Display the collections section in the left sidebar.")},
+        {QStringLiteral("settings.showLyricsPanel"), QStringLiteral("Show lyrics panel")},
         {QStringLiteral("settings.configurePlaylistColumns"), QStringLiteral("Configure Columns...")},
         {QStringLiteral("settings.configurePlaylistColumnsDescription"), QStringLiteral("Customize visible columns, order, and alignment in the playlist table.")},
         {QStringLiteral("settings.pitchDescription"), QStringLiteral("Shift playback pitch in semitones without changing speed.")},
@@ -1692,6 +1699,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("settings.quickResetAudio"), QStringLiteral("Reset Audio Only")},
         {QStringLiteral("settings.quickResetWaveform"), QStringLiteral("Reset Waveform Only")},
         {QStringLiteral("settings.quickResetTrackInfo"), QStringLiteral("Reset Track Info")},
+        {QStringLiteral("settings.quickResetAll"), QStringLiteral("Reset All to Default")},
         {QStringLiteral("settings.resetConfirmTitleGeneral"), QStringLiteral("Confirm General Reset")},
         {QStringLiteral("settings.resetConfirmTitleAppearance"), QStringLiteral("Confirm Appearance Reset")},
         {QStringLiteral("settings.resetConfirmTitlePlaylist"), QStringLiteral("Confirm Playlist Reset")},
@@ -2075,6 +2083,9 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("equalizer.rename"), QStringLiteral("Rename")},
         {QStringLiteral("equalizer.delete"), QStringLiteral("Delete")},
         {QStringLiteral("equalizer.deletePreset"), QStringLiteral("Delete Preset")},
+        {QStringLiteral("equalizer.deletePresetConfirmTitle"), QStringLiteral("Delete Preset")},
+        {QStringLiteral("equalizer.deletePresetConfirmMessage"),
+         QStringLiteral("Are you sure you want to delete preset \"%1\"?")},
         {QStringLiteral("equalizer.import"), QStringLiteral("Import")},
         {QStringLiteral("equalizer.export"), QStringLiteral("Export")},
         {QStringLiteral("equalizer.portalTitleImport"), QStringLiteral("Import EQ Presets (JSON)")},
@@ -2152,6 +2163,65 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("menu.viewCollectionsPanel"), QStringLiteral("Collections Panel")},
         {QStringLiteral("menu.viewInfoSidebar"), QStringLiteral("Info Sidebar")},
         {QStringLiteral("menu.viewSpeedPitch"), QStringLiteral("Speed/Pitch Controls")},
+        {QStringLiteral("menu.viewLyrics"), QStringLiteral("Lyrics Panel")},
+        // Lyrics
+        {QStringLiteral("lyrics.panelTitle"), QStringLiteral("Lyrics")},
+        {QStringLiteral("settings.lyricsPanelVisibleDescription"), QStringLiteral("Show the full lyrics panel for the playing track.")},
+        {QStringLiteral("settings.lyricsSeparateWindow"), QStringLiteral("Lyrics in a separate window")},
+        {QStringLiteral("settings.lyricsSeparateWindowDescription"), QStringLiteral("Detach lyrics from the player. Compact mode always uses a separate window.")},
+        {QStringLiteral("settings.lyricsInfoPanelVisible"), QStringLiteral("Lyrics in the info panel")},
+        {QStringLiteral("settings.lyricsInfoPanelVisibleDescription"), QStringLiteral("Show lyrics, timed lines, search and refresh in the info sidebar.")},
+        {QStringLiteral("lyrics.searchTitle"), QStringLiteral("Find lyrics")},
+        {QStringLiteral("lyrics.searchHint"), QStringLiteral("Edit the title and artist, then preview a match before applying it to this track.")},
+        {QStringLiteral("lyrics.title"), QStringLiteral("Song title")},
+        {QStringLiteral("lyrics.artist"), QStringLiteral("Artist")},
+        {QStringLiteral("lyrics.albumOptional"), QStringLiteral("Album (optional)")},
+        {QStringLiteral("lyrics.matches"), QStringLiteral("Matches")},
+        {QStringLiteral("lyrics.preview"), QStringLiteral("Preview")},
+        {QStringLiteral("lyrics.previewHint"), QStringLiteral("Select a match to read its lyrics.")},
+        {QStringLiteral("lyrics.searchEmpty"), QStringLiteral("No matches yet. Check the title and artist, or try without the album.")},
+        {QStringLiteral("lyrics.resultCount"), QStringLiteral("Matches found: %1")},
+        {QStringLiteral("lyrics.retry"), QStringLiteral("Try again")},
+        {QStringLiteral("lyrics.importError"), QStringLiteral("Could not import lyrics. Choose a readable LRC or text file smaller than 256 KiB.")},
+        {QStringLiteral("lyrics.exportError"), QStringLiteral("Could not save lyrics. Choose a writable location and try again.")},
+        {QStringLiteral("lyrics.toggleLyrics"), QStringLiteral("Toggle Lyrics Panel")},
+        {QStringLiteral("lyrics.syncMode"), QStringLiteral("Synchronized")},
+        {QStringLiteral("lyrics.plainMode"), QStringLiteral("Plain Text")},
+        {QStringLiteral("lyrics.instrumental"), QStringLiteral("Instrumental Track")},
+        {QStringLiteral("lyrics.noTrack"), QStringLiteral("No active track playing")},
+        {QStringLiteral("lyrics.loading"), QStringLiteral("Searching for lyrics...")},
+        {QStringLiteral("lyrics.onlineDisabled"), QStringLiteral("Online lyrics lookup is disabled by privacy settings")},
+        {QStringLiteral("lyrics.needsMetadata"), QStringLiteral("Track is missing title or artist metadata")},
+        {QStringLiteral("lyrics.needsSelection"), QStringLiteral("Multiple matching lyrics found. Choose one:")},
+        {QStringLiteral("lyrics.notFound"), QStringLiteral("No lyrics found for this track")},
+        {QStringLiteral("lyrics.error"), QStringLiteral("Error retrieving lyrics")},
+        {QStringLiteral("lyrics.enableOnline"), QStringLiteral("Enable Online Lookup")},
+        {QStringLiteral("lyrics.search"), QStringLiteral("Search Lyrics...")},
+        {QStringLiteral("lyrics.import"), QStringLiteral("Import LRC / Text File...")},
+        {QStringLiteral("lyrics.export"), QStringLiteral("Export Lyrics...")},
+        {QStringLiteral("lyrics.clearOverride"), QStringLiteral("Clear Manual Selection")},
+        {QStringLiteral("lyrics.copy"), QStringLiteral("Copy to Clipboard")},
+        {QStringLiteral("lyrics.copied"), QStringLiteral("Copied!")},
+        {QStringLiteral("lyrics.userDelay"), QStringLiteral("Offset: %1 ms")},
+        {QStringLiteral("lyrics.delayMinus"), QStringLiteral("-100 ms")},
+        {QStringLiteral("lyrics.delayPlus"), QStringLiteral("+100 ms")},
+        {QStringLiteral("lyrics.delayReset"), QStringLiteral("Reset Offset")},
+        {QStringLiteral("lyrics.resumeAutoFollow"), QStringLiteral("Resume Auto-Scroll")},
+        {QStringLiteral("lyrics.fontScale"), QStringLiteral("Font Size")},
+        {QStringLiteral("lyrics.selectCandidate"), QStringLiteral("Select Candidate")},
+        {QStringLiteral("lyrics.applyCandidate"), QStringLiteral("Apply")},
+        {QStringLiteral("lyrics.cancel"), QStringLiteral("Cancel")},
+        {QStringLiteral("settings.lyrics"), QStringLiteral("Lyrics")},
+        {QStringLiteral("settings.lyricsOnlineEnabled"), QStringLiteral("Enable Online Lyrics Lookup")},
+        {QStringLiteral("settings.lyricsOnlineEnabledDescription"), QStringLiteral("Allow downloading lyrics from online providers (LRCLIB, Lyrics.ovh). Disabled by default for privacy.")},
+        {QStringLiteral("settings.lyricsAutomaticLookup"), QStringLiteral("Automatic Lookup")},
+        {QStringLiteral("settings.lyricsAutomaticLookupDescription"), QStringLiteral("Automatically search for lyrics when track starts playing.")},
+        {QStringLiteral("settings.lyricsPreferSynced"), QStringLiteral("Prefer Synchronized Lyrics")},
+        {QStringLiteral("settings.lyricsPreferSyncedDescription"), QStringLiteral("Prioritize synchronized (LRC) lyrics over plain text when available.")},
+        {QStringLiteral("settings.lyricsAutoFollow"), QStringLiteral("Auto-Scroll to Current Line")},
+        {QStringLiteral("settings.lyricsAutoFollowDescription"), QStringLiteral("Automatically keep the active lyric line centered during playback.")},
+        {QStringLiteral("settings.lyricsFontScale"), QStringLiteral("Lyrics Font Scale")},
+        {QStringLiteral("settings.lyricsFontScaleDescription"), QStringLiteral("Adjust display font size for lyrics lines.")},
         {QStringLiteral("menu.profilerOverlay"), QStringLiteral("Profiler Overlay")},
         {QStringLiteral("menu.profilerEnable"), QStringLiteral("Enable Profiler")},
         {QStringLiteral("menu.profilerReset"), QStringLiteral("Reset Profiler")},
@@ -2180,7 +2250,7 @@ const QHash<QString, QString> &englishTexts()
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("About WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Version:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.4.0")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.4.1")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux is a focused desktop audio player for local libraries and internet streams, with waveform visualization, queue control, and precise playback tools.")},
 #ifdef Q_OS_WIN
@@ -2905,6 +2975,8 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("ytDlpImport.summaryAria2c"), QStringLiteral("Загрузчик")},
         {QStringLiteral("ytDlpImport.summaryAria2cEnabled"), QStringLiteral("aria2c (-x %1, сплит %2 МиБ)")},
         {QStringLiteral("ytDlpImport.summaryAria2cDisabled"), QStringLiteral("Встроенный yt-dlp")},
+        {QStringLiteral("ytDlpImport.summaryTags"), QStringLiteral("Теги и обложка")},
+        {QStringLiteral("ytDlpImport.summaryTagsDetails"), QStringLiteral("Теги: %1, Обложка: %2")},
         {QStringLiteral("ytDlpImport.queueSection"), QStringLiteral("Предпросмотр очереди")},
         {QStringLiteral("ytDlpImport.queueHint"),
          QStringLiteral("До запуска здесь показаны элементы предварительной проверки. Во время импорта список переключается на текущее состояние очереди.")},
@@ -3005,7 +3077,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.light"), QStringLiteral("Светлая")},
         {QStringLiteral("settings.reset"), QStringLiteral("Сбросить")},
         {QStringLiteral("settings.close"), QStringLiteral("Закрыть")},
-        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.4.0")},
+        {QStringLiteral("settings.aboutVersion"), QStringLiteral("WaveFlux v1.4.1")},
         {QStringLiteral("settings.aboutTagline"),
          QStringLiteral("Минималистичный аудиоплеер с визуализацией волны")},
         {QStringLiteral("player.previous"), QStringLiteral("Предыдущий")},
@@ -3139,6 +3211,10 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("audioConverter.transformSectionHint"), QStringLiteral("Меняйте скорость и тональность только если результат должен звучать иначе, чем исходный файл.")},
         {QStringLiteral("audioConverter.speed"), QStringLiteral("Скорость: ")},
         {QStringLiteral("audioConverter.pitch"), QStringLiteral("Тональность: ")},
+        {QStringLiteral("audioConverter.reversePlayback"), QStringLiteral("Обратное воспроизведение (реверс)")},
+        {QStringLiteral("audioConverter.reversePlaybackDescription"), QStringLiteral("Воспроизведение и конвертация аудио задом наперед.")},
+        {QStringLiteral("audioConverter.reversePlaybackActive"), QStringLiteral("Реверс: вкл.")},
+        {QStringLiteral("audioConverter.reversePlaybackInactive"), QStringLiteral("Реверс: выкл.")},
         {QStringLiteral("audioConverter.applyCurrentEqualizer"), QStringLiteral("Применить текущий эквалайзер")},
         {QStringLiteral("audioConverter.applyCurrentEqualizerHint"), QStringLiteral("Встроить текущие полосы эквалайзера в конвертированный файл.")},
         {QStringLiteral("audioConverter.equalizerCurrent"), QStringLiteral("Эквалайзер: текущий")},
@@ -3543,6 +3619,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("settings.sidebarPlaylistsSectionDescription"), QStringLiteral("Отображать секцию плейлистов в левой панели.")},
         {QStringLiteral("settings.sidebarCollectionsSectionTitle"), QStringLiteral("Показывать блок коллекций")},
         {QStringLiteral("settings.sidebarCollectionsSectionDescription"), QStringLiteral("Отображать секцию коллекций в левой панели.")},
+        {QStringLiteral("settings.showLyricsPanel"), QStringLiteral("Показывать панель текста")},
         {QStringLiteral("settings.configurePlaylistColumns"), QStringLiteral("Настроить колонки...")},
         {QStringLiteral("settings.configurePlaylistColumnsDescription"), QStringLiteral("Настройка видимости, порядка и выравнивания колонок плейлиста.")},
         {QStringLiteral("settings.pitchDescription"), QStringLiteral("Сдвиг высоты тона в полутонах без изменения темпа.")},
@@ -3989,6 +4066,9 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("equalizer.rename"), QStringLiteral("Переименовать")},
         {QStringLiteral("equalizer.delete"), QStringLiteral("Удалить")},
         {QStringLiteral("equalizer.deletePreset"), QStringLiteral("Удалить пресет")},
+        {QStringLiteral("equalizer.deletePresetConfirmTitle"), QStringLiteral("Удалить пресет")},
+        {QStringLiteral("equalizer.deletePresetConfirmMessage"),
+         QStringLiteral("Вы действительно хотите удалить пресет «%1»?")},
         {QStringLiteral("equalizer.import"), QStringLiteral("Импорт")},
         {QStringLiteral("equalizer.export"), QStringLiteral("Экспорт")},
         {QStringLiteral("equalizer.portalTitleImport"), QStringLiteral("Импорт пресетов EQ (JSON)")},
@@ -4066,6 +4146,65 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("menu.viewCollectionsPanel"), QStringLiteral("Панель коллекций")},
         {QStringLiteral("menu.viewInfoSidebar"), QStringLiteral("Инфо-панель")},
         {QStringLiteral("menu.viewSpeedPitch"), QStringLiteral("Управление скоростью/тоном")},
+        {QStringLiteral("menu.viewLyrics"), QStringLiteral("Панель текста")},
+        // Lyrics
+        {QStringLiteral("lyrics.panelTitle"), QStringLiteral("Текст песни")},
+        {QStringLiteral("settings.lyricsPanelVisibleDescription"), QStringLiteral("Показывать полную панель текста для воспроизводимого трека.")},
+        {QStringLiteral("settings.lyricsSeparateWindow"), QStringLiteral("Текст песни в отдельном окне")},
+        {QStringLiteral("settings.lyricsSeparateWindowDescription"), QStringLiteral("Отделить текст от плеера. В компактном режиме всегда используется отдельное окно.")},
+        {QStringLiteral("settings.lyricsInfoPanelVisible"), QStringLiteral("Текст песни на информационной панели")},
+        {QStringLiteral("settings.lyricsInfoPanelVisibleDescription"), QStringLiteral("Показывать текст, синхронизированные строки, поиск и обновление на боковой панели.")},
+        {QStringLiteral("lyrics.searchTitle"), QStringLiteral("Найти текст песни")},
+        {QStringLiteral("lyrics.searchHint"), QStringLiteral("Уточните название и исполнителя, затем просмотрите текст перед выбором для этого трека.")},
+        {QStringLiteral("lyrics.title"), QStringLiteral("Название песни")},
+        {QStringLiteral("lyrics.artist"), QStringLiteral("Исполнитель")},
+        {QStringLiteral("lyrics.albumOptional"), QStringLiteral("Альбом (необязательно)")},
+        {QStringLiteral("lyrics.matches"), QStringLiteral("Результаты")},
+        {QStringLiteral("lyrics.preview"), QStringLiteral("Предпросмотр")},
+        {QStringLiteral("lyrics.previewHint"), QStringLiteral("Выберите результат, чтобы прочитать текст.")},
+        {QStringLiteral("lyrics.searchEmpty"), QStringLiteral("Результатов пока нет. Проверьте название и исполнителя или попробуйте без альбома.")},
+        {QStringLiteral("lyrics.resultCount"), QStringLiteral("Найдено результатов: %1")},
+        {QStringLiteral("lyrics.retry"), QStringLiteral("Повторить")},
+        {QStringLiteral("lyrics.importError"), QStringLiteral("Не удалось импортировать текст. Выберите доступный файл LRC или TXT размером до 256 КиБ.")},
+        {QStringLiteral("lyrics.exportError"), QStringLiteral("Не удалось сохранить текст. Выберите доступную для записи папку и повторите попытку.")},
+        {QStringLiteral("lyrics.toggleLyrics"), QStringLiteral("Панель текста песни")},
+        {QStringLiteral("lyrics.syncMode"), QStringLiteral("Синхронизированный")},
+        {QStringLiteral("lyrics.plainMode"), QStringLiteral("Обычный текст")},
+        {QStringLiteral("lyrics.instrumental"), QStringLiteral("Инструментальный трек")},
+        {QStringLiteral("lyrics.noTrack"), QStringLiteral("Нет воспроизводимого трека")},
+        {QStringLiteral("lyrics.loading"), QStringLiteral("Поиск текста песни...")},
+        {QStringLiteral("lyrics.onlineDisabled"), QStringLiteral("Онлайн-поиск текста отключен в настройках приватности")},
+        {QStringLiteral("lyrics.needsMetadata"), QStringLiteral("У трека отсутствует название или исполнитель")},
+        {QStringLiteral("lyrics.needsSelection"), QStringLiteral("Найдено несколько вариантов текста. Выберите подходящий:")},
+        {QStringLiteral("lyrics.notFound"), QStringLiteral("Текст для этого трека не найден")},
+        {QStringLiteral("lyrics.error"), QStringLiteral("Ошибка получения текста песни")},
+        {QStringLiteral("lyrics.enableOnline"), QStringLiteral("Включить онлайн-поиск")},
+        {QStringLiteral("lyrics.search"), QStringLiteral("Поиск текста...")},
+        {QStringLiteral("lyrics.import"), QStringLiteral("Импортировать LRC / текстовый файл...")},
+        {QStringLiteral("lyrics.export"), QStringLiteral("Экспортировать текст...")},
+        {QStringLiteral("lyrics.clearOverride"), QStringLiteral("Сбросить ручной выбор")},
+        {QStringLiteral("lyrics.copy"), QStringLiteral("Скопировать в буфер")},
+        {QStringLiteral("lyrics.copied"), QStringLiteral("Скопировано!")},
+        {QStringLiteral("lyrics.userDelay"), QStringLiteral("Смещение: %1 мс")},
+        {QStringLiteral("lyrics.delayMinus"), QStringLiteral("-100 мс")},
+        {QStringLiteral("lyrics.delayPlus"), QStringLiteral("+100 мс")},
+        {QStringLiteral("lyrics.delayReset"), QStringLiteral("Сбросить смещение")},
+        {QStringLiteral("lyrics.resumeAutoFollow"), QStringLiteral("Возобновить автопрокрутку")},
+        {QStringLiteral("lyrics.fontScale"), QStringLiteral("Размер шрифта")},
+        {QStringLiteral("lyrics.selectCandidate"), QStringLiteral("Выбор варианта")},
+        {QStringLiteral("lyrics.applyCandidate"), QStringLiteral("Применить")},
+        {QStringLiteral("lyrics.cancel"), QStringLiteral("Отмена")},
+        {QStringLiteral("settings.lyrics"), QStringLiteral("Текст песен")},
+        {QStringLiteral("settings.lyricsOnlineEnabled"), QStringLiteral("Разрешить онлайн-поиск текста")},
+        {QStringLiteral("settings.lyricsOnlineEnabledDescription"), QStringLiteral("Разрешить загрузку текста песни из онлайн-источников (LRCLIB, Lyrics.ovh). Отключено по умолчанию.")},
+        {QStringLiteral("settings.lyricsAutomaticLookup"), QStringLiteral("Автоматический поиск")},
+        {QStringLiteral("settings.lyricsAutomaticLookupDescription"), QStringLiteral("Автоматически искать текст при воспроизведении нового трека.")},
+        {QStringLiteral("settings.lyricsPreferSynced"), QStringLiteral("Предпочитать синхронизированный текст")},
+        {QStringLiteral("settings.lyricsPreferSyncedDescription"), QStringLiteral("Отдавать приоритет синхронизированному тексту (LRC) перед обычным текстом.")},
+        {QStringLiteral("settings.lyricsAutoFollow"), QStringLiteral("Автопрокрутка к текущей строке")},
+        {QStringLiteral("settings.lyricsAutoFollowDescription"), QStringLiteral("Автоматически удерживать активную строку текста в центре экрана.")},
+        {QStringLiteral("settings.lyricsFontScale"), QStringLiteral("Масштаб шрифта текста")},
+        {QStringLiteral("settings.lyricsFontScaleDescription"), QStringLiteral("Настройка размера отображаемого шрифта для строк текста песни.")},
         {QStringLiteral("menu.profilerOverlay"), QStringLiteral("Оверлей профайлера")},
         {QStringLiteral("menu.profilerEnable"), QStringLiteral("Включить профайлер")},
         {QStringLiteral("menu.profilerReset"), QStringLiteral("Сбросить профайлер")},
@@ -4094,7 +4233,7 @@ const QHash<QString, QString> &russianTexts()
         {QStringLiteral("help.aboutDialogTitle"), QStringLiteral("О WaveFlux")},
         {QStringLiteral("help.aboutAppName"), QStringLiteral("WaveFlux")},
         {QStringLiteral("help.aboutVersionLabel"), QStringLiteral("Версия:")},
-        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.4.0")},
+        {QStringLiteral("help.aboutVersionValue"), QStringLiteral("1.4.1")},
         {QStringLiteral("help.aboutDescription"),
          QStringLiteral("WaveFlux — сфокусированный настольный аудиоплеер для локальной медиатеки и интернет-стримов с визуализацией волны, очередью и точным управлением воспроизведением.")},
 #ifdef Q_OS_WIN
@@ -4824,6 +4963,39 @@ void AppSettingsManager::setTrayIconAlwaysVisible(bool visible)
     scheduleSaveSettings();
 }
 
+void AppSettingsManager::setCloseToTray(bool enabled)
+{
+    if (m_closeToTray == enabled) {
+        return;
+    }
+
+    m_closeToTray = enabled;
+    emit closeToTrayChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setMinimizeToTray(bool enabled)
+{
+    if (m_minimizeToTray == enabled) {
+        return;
+    }
+
+    m_minimizeToTray = enabled;
+    emit minimizeToTrayChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setStartMinimizedToTray(bool enabled)
+{
+    if (m_startMinimizedToTray == enabled) {
+        return;
+    }
+
+    m_startMinimizedToTray = enabled;
+    emit startMinimizedToTrayChanged();
+    scheduleSaveSettings();
+}
+
 void AppSettingsManager::setSidebarVisible(bool visible)
 {
     if (m_sidebarVisible == visible) {
@@ -4843,6 +5015,28 @@ void AppSettingsManager::setCollectionsSidebarVisible(bool visible)
 
     m_collectionsSidebarVisible = visible;
     emit collectionsSidebarVisibleChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setSidebarPlaylistsSectionVisible(bool visible)
+{
+    if (m_sidebarPlaylistsSectionVisible == visible) {
+        return;
+    }
+
+    m_sidebarPlaylistsSectionVisible = visible;
+    emit sidebarPlaylistsSectionVisibleChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setSidebarCollectionsSectionVisible(bool visible)
+{
+    if (m_sidebarCollectionsSectionVisible == visible) {
+        return;
+    }
+
+    m_sidebarCollectionsSectionVisible = visible;
+    emit sidebarCollectionsSectionVisibleChanged();
     scheduleSaveSettings();
 }
 
@@ -5612,14 +5806,101 @@ void AppSettingsManager::setYtDlpImportRecentOutputDirectories(const QVariantLis
     scheduleSaveSettings();
 }
 
+void AppSettingsManager::setLyricsPanelVisible(bool visible)
+{
+    if (m_lyricsPanelVisible == visible) return;
+    m_lyricsPanelVisible = visible;
+    emit lyricsPanelVisibleChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsPanelWidth(int width)
+{
+    const int clamped = qBound(260, width, 600);
+    if (m_lyricsPanelWidth == clamped) return;
+    m_lyricsPanelWidth = clamped;
+    emit lyricsPanelWidthChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsSeparateWindow(bool enabled)
+{
+    if (m_lyricsSeparateWindow == enabled) return;
+    m_lyricsSeparateWindow = enabled;
+    emit lyricsSeparateWindowChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsInfoPanelVisible(bool visible)
+{
+    if (m_lyricsInfoPanelVisible == visible) return;
+    m_lyricsInfoPanelVisible = visible;
+    emit lyricsInfoPanelVisibleChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsOnlineEnabled(bool enabled)
+{
+    if (m_lyricsOnlineEnabled == enabled) return;
+    m_lyricsOnlineEnabled = enabled;
+    emit lyricsOnlineEnabledChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsAutomaticLookup(bool enabled)
+{
+    if (m_lyricsAutomaticLookup == enabled) return;
+    m_lyricsAutomaticLookup = enabled;
+    emit lyricsAutomaticLookupChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsEnabledProviders(const QStringList &providers)
+{
+    if (m_lyricsEnabledProviders == providers) return;
+    m_lyricsEnabledProviders = providers;
+    emit lyricsEnabledProvidersChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsPreferSynced(bool prefer)
+{
+    if (m_lyricsPreferSynced == prefer) return;
+    m_lyricsPreferSynced = prefer;
+    emit lyricsPreferSyncedChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsAutoFollow(bool autoFollow)
+{
+    if (m_lyricsAutoFollow == autoFollow) return;
+    m_lyricsAutoFollow = autoFollow;
+    emit lyricsAutoFollowChanged();
+    scheduleSaveSettings();
+}
+
+void AppSettingsManager::setLyricsFontScale(double scale)
+{
+    const double clamped = qBound(0.8, scale, 1.5);
+    if (qFuzzyCompare(m_lyricsFontScale, clamped)) return;
+    m_lyricsFontScale = clamped;
+    emit lyricsFontScaleChanged();
+    scheduleSaveSettings();
+}
+
 void AppSettingsManager::loadSettings()
 {
     m_settings.beginGroup("App");
     m_language = normalizeLanguage(m_settings.value("language", QStringLiteral("auto")).toString());
     m_trayEnabled = m_settings.value("trayEnabled", false).toBool();
     m_trayIconAlwaysVisible = m_settings.value("trayIconAlwaysVisible", false).toBool();
+    m_closeToTray = m_settings.value("closeToTray", false).toBool();
+    m_minimizeToTray = m_settings.value("minimizeToTray", false).toBool();
+    m_startMinimizedToTray = m_settings.value("startMinimizedToTray", false).toBool();
     m_sidebarVisible = m_settings.value("sidebarVisible", true).toBool();
     m_collectionsSidebarVisible = m_settings.value("collectionsSidebarVisible", true).toBool();
+    m_sidebarPlaylistsSectionVisible = m_settings.value("sidebarPlaylistsSectionVisible", true).toBool();
+    m_sidebarCollectionsSectionVisible = m_settings.value("sidebarCollectionsSectionVisible", true).toBool();
     const QString skinValue = m_settings.value("skinMode", QStringLiteral("normal")).toString();
     m_skinMode = (skinValue == QStringLiteral("compact")) ? skinValue : QStringLiteral("normal");
     m_waveformHeight = qBound(40, m_settings.value("waveformHeight", 100).toInt(), 1000);
@@ -5739,6 +6020,16 @@ void AppSettingsManager::loadSettings()
         m_settings.value("ytDlpImport.recentCanonicalSources", QVariantList()).toList());
     m_ytDlpImportRecentOutputDirectories = normalizeYtDlpImportRecentOutputDirectories(
         m_settings.value("ytDlpImport.recentOutputDirectories", QVariantList()).toList());
+    m_lyricsPanelVisible = m_settings.value("lyrics.panelVisible", false).toBool();
+    m_lyricsSeparateWindow = m_settings.value("lyrics.separateWindow", false).toBool();
+    m_lyricsInfoPanelVisible = m_settings.value("lyrics.infoPanelVisible", true).toBool();
+    m_lyricsPanelWidth = qBound(260, m_settings.value("lyrics.panelWidth", 340).toInt(), 600);
+    m_lyricsOnlineEnabled = m_settings.value("lyrics.onlineEnabled", false).toBool();
+    m_lyricsAutomaticLookup = m_settings.value("lyrics.automaticLookup", true).toBool();
+    m_lyricsEnabledProviders = m_settings.value("lyrics.enabledProviders", QStringList{QStringLiteral("lrclib"), QStringLiteral("lyricsovh")}).toStringList();
+    m_lyricsPreferSynced = m_settings.value("lyrics.preferSynced", true).toBool();
+    m_lyricsAutoFollow = m_settings.value("lyrics.autoFollow", true).toBool();
+    m_lyricsFontScale = qBound(0.8, m_settings.value("lyrics.fontScale", 1.0).toDouble(), 1.5);
     m_settings.endGroup();
 }
 
@@ -5759,8 +6050,13 @@ void AppSettingsManager::saveSettings()
     m_settings.setValue("language", m_language);
     m_settings.setValue("trayEnabled", m_trayEnabled);
     m_settings.setValue("trayIconAlwaysVisible", m_trayIconAlwaysVisible);
+    m_settings.setValue("closeToTray", m_closeToTray);
+    m_settings.setValue("minimizeToTray", m_minimizeToTray);
+    m_settings.setValue("startMinimizedToTray", m_startMinimizedToTray);
     m_settings.setValue("sidebarVisible", m_sidebarVisible);
     m_settings.setValue("collectionsSidebarVisible", m_collectionsSidebarVisible);
+    m_settings.setValue("sidebarPlaylistsSectionVisible", m_sidebarPlaylistsSectionVisible);
+    m_settings.setValue("sidebarCollectionsSectionVisible", m_sidebarCollectionsSectionVisible);
     m_settings.setValue("skinMode", m_skinMode);
     m_settings.setValue("waveformHeight", m_waveformHeight);
     m_settings.setValue("compactWaveformHeight", m_compactWaveformHeight);
@@ -5830,6 +6126,16 @@ void AppSettingsManager::saveSettings()
     m_settings.setValue("ytDlpImport.recentSources", m_ytDlpImportRecentSources);
     m_settings.setValue("ytDlpImport.recentCanonicalSources", m_ytDlpImportRecentCanonicalSources);
     m_settings.setValue("ytDlpImport.recentOutputDirectories", m_ytDlpImportRecentOutputDirectories);
+    m_settings.setValue("lyrics.panelVisible", m_lyricsPanelVisible);
+    m_settings.setValue("lyrics.separateWindow", m_lyricsSeparateWindow);
+    m_settings.setValue("lyrics.infoPanelVisible", m_lyricsInfoPanelVisible);
+    m_settings.setValue("lyrics.panelWidth", m_lyricsPanelWidth);
+    m_settings.setValue("lyrics.onlineEnabled", m_lyricsOnlineEnabled);
+    m_settings.setValue("lyrics.automaticLookup", m_lyricsAutomaticLookup);
+    m_settings.setValue("lyrics.enabledProviders", m_lyricsEnabledProviders);
+    m_settings.setValue("lyrics.preferSynced", m_lyricsPreferSynced);
+    m_settings.setValue("lyrics.autoFollow", m_lyricsAutoFollow);
+    m_settings.setValue("lyrics.fontScale", m_lyricsFontScale);
     m_settings.endGroup();
     m_settings.sync();
 }
@@ -5916,6 +6222,8 @@ QVariantMap AppSettingsManager::normalizeBatchAudioConverterLastSettings(const Q
                       normalizeBatchPlaybackRate(settings.value(QStringLiteral("playbackRate"), 1.0).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizeBatchPitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("reversePlayback"),
+                      settings.value(QStringLiteral("reversePlayback"), false).toBool());
     normalized.insert(QStringLiteral("applyEqualizer"),
                       settings.value(QStringLiteral("applyEqualizer"), false).toBool());
     normalized.insert(QStringLiteral("equalizerBandGains"),
@@ -5960,6 +6268,8 @@ QVariantMap AppSettingsManager::normalizeBatchAudioConverterPresetSettings(const
                       normalizeBatchPlaybackRate(settings.value(QStringLiteral("playbackRate"), 1.0).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizeBatchPitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("reversePlayback"),
+                      settings.value(QStringLiteral("reversePlayback"), false).toBool());
     normalized.insert(QStringLiteral("applyEqualizer"),
                       settings.value(QStringLiteral("applyEqualizer"), false).toBool());
     normalized.insert(QStringLiteral("equalizerBandGains"),

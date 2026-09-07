@@ -86,7 +86,7 @@ void SettingsRegistryTest::testSettingsIntegrity()
     QVERIFY(registry);
 
     const auto &settings = registry->settingDescriptors();
-    QCOMPARE(settings.size(), 71);
+    QCOMPARE(settings.size(), 75);
 
     QSet<QString> settingIds;
     for (const auto &setting : settings) {
@@ -104,6 +104,10 @@ void SettingsRegistryTest::testSettingsIntegrity()
         const auto found = registry->setting(setting.id);
         QCOMPARE(found.value(QStringLiteral("id")).toString(), setting.id);
     }
+
+    QVERIFY(!registry->setting(QStringLiteral("system.desktop.closeToTray")).isEmpty());
+    QVERIFY(!registry->setting(QStringLiteral("system.desktop.minimizeToTray")).isEmpty());
+    QVERIFY(!registry->setting(QStringLiteral("system.desktop.startMinimizedToTray")).isEmpty());
 
     const QStringList integrityErrors = registry->validateIntegrity();
     QVERIFY2(integrityErrors.isEmpty(), qPrintable(integrityErrors.join(QLatin1Char('\n'))));
@@ -150,6 +154,12 @@ void SettingsRegistryTest::testSearchRankingEnglish()
         }
     }
     QVERIFY(hasDeterministicShuffle);
+    const auto lyricsResults = registry->search(QStringLiteral("Lyrics"), QStringLiteral("en"));
+    QSet<QString> lyricsIds;
+    for (const auto &result : lyricsResults) lyricsIds.insert(result.toMap().value(QStringLiteral("id")).toString());
+    QVERIFY(lyricsIds.contains(QStringLiteral("lyricsPanelVisible")));
+    QVERIFY(lyricsIds.contains(QStringLiteral("lyricsSeparateWindow")));
+    QVERIFY(lyricsIds.contains(QStringLiteral("lyricsInfoPanelVisible")));
 }
 
 void SettingsRegistryTest::testSearchRankingRussian()

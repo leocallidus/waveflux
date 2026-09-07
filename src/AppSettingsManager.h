@@ -18,8 +18,13 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(QString effectiveLanguage READ effectiveLanguage NOTIFY effectiveLanguageChanged)
     Q_PROPERTY(bool trayEnabled READ trayEnabled WRITE setTrayEnabled NOTIFY trayEnabledChanged)
     Q_PROPERTY(bool trayIconAlwaysVisible READ trayIconAlwaysVisible WRITE setTrayIconAlwaysVisible NOTIFY trayIconAlwaysVisibleChanged)
+    Q_PROPERTY(bool closeToTray READ closeToTray WRITE setCloseToTray NOTIFY closeToTrayChanged)
+    Q_PROPERTY(bool minimizeToTray READ minimizeToTray WRITE setMinimizeToTray NOTIFY minimizeToTrayChanged)
+    Q_PROPERTY(bool startMinimizedToTray READ startMinimizedToTray WRITE setStartMinimizedToTray NOTIFY startMinimizedToTrayChanged)
     Q_PROPERTY(bool sidebarVisible READ sidebarVisible WRITE setSidebarVisible NOTIFY sidebarVisibleChanged)
     Q_PROPERTY(bool collectionsSidebarVisible READ collectionsSidebarVisible WRITE setCollectionsSidebarVisible NOTIFY collectionsSidebarVisibleChanged)
+    Q_PROPERTY(bool sidebarPlaylistsSectionVisible READ sidebarPlaylistsSectionVisible WRITE setSidebarPlaylistsSectionVisible NOTIFY sidebarPlaylistsSectionVisibleChanged)
+    Q_PROPERTY(bool sidebarCollectionsSectionVisible READ sidebarCollectionsSectionVisible WRITE setSidebarCollectionsSectionVisible NOTIFY sidebarCollectionsSectionVisibleChanged)
     Q_PROPERTY(QString skinMode READ skinMode WRITE setSkinMode NOTIFY skinModeChanged)
     Q_PROPERTY(int waveformHeight READ waveformHeight WRITE setWaveformHeight NOTIFY waveformHeightChanged)
     Q_PROPERTY(int compactWaveformHeight READ compactWaveformHeight WRITE setCompactWaveformHeight NOTIFY compactWaveformHeightChanged)
@@ -82,6 +87,16 @@ class AppSettingsManager : public QObject
     Q_PROPERTY(QVariantList ytDlpImportRecentCanonicalSources READ ytDlpImportRecentCanonicalSources WRITE setYtDlpImportRecentCanonicalSources NOTIFY ytDlpImportRecentCanonicalSourcesChanged)
     Q_PROPERTY(QVariantList ytDlpImportRecentOutputDirectories READ ytDlpImportRecentOutputDirectories WRITE setYtDlpImportRecentOutputDirectories NOTIFY ytDlpImportRecentOutputDirectoriesChanged)
     Q_PROPERTY(int translationRevision READ translationRevision NOTIFY translationsChanged)
+    Q_PROPERTY(bool lyricsPanelVisible READ lyricsPanelVisible WRITE setLyricsPanelVisible NOTIFY lyricsPanelVisibleChanged)
+    Q_PROPERTY(bool lyricsSeparateWindow READ lyricsSeparateWindow WRITE setLyricsSeparateWindow NOTIFY lyricsSeparateWindowChanged)
+    Q_PROPERTY(bool lyricsInfoPanelVisible READ lyricsInfoPanelVisible WRITE setLyricsInfoPanelVisible NOTIFY lyricsInfoPanelVisibleChanged)
+    Q_PROPERTY(int lyricsPanelWidth READ lyricsPanelWidth WRITE setLyricsPanelWidth NOTIFY lyricsPanelWidthChanged)
+    Q_PROPERTY(bool lyricsOnlineEnabled READ lyricsOnlineEnabled WRITE setLyricsOnlineEnabled NOTIFY lyricsOnlineEnabledChanged)
+    Q_PROPERTY(bool lyricsAutomaticLookup READ lyricsAutomaticLookup WRITE setLyricsAutomaticLookup NOTIFY lyricsAutomaticLookupChanged)
+    Q_PROPERTY(QStringList lyricsEnabledProviders READ lyricsEnabledProviders WRITE setLyricsEnabledProviders NOTIFY lyricsEnabledProvidersChanged)
+    Q_PROPERTY(bool lyricsPreferSynced READ lyricsPreferSynced WRITE setLyricsPreferSynced NOTIFY lyricsPreferSyncedChanged)
+    Q_PROPERTY(bool lyricsAutoFollow READ lyricsAutoFollow WRITE setLyricsAutoFollow NOTIFY lyricsAutoFollowChanged)
+    Q_PROPERTY(double lyricsFontScale READ lyricsFontScale WRITE setLyricsFontScale NOTIFY lyricsFontScaleChanged)
 
 public:
     explicit AppSettingsManager(QObject *parent = nullptr);
@@ -91,8 +106,13 @@ public:
     QString effectiveLanguage() const { return m_effectiveLanguage; }
     bool trayEnabled() const { return m_trayEnabled; }
     bool trayIconAlwaysVisible() const { return m_trayIconAlwaysVisible; }
+    bool closeToTray() const { return m_closeToTray; }
+    bool minimizeToTray() const { return m_minimizeToTray; }
+    bool startMinimizedToTray() const { return m_startMinimizedToTray; }
     bool sidebarVisible() const { return m_sidebarVisible; }
     bool collectionsSidebarVisible() const { return m_collectionsSidebarVisible; }
+    bool sidebarPlaylistsSectionVisible() const { return m_sidebarPlaylistsSectionVisible; }
+    bool sidebarCollectionsSectionVisible() const { return m_sidebarCollectionsSectionVisible; }
     QString skinMode() const { return m_skinMode; }
     int waveformHeight() const { return m_waveformHeight; }
     int compactWaveformHeight() const { return m_compactWaveformHeight; }
@@ -181,6 +201,16 @@ public:
     Q_INVOKABLE void saveTrackFragmentLoop(const QString &filePath, qint64 startMs, qint64 endMs);
     Q_INVOKABLE void removeTrackFragmentLoop(const QString &filePath);
     Q_INVOKABLE QVariantMap getTrackFragmentLoop(const QString &filePath) const;
+    bool lyricsPanelVisible() const { return m_lyricsPanelVisible; }
+    bool lyricsSeparateWindow() const { return m_lyricsSeparateWindow; }
+    bool lyricsInfoPanelVisible() const { return m_lyricsInfoPanelVisible; }
+    int lyricsPanelWidth() const { return m_lyricsPanelWidth; }
+    bool lyricsOnlineEnabled() const { return m_lyricsOnlineEnabled; }
+    bool lyricsAutomaticLookup() const { return m_lyricsAutomaticLookup; }
+    QStringList lyricsEnabledProviders() const { return m_lyricsEnabledProviders; }
+    bool lyricsPreferSynced() const { return m_lyricsPreferSynced; }
+    bool lyricsAutoFollow() const { return m_lyricsAutoFollow; }
+    double lyricsFontScale() const { return m_lyricsFontScale; }
     bool fullApplicationResetPending() const { return m_fullApplicationResetPending; }
     static QString translateKey(const QString &key, const QString &language = QString());
     static QString translateForCurrentLanguage(const QString &key);
@@ -189,8 +219,13 @@ public slots:
     void setLanguage(const QString &language);
     void setTrayEnabled(bool enabled);
     void setTrayIconAlwaysVisible(bool visible);
+    void setCloseToTray(bool enabled);
+    void setMinimizeToTray(bool enabled);
+    void setStartMinimizedToTray(bool enabled);
     void setSidebarVisible(bool visible);
     void setCollectionsSidebarVisible(bool visible);
+    void setSidebarPlaylistsSectionVisible(bool visible);
+    void setSidebarCollectionsSectionVisible(bool visible);
     void setSkinMode(const QString &mode);
     void setWaveformHeight(int height);
     void setCompactWaveformHeight(int height);
@@ -254,14 +289,29 @@ public slots:
     void setYtDlpImportRecentSources(const QVariantList &sources);
     void setYtDlpImportRecentCanonicalSources(const QVariantList &sources);
     void setYtDlpImportRecentOutputDirectories(const QVariantList &directories);
+    void setLyricsPanelVisible(bool visible);
+    void setLyricsSeparateWindow(bool enabled);
+    void setLyricsInfoPanelVisible(bool visible);
+    void setLyricsPanelWidth(int width);
+    void setLyricsOnlineEnabled(bool enabled);
+    void setLyricsAutomaticLookup(bool enabled);
+    void setLyricsEnabledProviders(const QStringList &providers);
+    void setLyricsPreferSynced(bool prefer);
+    void setLyricsAutoFollow(bool autoFollow);
+    void setLyricsFontScale(double scale);
 
 signals:
     void languageChanged();
     void effectiveLanguageChanged();
     void trayEnabledChanged();
     void trayIconAlwaysVisibleChanged();
+    void closeToTrayChanged();
+    void minimizeToTrayChanged();
+    void startMinimizedToTrayChanged();
     void sidebarVisibleChanged();
     void collectionsSidebarVisibleChanged();
+    void sidebarPlaylistsSectionVisibleChanged();
+    void sidebarCollectionsSectionVisibleChanged();
     void skinModeChanged();
     void waveformHeightChanged();
     void compactWaveformHeightChanged();
@@ -324,6 +374,16 @@ signals:
     void ytDlpImportRecentCanonicalSourcesChanged();
     void ytDlpImportRecentOutputDirectoriesChanged();
     void translationsChanged();
+    void lyricsPanelVisibleChanged();
+    void lyricsSeparateWindowChanged();
+    void lyricsInfoPanelVisibleChanged();
+    void lyricsPanelWidthChanged();
+    void lyricsOnlineEnabledChanged();
+    void lyricsAutomaticLookupChanged();
+    void lyricsEnabledProvidersChanged();
+    void lyricsPreferSyncedChanged();
+    void lyricsAutoFollowChanged();
+    void lyricsFontScaleChanged();
 
 private:
     void loadSettings();
@@ -351,8 +411,13 @@ private:
     QString m_effectiveLanguage = QStringLiteral("en");
     bool m_trayEnabled = false;
     bool m_trayIconAlwaysVisible = false;
+    bool m_closeToTray = false;
+    bool m_minimizeToTray = false;
+    bool m_startMinimizedToTray = false;
     bool m_sidebarVisible = true;
     bool m_collectionsSidebarVisible = true;
+    bool m_sidebarPlaylistsSectionVisible = true;
+    bool m_sidebarCollectionsSectionVisible = true;
     QString m_skinMode = QStringLiteral("normal");
     int m_waveformHeight = 100;
     int m_compactWaveformHeight = 32;
@@ -422,6 +487,16 @@ private:
     bool m_saveSettingsPending = false;
     bool m_fullApplicationResetPending = false;
     int m_translationRevision = 0;
+    bool m_lyricsPanelVisible = false;
+    bool m_lyricsSeparateWindow = false;
+    bool m_lyricsInfoPanelVisible = true;
+    int m_lyricsPanelWidth = 340;
+    bool m_lyricsOnlineEnabled = false;
+    bool m_lyricsAutomaticLookup = true;
+    QStringList m_lyricsEnabledProviders = {QStringLiteral("lrclib"), QStringLiteral("lyricsovh")};
+    bool m_lyricsPreferSynced = true;
+    bool m_lyricsAutoFollow = true;
+    double m_lyricsFontScale = 1.0;
 };
 
 #endif // APPSETTINGSMANAGER_H

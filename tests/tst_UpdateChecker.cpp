@@ -175,14 +175,14 @@ void UpdateCheckerTest::initTestCase()
     QSettings::setPath(QSettings::NativeFormat, QSettings::SystemScope, settingsDir);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir);
     QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, settingsDir);
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.4.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.4.1"));
     clearSettings();
 }
 
 void UpdateCheckerTest::init()
 {
     clearSettings();
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.4.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.4.1"));
 }
 
 void UpdateCheckerTest::cleanup()
@@ -198,6 +198,7 @@ void UpdateCheckerTest::comparesVersions_data()
 
     QTest::newRow("v1.3 equals 1.4.0") << QStringLiteral("1.4.0") << QStringLiteral("v1.3") << false;
     QTest::newRow("1.4.1 newer than 1.4.0") << QStringLiteral("1.4.0") << QStringLiteral("1.4.1") << true;
+    QTest::newRow("1.4.2 newer than 1.4.1") << QStringLiteral("1.4.1") << QStringLiteral("1.4.2") << true;
     QTest::newRow("2.0 newer than 1.9.9") << QStringLiteral("1.9.9") << QStringLiteral("2.0") << true;
 }
 
@@ -237,8 +238,8 @@ void UpdateCheckerTest::ignoresPrereleaseByDefault()
     server.setResponse(QStringLiteral("/latest-array"),
                        HttpTestServer::Response{
                            200,
-                           releasesJson({releaseJson(QStringLiteral("v1.4.0-beta.1"), true),
-                                         releaseJson(QStringLiteral("v1.4.0"), false)})
+                           releasesJson({releaseJson(QStringLiteral("v1.4.1-beta.1"), true),
+                                         releaseJson(QStringLiteral("v1.4.1"), false)})
                        });
 
     AppSettingsManager settings;

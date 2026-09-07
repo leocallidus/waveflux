@@ -50,6 +50,7 @@ private slots:
     void audioEngine_remoteTrackerUrlDownloadsToCacheAndUsesOpenMptBackend();
     void audioEngine_remoteTrackerDownloadCancelsSafelyOnNewLoad();
     void audioEngine_dspSpeedAndTempoChangeDoesNotWarpDurationOrPosition();
+    void audioEngine_varispeedChangesPitchProportionally();
 };
 
 namespace {
@@ -1210,6 +1211,60 @@ void PlaybackBackendRoutingTest::audioEngine_dspSpeedAndTempoChangeDoesNotWarpDu
     dsp.setTempo(1.0);
     QCOMPARE(gstEngine.duration(), gstBaselineDuration);
     QCOMPARE(gstErrorSpy.count(), 0);
+}
+
+void PlaybackBackendRoutingTest::audioEngine_varispeedChangesPitchProportionally()
+{
+    DspSettingsManager dsp;
+    AudioEngine engine;
+    dsp.setSpeed(1.0);
+    dsp.setTempo(1.0);
+    dsp.setTonalitySemitones(0.0);
+    engine.setPlaybackRate(1.0);
+    engine.setPitchSemitones(0);
+
+    // Neutral state: pitch ratio is 1.0
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 1.0));
+
+    // Changing playbackRate (e.g. shortcuts or holding space bar for 2x speed):
+    // Synchronizes with DSP speed and varispeed proportionally changes pitch ratio to 2.0
+    engine.setPlaybackRate(2.0);
+    QCOMPARE(dsp.speed(), 2.0);
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 2.0));
+
+    engine.setPlaybackRate(0.5);
+    QCOMPARE(dsp.speed(), 0.5);
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 0.5));
+
+    engine.setPlaybackRate(1.0);
+    QCOMPARE(dsp.speed(), 1.0);
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 1.0));
+
+    // Changing DSP speed: Synchronizes with engine playbackRate and pitch changes proportionally
+    dsp.setSpeed(1.5);
+    QCOMPARE(engine.playbackRate(), 1.5);
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 1.5));
+
+    // Changing DSP tempo: Tempo changes playback speed WITHOUT changing pitch
+    dsp.setTempo(1.75);
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 1.5)); // Pitch stays at 1.5
+
+    // Pitch semitones synchronization:
+    // Changing engine pitch semitones (e.g. shortcuts) synchronizes with DSP tonality
+    engine.setPitchSemitones(3);
+    QCOMPARE(dsp.tonalitySemitones(), 3.0);
+
+    // Changing DSP tonality synchronizes with engine pitch semitones
+    dsp.setTonalitySemitones(-2.0);
+    QCOMPARE(engine.pitchSemitones(), -2);
+
+    // Reset back
+    engine.setPlaybackRate(1.0);
+    dsp.setTempo(1.0);
+    engine.setPitchSemitones(0);
+    QCOMPARE(dsp.speed(), 1.0);
+    QCOMPARE(dsp.tonalitySemitones(), 0.0);
+    QVERIFY(qFuzzyCompare(engine.effectivePitchRatio(), 1.0));
 }
 
 QTEST_MAIN(PlaybackBackendRoutingTest)

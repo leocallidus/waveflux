@@ -5,6 +5,94 @@ All notable changes to this project are documented in this file.
 The format is based on Keep a Changelog, and this project follows semantic
 versioning where practical.
 
+## [1.4.1] 2026-09-04
+
+### Added
+
+- Native Lyrics Panel and synchronizer implementation:
+  - **LRC Parser & Decoder (`src/lyrics/LrcParser.*`)**: High-performance parser with UTF-8/UTF-16 auto-detection, multi-timestamp cues consolidation, word-tag stripping (`<mm:ss.xx>`), instrumental break detection from blank cues, metadata parsing (`[offset:]`, `[ti:]`, `[ar:]`, `[al:]`), and bounded memory/length protection.
+  - **Fuzzy Matcher & Scorer (`src/lyrics/LyricsMatcher.*`)**: Diacritic removal, punctuation stripping, edition tag cleaner, Levenshtein distance, duration tolerance filtering (<=2s synced, <=5s plain), and weighted ranking.
+  - **Lyrics Cache Database (`src/lyrics/LyricsCache.*`)**: Dedicated SQLite database (`lyrics_cache.db`) with 30-day positive caching TTL, 6-hour negative hit caching, track delay and manual candidate override persistence, and bounded LRU eviction (50 MiB / 1000 documents).
+  - **Online & Local Providers (`src/lyrics/`)**:
+    - Local sidecar provider searching for `<audio-base>.lrc`, `<audio-base>.trackNN.lrc` (for CUE sheets), and `.txt` files.
+    - LRCLIB provider (`GET /api/get` + search fallback with rate limiting, custom User-Agent, and 429 backoff).
+    - Lyrics.ovh provider for plain text lyrics fallback.
+    - Manual lyrics import/export (.lrc and .txt) and system clipboard integration.
+  - **Lyrics Playback Controller & Line Model (`src/lyrics/LyricsController.*`, `src/lyrics/LyricsLineModel.*`)**: Real-time binary search synchronization tracking `PlaybackController::activeTrackIndex` and position, supporting CUE track offset subtraction (`songPositionMs = posMs - track.cueStartMs`), A-B loop seek bounds clamping, user delay adjustments (-/+100ms stepper, reset), and smooth auto-follow with manual drag pause and floating resume button.
+  - **UI Views & Dialogs (`qml/LyricsPanel.qml`, `qml/LyricsSearchDialog.qml`)**:
+    - Resizable sidebar panel docked next to the playlist table with splitter handle and collapsible state.
+    - Status badge indicators for mode (`LRC`, `TXT`, `INST`) and provenance (`Sidecar`, `Imported`, `LRCLIB`, `Lyrics.ovh`).
+    - Dedicated search and candidate picker dialog with query inputs, live search, metadata and duration badges, preview pane, and candidate selection.
+    - View menu integration, `Ctrl+Alt+L` toggle shortcut, and settings under *Playback Settings* for privacy opt-in (`lyricsOnlineEnabled`), auto-lookup, preferred format, auto-follow, and font scaling.
+  - **Test Coverage**: Added test suites `tst_lrc_parser`, `tst_lyrics_matcher`, `tst_lyrics_cache`, `tst_lyrics_playback_sync`, `tst_lyrics_providers`, and `tst_lyrics_controller`. The full project suite passes all 39 test suites, including QML startup verification.
+- Added persistent lyrics presentation options:
+  - Open the full Lyrics panel from both View menus, the standard-skin toolbar, the compact-skin menu, or **Settings → Playback → Lyrics**.
+  - Detach lyrics into a separate, resizable window using a toggle in the panel menu or Lyrics settings. Closing the window hides lyrics without stopping playback; compact mode automatically uses a separate window without changing the saved docking preference.
+  - Show a compact Lyrics block in the info sidebar with plain text or clickable, timestamped synchronized lines, automatic following, and search/refresh buttons. The block shares the existing lyrics controller, is enabled by default, and can be disabled independently in Lyrics settings.
+  - Find the panel visibility, separate-window, and info-sidebar options through settings search.
+- Added reusable `AccentTextField` controls with theme-aware text, placeholder, selection, and keyboard-focus styling.
+- Added deterministic offline regression coverage for provider fallbacks, malformed responses, rate limits, cancellation, deadlines, payload limits, edited search metadata, privacy, cache retries, stale replies, and imports. Extended UI tests cover light/dark palettes, narrow/wide layouts, both dialog modes, detached-window lifecycle, info-block interactions, and persisted presentation preferences.
+- **Reverse Playback in Audio Converters**:
+  - Added the ability to enable reverse playback across all audio converter workflows:
+    - **Single Track Audio Converter (`AudioConverterDialog.qml`)**: Toggle reverse playback under the Transform card to render and export the converted output backwards in reverse.
+    - **Batch Audio Converter (`BatchAudioConverterDialog.qml`)**: Convert entire queues or playlist selections in reverse with support for user presets, draft restoration, and job reporting.
+    - **Reverse Audio Preview**: In-dialog preview plays the audio fragment in reverse with synchronized bidirectional progress mapping (`0.0` at end, `1.0` at start) and looping.
+    - **Seamless DSP & Trim Integration**: Works smoothly alongside fragment trimming, speed, tempo, pitch shifting, graphic equalizer, and reverb through frame-accurate chunked intermediate PCM reversal.
+    - Added full bilingual localization (EN / RU) for reverse playback settings, summaries, and dialog descriptions.
+
+### Changed
+
+- Polished the Lyrics panel and candidate picker to use the application's existing theme colors, typography, spacing, and SVG icons consistently.
+- Made the search dialog window-centered and scrollable, with labeled search fields, responsive stacked layouts on narrow windows, readable candidate previews, keyboard navigation, and explicit Apply actions.
+- Moved track details and synchronization-offset controls out of the crowded panel toolbar; added accessible action names and visible import/export failure messages.
+- Added English and Russian guidance for lyrics searches, previews, retries, file errors, and presentation settings.
+- Manual lyrics searches now rank against the edited title, artist, and optional album instead of the original track metadata, omit the original duration constraint, and require explicit selection. Ambiguous automatic matches no longer interrupt playback with a popup.
+- Improved LRCLIB lookup by falling back from exact matching to search and then normalized, edition-free metadata. Useful primary-provider results can complete without waiting for the secondary provider, while respecting the plain/synchronized preference.
+- Hardened lyrics requests with transfer timeouts, absolute deadlines, response-size limits, cancellation-safe cleanup, and numeric `Retry-After` cooldown handling. Imports reject oversized files, and exports use atomic file replacement.
+
+### Fixed
+
+- Fixed nonexistent theme-property references that caused black/white or inconsistently styled lyrics controls, and missing candidate text that left previews empty.
+- Fixed lyrics lookup reading the wrong track-duration field; changes to active-track metadata now refresh the lookup.
+- Fixed Unicode normalization removing non-Latin letters, and improved matching of remastered-edition title suffixes.
+- Fixed Lyrics.ovh results using the original track metadata after a manual search instead of the edited query.
+- Fixed network and parse failures being treated as clean misses and negative-cached. Retry now bypasses cached query results and the automatic-lookup setting without bypassing online consent.
+- Fixed stale lyrics replies surviving track changes, track removal, privacy changes, or successful imports; fixed reentrant reply cancellation and cleanup.
+- Fixed imports being superseded by an older manual selection on subsequent lookup, and corrected cached-provider attribution.
+- Fixed completed-line highlighting across blank verse separators, consecutive instrumental-break cues, forward/backward seeks, and track completion. The line model now retains playback progress independently of the highlighted line and refreshes every affected row.
+- Fixed missing Lyrics entries in the direct View menu and compact-skin menu, and ensured detached lyrics do not hide or reserve space in the docked playlist layout.
+- Fixed severe startup delays caused by redundant disk metadata scans on session restore and track insertion: files with technical audio metadata and duration already loaded from session or cache are no longer misidentified as missing metadata when optional album tags are empty.
+- Fixed distorted and chaotic playlist column layouts (`PlaylistTable` and `CompactSkin`) where responsive width buckets were erroneously supplied instead of available pixel widths to `PlaylistColumnLayoutManager::effectiveVisibleColumns`.
+- Fixed `UiMetrics` singleton resolution in `HeaderBar`, `PlaylistTable`, and `Main` by explicitly importing module `WaveFlux`, preventing uninstantiated component fallback that collapsed header dimensions and enlarged SVG logo rendering.
+- Fixed GUI thread lockup on large playlists during playback start and track location by replacing synchronous unbounded `contentY` assignments with virtualized `ListView::positionViewAtIndex(proxyIndex, ListView.Center)`.
+- Fixed recursive layout thrashing in `PlaylistTable` by removing viewport sync triggers from `onContentHeightChanged` and `onHeightChanged`.
+- Fixed `QString::arg` missing argument warnings for `ytDlpImport.summaryTags`, `ytDlpImport.summaryTagsDetails`, `equalizer.deletePresetConfirmTitle`, and `equalizer.deletePresetConfirmMessage` in English and Russian localization tables.
+- Verified and ensured default DSP manager settings have echo mix set to 0.0% (neutral and inactive by default across all profiles, resets, and audio converter services).
+- Optimized window resize responsiveness across standard and compact player skins:
+  - Eliminated continuous delegate churn in `PlaylistTable` and `CompactSkin` during window resizing by binding `effectiveColumns` to discrete breakpoint buckets (`responsiveWidthBucket`), allowing native Qt Quick `RowLayout` to handle continuous width stretching smoothly without re-evaluating or rebuilding delegate models.
+  - Fixed automatic column selection in `PlaylistColumnLayoutManager::effectiveVisibleColumns` for narrow viewports and bucket 0, preventing automatic columns from collapsing to minimum widths when available width does not satisfy minimum thresholds.
+  - Optimized `WaveformItem` resize performance by deferring multi-megabyte ARGB32 image layer reallocations to a 100ms post-resize timer, seamlessly using fast direct vector drawing during active drag resizing.
+- Fixed spurious desktop notifications triggering for the current track when changing playback speed (e.g. holding Space bar for 2x playback or moving the speed slider) while a track is playing.
+- Implemented true Varispeed playback across player speed controls and DSP: playback speed changes now proportionally scale pitch (Speed with proportional pitch change), while DSP tempo modifications adjust speed with constant pitch.
+- Fixed non-functional and defective parameters across the DSP Manager:
+  - **General Tab**: Fixed Pause/Resume fade-in and fade-out (`fadePauseResume`) and Track Navigation fade (`fadeTrackNavigation`). Relocated the DSP audio processing probe to downstream of SoundTouch and peak limiters directly ahead of the audio sink, eliminating 100-300ms buffering delays so fades and volume changes are instantaneous and click-free. Resolved a critical bug in `AudioEngine::fadeOut` where a delayed gain reset timer cancelled active and subsequent `fadeIn` transitions.
+  - **Volume Tab**:
+    - Functionalized `smoothChanges` with a 48ms smooth volume ramp eliminating slider zipper noise and abrupt audio level clicks.
+    - Added `logarithmicControl` applying a perceptual quadratic audio taper for natural volume attenuation.
+    - Functionalized `loudnessCompensation` dynamically adjusting bass boost below 0.95 volume according to Fletcher-Munson equal-loudness contours.
+    - Verified and connected stereo `balance` panning across all playback streams.
+    - Implemented `amplitudeNormalization` (target peak dBFS, preamp, and tag/measured peak) and full `replayGain` processing (auto/track/album modes, preamp, fallback gain, tag extraction from TagLib/GStreamer, and on-the-fly peak analysis) with live diagnostic status strings.
+  - **Mixing Tab**:
+    - Fixed manual track transitions honoring `mixManualCrossfade`, `mixManualFadeOut`, and `mixManualFadeIn` with configurable durations.
+    - Functionalized automatic mixing advance modes, including configurable pause intervals between tracks (`mixAutomaticMode == "pause"`) and smooth crossfade transitions (`mixAutomaticMode == "crossfade"` with auto fade-out before EOS and auto fade-in on the subsequent track).
+    - Fixed gapless transition preparation to avoid preempting active DSP mixing modes.
+  - **Silence Removal Tab**:
+    - Connected real-time frame chunk silence detection in `processDspBuffer` with configurable threshold dBFS and minimum duration.
+    - Implemented `silenceRemovalTrimEdges` allowing automatic intro silence skipping, trailing silence elimination to trigger immediate track progression at EOS, and seamless mid-track silence skipping with seek debouncing.
+- Fixed desynchronization of playback speed and pitch between keyboard shortcuts and the DSP Manager:
+  - Changing playback speed (`[`, `]`, `Backspace`) or tonality/pitch (`-`, `=`, `0`) via shortcut keys now immediately synchronizes with `DspSettingsManager::speed` and `DspSettingsManager::tonalitySemitones`.
+  - Unified varispeed playback rate and pitch shifting bidirectionally between `AudioEngine`, `DspSettingsManager`, bottom control bar, standalone player controls, and DSP Manager sliders so values reflect changes in real time across the UI without desynchronization or double-compounding multipliers.
+
 ## [1.4.0] 2026-08-20
 
 ### Added

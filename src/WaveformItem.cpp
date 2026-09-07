@@ -34,6 +34,12 @@ WaveformItem::WaveformItem(QQuickItem *parent)
     connect(&m_loadingAnimationTimer, &QTimer::timeout,
             this, &WaveformItem::advanceLoadingAnimation);
 
+    m_layerRebuildTimer.setSingleShot(true);
+    connect(&m_layerRebuildTimer, &QTimer::timeout, this, [this]() {
+        invalidateWaveLayers();
+        requestRepaint();
+    });
+
     connect(this, &QQuickItem::visibleChanged, this, [this]() {
         if (isVisible()) {
             forceFullRedraw();
@@ -49,10 +55,12 @@ WaveformItem::WaveformItem(QQuickItem *parent)
         }
     });
     connect(this, &QQuickItem::widthChanged, this, [this]() {
-        forceFullRedraw();
+        m_layerRebuildTimer.start(100);
+        requestRepaint();
     });
     connect(this, &QQuickItem::heightChanged, this, [this]() {
-        forceFullRedraw();
+        m_layerRebuildTimer.start(100);
+        requestRepaint();
     });
     connect(qGuiApp, &QGuiApplication::applicationStateChanged, this,
             [this](Qt::ApplicationState state) {
@@ -361,6 +369,8 @@ void WaveformItem::paint(QPainter *painter)
 
     if (waveGeometryChanged) {
         invalidateWaveLayers();
+        m_cachedUnplayedLayer = QImage();
+        m_cachedPlayedLayer = QImage();
     }
 
     if (m_cachedPeaks.isEmpty() || m_cachedWavePath.isEmpty()) {
@@ -437,11 +447,11 @@ void WaveformItem::paint(QPainter *painter)
     const QRectF playedRect(0, 0, qMax(0, playedEnd), h);
     const QRectF unplayedRect(playedEnd, 0, qMax(0, generatedEnd - playedEnd), h);
 
-    if (m_waveLayersDirty ||
+    if (!m_layerRebuildTimer.isActive() && (m_waveLayersDirty ||
         (!m_cachedUnplayedLayer.isNull() &&
          (m_cachedUnplayedLayer.width() != w || m_cachedUnplayedLayer.height() != h)) ||
         (!m_cachedPlayedLayer.isNull() &&
-         (m_cachedPlayedLayer.width() != w || m_cachedPlayedLayer.height() != h))) {
+         (m_cachedPlayedLayer.width() != w || m_cachedPlayedLayer.height() != h)))) {
         rebuildWaveLayers(w, h);
     }
 
@@ -1153,6 +1163,7 @@ void WaveformItem::refreshSourceData(bool allowLodRebuild)
 
 void WaveformItem::releaseTransientCaches(bool releaseLodLevels)
 {
+    m_layerRebuildTimer.stop();
     m_lastPeakCacheWidthBucket = -1;
     m_lastWidth = 0;
     m_lastHeight = 0;

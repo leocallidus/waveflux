@@ -169,6 +169,13 @@ void tst_PlaylistColumnLayoutManager::testEffectiveVisibleColumnsNormal()
     QVERIFY(narrowCols.size() < wideCols.size());
     QVERIFY(narrowCols.size() >= 2);
 
+    // Zero width / minimum bucket (width == 0.0): only explicitly shown columns (position, title, duration)
+    const auto zeroCols = manager.effectiveVisibleColumns(QStringLiteral("normal"), 0.0);
+    QCOMPARE(zeroCols.size(), 3);
+    QCOMPARE(zeroCols.at(0).toMap().value(QStringLiteral("id")).toString(), QStringLiteral("playlistPosition"));
+    QCOMPARE(zeroCols.at(1).toMap().value(QStringLiteral("id")).toString(), QStringLiteral("title"));
+    QCOMPARE(zeroCols.at(2).toMap().value(QStringLiteral("id")).toString(), QStringLiteral("duration"));
+
     // Check width allocation: total width should approximately fill available
     double totalAllocated = 0.0;
     for (const auto &colVar : wideCols) {

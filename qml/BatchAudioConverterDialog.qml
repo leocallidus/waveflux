@@ -264,6 +264,7 @@ AppDialog {
         batchAudioConverterService.stereoWidth = 1.0
         batchAudioConverterService.voiceSuppression = false
         batchAudioConverterService.applyEqualizer = false
+        batchAudioConverterService.reversePlayback = false
     }
 
     function currentPresetSettings() {
@@ -1302,6 +1303,36 @@ AppDialog {
                                         batchAudioConverterService.tonalitySemitones = value
                                         batchAudioConverterService.pitchSemitones = Math.round(value)
                                     }
+                                }
+                            }
+
+                            // Reverse Playback Toggle
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: UiMetrics.spaceXS
+
+                                    Label {
+                                        text: root.tr("audioConverter.reversePlayback")
+                                        color: themeManager.textColor
+                                        font.weight: Font.Medium
+                                    }
+
+                                    Label {
+                                        text: root.tr("audioConverter.reversePlaybackDescription")
+                                        color: themeManager.textMutedColor
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                AccentSwitch {
+                                    checked: batchAudioConverterService.reversePlayback
+                                    onToggled: batchAudioConverterService.reversePlayback = checked
                                 }
                             }
                         }

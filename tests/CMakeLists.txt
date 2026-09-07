@@ -882,6 +882,108 @@ target_link_libraries(tst_desktop_notification_service PRIVATE
 
 add_test(NAME tst_desktop_notification_service COMMAND tst_desktop_notification_service)
 
+qt_add_executable(tst_lrc_parser
+    tst_LrcParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LrcParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsTypes.cpp
+)
+target_include_directories(tst_lrc_parser PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(tst_lrc_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+add_test(NAME tst_lrc_parser COMMAND tst_lrc_parser)
+
+qt_add_executable(tst_lyrics_matcher
+    tst_LyricsMatcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsMatcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsTypes.cpp
+)
+target_include_directories(tst_lyrics_matcher PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(tst_lyrics_matcher PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+add_test(NAME tst_lyrics_matcher COMMAND tst_lyrics_matcher)
+
+qt_add_executable(tst_lyrics_cache
+    tst_LyricsCache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsCache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LrcParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsTypes.cpp
+)
+target_include_directories(tst_lyrics_cache PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(tst_lyrics_cache PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+add_test(NAME tst_lyrics_cache COMMAND tst_lyrics_cache)
+
+qt_add_executable(tst_lyrics_playback_sync
+    tst_LyricsPlaybackSync.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsLineModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/lyrics/LyricsTypes.cpp
+)
+target_include_directories(tst_lyrics_playback_sync PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(tst_lyrics_playback_sync PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+add_test(NAME tst_lyrics_playback_sync COMMAND tst_lyrics_playback_sync)
+
+qt_add_executable(tst_lyrics_providers
+    tst_LyricsProviders.cpp
+    ../src/lyrics/ILyricsProvider.h
+    ../src/lyrics/LrclibProvider.cpp
+    ../src/lyrics/LyricsOvhProvider.cpp
+    ../src/lyrics/LyricsMatcher.cpp
+    ../src/lyrics/LyricsTypes.cpp
+    ../src/lyrics/LrcParser.cpp
+)
+target_include_directories(tst_lyrics_providers PRIVATE ../src)
+target_link_libraries(tst_lyrics_providers PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME tst_lyrics_providers COMMAND tst_lyrics_providers)
+
+get_target_property(lyrics_controller_dependencies tst_playback_controller_scenarios SOURCES)
+list(REMOVE_ITEM lyrics_controller_dependencies tst_PlaybackControllerScenarios.cpp)
+qt_add_executable(tst_lyrics_controller
+    tst_LyricsController.cpp
+    ${lyrics_controller_dependencies}
+    ../src/ThemeManager.cpp
+    ../src/UiMetrics.cpp
+    ../src/lyrics/ILyricsProvider.h
+    ../src/lyrics/LyricsController.cpp
+    ../src/lyrics/LyricsLineModel.cpp
+    ../src/lyrics/LyricsCache.cpp
+    ../src/lyrics/LocalLyricsProvider.cpp
+    ../src/lyrics/LrclibProvider.cpp
+    ../src/lyrics/LyricsOvhProvider.cpp
+    ../src/lyrics/LyricsMatcher.cpp
+    ../src/lyrics/LyricsTypes.cpp
+    ../src/lyrics/LrcParser.cpp
+)
+get_target_property(lyrics_controller_includes tst_playback_controller_scenarios INCLUDE_DIRECTORIES)
+get_target_property(lyrics_controller_libraries tst_playback_controller_scenarios LINK_LIBRARIES)
+target_include_directories(tst_lyrics_controller PRIVATE ${lyrics_controller_includes})
+target_link_libraries(tst_lyrics_controller PRIVATE ${lyrics_controller_libraries})
+list(TRANSFORM WAVEFLUX_ICON_RESOURCES PREPEND "${CMAKE_SOURCE_DIR}/" OUTPUT_VARIABLE lyrics_test_icon_files)
+qt_add_resources(tst_lyrics_controller "lyrics_test_icons"
+    PREFIX "/WaveFlux"
+    BASE "${CMAKE_SOURCE_DIR}"
+    FILES ${lyrics_test_icon_files}
+)
+add_test(NAME tst_lyrics_controller COMMAND tst_lyrics_controller)
+set_tests_properties(tst_lyrics_controller PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
 # Exercise the production QML module registrar and the actual Main.qml graph.
 # This catches missing declarative C++ type registration that source-only QML
 # linting cannot detect.

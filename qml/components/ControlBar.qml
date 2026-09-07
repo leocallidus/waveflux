@@ -518,8 +518,12 @@ Rectangle {
                 compactMode: root.compactButtons
                 onValueEdited: function(nextValue) {
                     if (audioEngine) audioEngine.playbackRate = nextValue
+                    if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.speed = nextValue
                 }
-                onResetRequested: if (audioEngine) audioEngine.playbackRate = 1.0
+                onResetRequested: {
+                    if (audioEngine) audioEngine.playbackRate = 1.0
+                    if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.speed = 1.0
+                }
             }
         }
 
@@ -551,9 +555,14 @@ Rectangle {
                 stripWidth: root.compactButtons ? 60 : 82
                 compactMode: root.compactButtons
                 onValueEdited: function(nextValue) {
-                    if (audioEngine) audioEngine.pitchSemitones = Math.round(nextValue)
+                    const p = Math.round(nextValue)
+                    if (audioEngine) audioEngine.pitchSemitones = p
+                    if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.tonalitySemitones = p
                 }
-                onResetRequested: if (audioEngine) audioEngine.pitchSemitones = 0
+                onResetRequested: {
+                    if (audioEngine) audioEngine.pitchSemitones = 0
+                    if (typeof dspSettings !== "undefined" && dspSettings) dspSettings.tonalitySemitones = 0
+                }
             }
         }
     }

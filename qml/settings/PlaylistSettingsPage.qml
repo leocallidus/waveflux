@@ -30,9 +30,21 @@ ColumnLayout {
             description: root.tr("settings.sidebarDescription")
             checked: appSettings.sidebarVisible
             searchQuery: root.searchQuery
-            highlighted: root.targetSettingId === settingId
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "playlist.layout.sidebarVisible"
             onToggled: function(val) {
                 appSettings.sidebarVisible = val
+            }
+        }
+
+        SettingSwitchRow {
+            settingId: "collectionsSidebarVisible"
+            title: root.tr("settings.collectionsSidebarVisible")
+            description: root.tr("settings.collectionsSidebarDescription")
+            checked: appSettings.collectionsSidebarVisible
+            searchQuery: root.searchQuery
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "playlist.layout.collectionsSidebarVisible"
+            onToggled: function(val) {
+                appSettings.collectionsSidebarVisible = val
             }
         }
 
@@ -42,11 +54,11 @@ ColumnLayout {
             description: root.tr("settings.sidebarPlaylistsSectionDescription")
             checked: appSettings.sidebarPlaylistsSectionVisible
             indent: true
-            dependencyReason: !appSettings.sidebarVisible
-                              ? root.tr("settings.dependencyDisabledBecause").arg(root.tr("settings.sidebarVisible"))
+            dependencyReason: !appSettings.collectionsSidebarVisible
+                              ? root.tr("settings.dependencyDisabledBecause").arg(root.tr("settings.collectionsSidebarVisible"))
                               : ""
             searchQuery: root.searchQuery
-            highlighted: root.targetSettingId === settingId
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "playlist.layout.playlistsBlockVisible"
             onToggled: function(val) {
                 appSettings.sidebarPlaylistsSectionVisible = val
             }
@@ -58,13 +70,25 @@ ColumnLayout {
             description: root.tr("settings.sidebarCollectionsSectionDescription")
             checked: appSettings.sidebarCollectionsSectionVisible
             indent: true
-            dependencyReason: !appSettings.sidebarVisible
-                              ? root.tr("settings.dependencyDisabledBecause").arg(root.tr("settings.sidebarVisible"))
+            dependencyReason: !appSettings.collectionsSidebarVisible
+                              ? root.tr("settings.dependencyDisabledBecause").arg(root.tr("settings.collectionsSidebarVisible"))
                               : ""
+            searchQuery: root.searchQuery
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "playlist.layout.collectionsBlockVisible"
+            onToggled: function(val) {
+                appSettings.sidebarCollectionsSectionVisible = val
+            }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsPanelVisible"
+            title: root.tr("settings.showLyricsPanel")
+            description: root.tr("settings.lyricsPanelVisibleDescription")
+            checked: appSettings.lyricsPanelVisible
             searchQuery: root.searchQuery
             highlighted: root.targetSettingId === settingId
             onToggled: function(val) {
-                appSettings.sidebarCollectionsSectionVisible = val
+                appSettings.lyricsPanelVisible = val
             }
         }
     }

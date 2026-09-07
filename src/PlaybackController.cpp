@@ -729,37 +729,52 @@ void PlaybackController::onTrackSelectionRequested(const QString &filePath)
     }
 
     auto *dsp = DspSettingsManager::instance();
-    if (dsp && dsp->mixEnabled() && m_audioEngine && m_audioEngine->state() == AudioEngine::PlayingState) {
-        int fadeOutMs = 0;
-        int fadeInMs = 0;
-        if (dsp->mixManualCrossfade()) {
-            fadeOutMs = dsp->mixManualCrossfadeMs();
-            fadeInMs = dsp->mixManualCrossfadeMs();
-        } else {
-            if (dsp->mixManualFadeOut()) fadeOutMs = dsp->mixManualFadeOutMs();
-            if (dsp->mixManualFadeIn()) fadeInMs = dsp->mixManualFadeInMs();
-        }
-        if (fadeOutMs > 0) {
-            m_audioEngine->fadeOut(fadeOutMs, [this, filePath, transitionId, fadeInMs]() {
-                if (m_audioEngine) {
-                    m_audioEngine->loadFileWithTransition(filePath, transitionId);
-                    if (fadeInMs > 0) {
-                        m_audioEngine->fadeIn(fadeInMs);
-                    }
+    int fadeOutMs = 0;
+    int fadeInMs = 0;
+    if (dsp && m_audioEngine) {
+        const bool isPlaying = (m_audioEngine->state() == AudioEngine::PlayingState);
+        if (isPlaying) {
+            if (dsp->mixEnabled()) {
+                if (dsp->mixManualCrossfade()) {
+                    fadeOutMs = dsp->mixManualCrossfadeMs();
+                    fadeInMs = dsp->mixManualCrossfadeMs();
+                } else {
+                    if (dsp->mixManualFadeOut()) fadeOutMs = dsp->mixManualFadeOutMs();
+                    if (dsp->mixManualFadeIn()) fadeInMs = dsp->mixManualFadeInMs();
                 }
-            });
-            if (m_activeSession.active && !filePath.isEmpty() && filePath != m_activeSession.filePath) {
-                finalizeActiveSession(SessionEndReason::UserSkip, QDateTime::currentMSecsSinceEpoch());
+            } else if (dsp->fadeTrackNavigation()) {
+                fadeOutMs = 120;
+                fadeInMs = 150;
             }
-            return;
-        } else if (fadeInMs > 0) {
-            m_audioEngine->loadFileWithTransition(filePath, transitionId);
-            m_audioEngine->fadeIn(fadeInMs);
-            if (m_activeSession.active && !filePath.isEmpty() && filePath != m_activeSession.filePath) {
-                finalizeActiveSession(SessionEndReason::UserSkip, QDateTime::currentMSecsSinceEpoch());
+        } else {
+            if (dsp->mixEnabled() && dsp->mixAutomaticMode() == QStringLiteral("crossfade")) {
+                fadeInMs = dsp->mixAutomaticFadeInMs();
+            } else if (dsp->fadeTrackNavigation()) {
+                fadeInMs = 150;
             }
-            return;
         }
+    }
+
+    if (fadeOutMs > 0) {
+        m_audioEngine->fadeOut(fadeOutMs, [this, filePath, transitionId, fadeInMs]() {
+            if (m_audioEngine) {
+                m_audioEngine->loadFileWithTransition(filePath, transitionId);
+                if (fadeInMs > 0) {
+                    m_audioEngine->fadeIn(fadeInMs);
+                }
+            }
+        });
+        if (m_activeSession.active && !filePath.isEmpty() && filePath != m_activeSession.filePath) {
+            finalizeActiveSession(SessionEndReason::UserSkip, QDateTime::currentMSecsSinceEpoch());
+        }
+        return;
+    } else if (fadeInMs > 0) {
+        m_audioEngine->loadFileWithTransition(filePath, transitionId);
+        m_audioEngine->fadeIn(fadeInMs);
+        if (m_activeSession.active && !filePath.isEmpty() && filePath != m_activeSession.filePath) {
+            finalizeActiveSession(SessionEndReason::UserSkip, QDateTime::currentMSecsSinceEpoch());
+        }
+        return;
     }
 
     m_audioEngine->loadFileWithTransition(filePath, transitionId);
@@ -1691,7 +1706,7 @@ void PlaybackController::prepareGaplessTransitionForSource(quint64 sourceTransit
     traceTransitionEvent("prepare_gapless_requested", sourceTransitionId);
 
     auto *dsp = DspSettingsManager::instance();
-    if (dsp && (!dsp->mixAutoAdvance() || (dsp->mixEnabled() && dsp->mixAutomaticMode() == QStringLiteral("pause")))) {
+    if (dsp && (!dsp->mixAutoAdvance() || (dsp->mixEnabled() && dsp->mixAutomaticMode() != QStringLiteral("none")))) {
         traceTransitionEvent("prepare_gapless_skipped_dsp_mixing", sourceTransitionId);
         clearGaplessTransitionState();
         setPendingTrackIndex(-1);

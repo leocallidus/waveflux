@@ -26,6 +26,8 @@ private slots:
     void testResetAllDsp();
     void testExportAndImportProfile();
     void testCapabilities();
+    void testVolumeTabProperties();
+    void testMixingTabProperties();
 };
 
 void tst_DspSettingsManager::initTestCase()
@@ -328,6 +330,87 @@ void tst_DspSettingsManager::testCapabilities()
     liveContext.isLiveStream = true;
 
     QVERIFY(!WaveFlux::Dsp::DspCapabilities::isCapabilitySupported(QStringLiteral("dsp.silenceRemoval"), liveContext));
+}
+
+void tst_DspSettingsManager::testVolumeTabProperties()
+{
+    DspSettingsManager manager;
+
+    QSignalSpy spySmooth(&manager, &DspSettingsManager::smoothChangesChanged);
+    QSignalSpy spyLog(&manager, &DspSettingsManager::logarithmicControlChanged);
+    QSignalSpy spyLoud(&manager, &DspSettingsManager::loudnessCompensationChanged);
+
+    manager.setSmoothChanges(true);
+    QCOMPARE(manager.smoothChanges(), true);
+    QCOMPARE(spySmooth.count(), 1);
+
+    manager.setLogarithmicControl(true);
+    QCOMPARE(manager.logarithmicControl(), true);
+    QCOMPARE(spyLog.count(), 1);
+
+    manager.setLoudnessCompensation(true);
+    QCOMPARE(manager.loudnessCompensation(), true);
+    QCOMPARE(spyLoud.count(), 1);
+
+    manager.setAmplitudeNormalizationEnabled(true);
+    QCOMPARE(manager.amplitudeNormalizationEnabled(), true);
+    manager.setAmplitudeTargetPeakDbfs(-3.0);
+    QCOMPARE(manager.amplitudeTargetPeakDbfs(), -3.0);
+    manager.setAmplitudePreampDb(2.5);
+    QCOMPARE(manager.amplitudePreampDb(), 2.5);
+
+    manager.setReplayGainEnabled(true);
+    QCOMPARE(manager.replayGainEnabled(), true);
+    manager.setReplayGainMode(QStringLiteral("album"));
+    QCOMPARE(manager.replayGainMode(), QStringLiteral("album"));
+    manager.setReplayGainPreampDb(3.0);
+    QCOMPARE(manager.replayGainPreampDb(), 3.0);
+    manager.setReplayGainFallbackDb(-6.0);
+    QCOMPARE(manager.replayGainFallbackDb(), -6.0);
+    manager.setReplayGainAnalyzeOnTheFly(true);
+    QCOMPARE(manager.replayGainAnalyzeOnTheFly(), true);
+
+    manager.setEffectiveReplayGainDiagnostic(QStringLiteral("+2.5 dB (track tag)"));
+    QCOMPARE(manager.effectiveReplayGainDiagnostic(), QStringLiteral("+2.5 dB (track tag)"));
+}
+
+void tst_DspSettingsManager::testMixingTabProperties()
+{
+    DspSettingsManager manager;
+
+    manager.setMixEnabled(true);
+    QCOMPARE(manager.mixEnabled(), true);
+
+    manager.setMixManualCrossfade(true);
+    QCOMPARE(manager.mixManualCrossfade(), true);
+    manager.setMixManualCrossfadeMs(2500);
+    QCOMPARE(manager.mixManualCrossfadeMs(), 2500);
+
+    manager.setMixManualFadeOut(true);
+    manager.setMixManualFadeOutMs(1200);
+    QCOMPARE(manager.mixManualFadeOutMs(), 1200);
+
+    manager.setMixManualFadeIn(true);
+    manager.setMixManualFadeInMs(800);
+    QCOMPARE(manager.mixManualFadeInMs(), 800);
+
+    manager.setMixAutomaticMode(QStringLiteral("crossfade"));
+    QCOMPARE(manager.mixAutomaticMode(), QStringLiteral("crossfade"));
+    manager.setMixAutomaticCrossfadeMs(3000);
+    QCOMPARE(manager.mixAutomaticCrossfadeMs(), 3000);
+    manager.setMixAutomaticFadeOutMs(1500);
+    QCOMPARE(manager.mixAutomaticFadeOutMs(), 1500);
+    manager.setMixAutomaticFadeInMs(1500);
+    QCOMPARE(manager.mixAutomaticFadeInMs(), 1500);
+
+    manager.setMixAutomaticMode(QStringLiteral("pause"));
+    manager.setMixAutomaticPauseMs(2000);
+    QCOMPARE(manager.mixAutomaticPauseMs(), 2000);
+
+    manager.setFadePauseResume(true);
+    QCOMPARE(manager.fadePauseResume(), true);
+    manager.setFadeTrackNavigation(true);
+    QCOMPARE(manager.fadeTrackNavigation(), true);
 }
 
 QTEST_MAIN(tst_DspSettingsManager)

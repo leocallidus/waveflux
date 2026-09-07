@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import WaveFlux
 import "." as AppComponents
 import "../IconResolver.js" as IconResolver
 
@@ -219,8 +220,8 @@ Item {
     readonly property int responsiveWidthBucket: playlistColumnLayoutManager.widthBucket("normal", width - horizontalPadding * 2)
     readonly property var effectiveColumns: {
         const _rev = playlistColumnLayoutManager.layoutRevision
-        const _avail = Math.max(0, width - horizontalPadding * 2)
-        return playlistColumnLayoutManager.effectiveVisibleColumns("normal", _avail)
+        const _bucket = root.responsiveWidthBucket
+        return playlistColumnLayoutManager.effectiveVisibleColumns("normal", _bucket)
     }
     readonly property int visibleColumnCount: effectiveColumns.length
 
@@ -1001,20 +1002,16 @@ Item {
         }
 
         const filterActive = root.normalizedSearchQuery.length > 0 || root.searchFiltersActive
-        if (!filterActive) {
-            return root.applyCenteredContentY(current, trackModel.count)
-        }
-
-        if (!currentTrackMatchesActiveFilter()) {
+        if (filterActive && !currentTrackMatchesActiveFilter()) {
             return false
         }
 
-        const visibleCount = matchCount()
-        if (visibleCount <= 0) {
-            return false
+        const proxyIndex = filteredTrackModel.proxyIndexForSource(current)
+        if (proxyIndex >= 0) {
+            playlistView.positionViewAtIndex(proxyIndex, ListView.Center)
+            return true
         }
-        const visibleRow = matchCountBefore(current)
-        return root.applyCenteredContentY(visibleRow, visibleCount)
+        return false
     }
 
     function autoLocateCurrentTrackInShuffle() {
@@ -1465,11 +1462,10 @@ Item {
             model: filteredTrackModel
             onContentHeightChanged: {
                 root.applyPendingTrackListViewState()
-                root.scheduleFilterViewportSync()
             }
             onHeightChanged: {
                 root.applyPendingTrackListViewState()
-                root.scheduleFilterViewportSync()
+                root.clampContentYToLogicalBounds()
             }
 
             ScrollBar {

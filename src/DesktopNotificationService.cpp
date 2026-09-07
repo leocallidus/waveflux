@@ -79,7 +79,7 @@ void DesktopNotificationService::setTrayManager(TrayManager *trayManager)
 
 void DesktopNotificationService::onTrackOrStateChanged()
 {
-    if (m_audioEngine && m_audioEngine->state() == AudioEngine::StoppedState) {
+    if (m_audioEngine && (m_audioEngine->state() == AudioEngine::StoppedState || m_audioEngine->state() == AudioEngine::EndedState)) {
         m_lastNotifiedKey.clear();
         m_coalesceTimer.stop();
         return;
@@ -91,6 +91,7 @@ void DesktopNotificationService::onTrackOrStateChanged()
 
 void DesktopNotificationService::notifyTrackChanged()
 {
+    m_lastNotifiedKey.clear();
     performTrackNotification();
 }
 
@@ -118,13 +119,14 @@ void DesktopNotificationService::performTrackNotification()
     const QString currentKey = QStringLiteral("%1:%2").arg(currentIndex).arg(filePath);
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
-    // Prevent duplicate notifications for the exact same track within 800ms
-    if (currentKey == m_lastNotifiedKey && (nowMs - m_lastNotificationTimeMs) < 800) {
+    // Prevent duplicate notifications for the exact same track while playing
+    if (currentKey == m_lastNotifiedKey) {
         return;
     }
 
     m_lastNotifiedKey = currentKey;
     m_lastNotificationTimeMs = nowMs;
+    ++m_notificationCount;
 
     const QString title = m_trackModel->currentTitle().trimmed();
     const QString artist = m_trackModel->currentArtist().trimmed();

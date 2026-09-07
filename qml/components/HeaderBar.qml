@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../IconResolver.js" as IconResolver
+import WaveFlux
 import "."
 
 Rectangle {
@@ -11,6 +12,7 @@ Rectangle {
     property string metadataAlbum: ""
     property string metadataTech: ""
     property bool fullscreenMode: false
+
     property bool canExport: false
     property alias searchText: searchField.text
     property string submittedSearchText: ""
@@ -562,6 +564,16 @@ Rectangle {
                 icon.color: themeManager.darkMode ? "#ffffff" : "#111111"
                 onClicked: root.settingsRequested()
             }
+            HeaderIconButton {
+                objectName: "headerLyricsButton"
+                icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
+                checkable: true
+                checked: appSettings.lyricsPanelVisible
+                Accessible.name: root.tr("lyrics.panelTitle")
+                ToolTip.visible: hovered
+                ToolTip.text: root.tr("lyrics.panelTitle")
+                onClicked: appSettings.lyricsPanelVisible = !appSettings.lyricsPanelVisible
+            }
         }
     }
 
@@ -749,6 +761,7 @@ Rectangle {
         FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleCollectionsSidebar : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleInfoSidebar : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleSpeedPitch : null }
+        FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleLyrics : null }
         MenuSeparator {}
         FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleFullscreen : null }
         FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleQueuePanel : null }
@@ -953,6 +966,7 @@ Rectangle {
             FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleCollectionsSidebar : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleInfoSidebar : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleSpeedPitch : null }
+            FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleLyrics : null }
             MenuSeparator {}
             FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleFullscreen : null }
             FluxMenuItem { action: root.menuActions ? root.menuActions.viewToggleQueuePanel : null }

@@ -42,6 +42,7 @@ class BatchAudioConverterService : public QObject
     Q_PROPERTY(QString channelMode READ channelMode WRITE setChannelMode NOTIFY channelModeChanged)
     Q_PROPERTY(double playbackRate READ playbackRate WRITE setPlaybackRate NOTIFY playbackRateChanged)
     Q_PROPERTY(int pitchSemitones READ pitchSemitones WRITE setPitchSemitones NOTIFY pitchSemitonesChanged)
+    Q_PROPERTY(bool reversePlayback READ reversePlayback WRITE setReversePlayback NOTIFY reversePlaybackChanged)
     Q_PROPERTY(double speed READ speed WRITE setSpeed NOTIFY speedChanged)
     Q_PROPERTY(double tempo READ tempo WRITE setTempo NOTIFY tempoChanged)
     Q_PROPERTY(double tonalitySemitones READ tonalitySemitones WRITE setTonalitySemitones NOTIFY tonalitySemitonesChanged)
@@ -146,6 +147,7 @@ public:
         QString channelMode = QStringLiteral("stereo");
         double playbackRate = 1.0;
         int pitchSemitones = 0;
+        bool reversePlayback = false;
         double speed = 1.0;
         double tempo = 1.0;
         double tonalitySemitones = 0.0;
@@ -177,6 +179,7 @@ public:
         QString channelMode;
         double playbackRate = 1.0;
         int pitchSemitones = 0;
+        bool reversePlayback = false;
         double speed = 1.0;
         double tempo = 1.0;
         double tonalitySemitones = 0.0;
@@ -279,6 +282,7 @@ public:
     QString channelMode() const { return m_settings.channelMode; }
     double playbackRate() const { return m_settings.playbackRate; }
     int pitchSemitones() const { return m_settings.pitchSemitones; }
+    bool reversePlayback() const { return m_settings.reversePlayback; }
     double speed() const { return m_settings.speed; }
     double tempo() const { return m_settings.tempo; }
     double tonalitySemitones() const { return m_settings.tonalitySemitones; }
@@ -393,6 +397,7 @@ public slots:
     void setChannelMode(const QString &channelMode);
     void setPlaybackRate(double playbackRate);
     void setPitchSemitones(int pitchSemitones);
+    void setReversePlayback(bool reversePlayback);
     void setSpeed(double speed);
     void setTempo(double tempo);
     void setTonalitySemitones(double tonalitySemitones);
@@ -434,6 +439,7 @@ signals:
     void channelModeChanged();
     void playbackRateChanged();
     void pitchSemitonesChanged();
+    void reversePlaybackChanged();
     void speedChanged();
     void tempoChanged();
     void tonalitySemitonesChanged();

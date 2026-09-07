@@ -143,7 +143,7 @@ AppDialog {
 
                 Label {
                     Layout.fillWidth: true
-                    text: root.tr("help.aboutVersionLabel") + " " + root.tr("help.aboutVersionValue")
+                    text: root.tr("help.aboutVersionLabel") + " " + (root.tr("help.aboutVersionValue") || Qt.application.version)
                     color: themeManager.textSecondaryColor
                     font.pointSize: UiMetrics.captionPointSize
                     elide: Text.ElideRight

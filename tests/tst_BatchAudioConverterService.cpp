@@ -108,6 +108,7 @@ private slots:
     void supportsAlbumTrackTitleNamingPolicyWithFallback();
     void appliesExplicitConflictPoliciesInPreview();
     void runsSequentialBatchConversion();
+    void runsSequentialBatchConversionWithReversePlayback();
     void v1SimpleBatchFlowStillWorksUnchanged();
     void emitsPlaylistResultsForSucceededItemsInOrder();
     void defersPlaylistResultsUntilExplicitAction();
@@ -143,6 +144,7 @@ void BatchAudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(service.channelMode(), QStringLiteral("stereo"));
     QCOMPARE(service.playbackRate(), 1.0);
     QCOMPARE(service.pitchSemitones(), 0);
+    QCOMPARE(service.reversePlayback(), false);
     QCOMPARE(service.applyReverb(), false);
     QCOMPARE(service.reverbRoomSize(), 0.55);
     QCOMPARE(service.reverbDamping(), 0.35);
@@ -168,6 +170,7 @@ void BatchAudioConverterServiceTest::exposesStableDefaults()
     QCOMPARE(settings.value(QStringLiteral("channelMode")).toString(), QStringLiteral("stereo"));
     QCOMPARE(settings.value(QStringLiteral("playbackRate")).toDouble(), 1.0);
     QCOMPARE(settings.value(QStringLiteral("pitchSemitones")).toInt(), 0);
+    QCOMPARE(settings.value(QStringLiteral("reversePlayback")).toBool(), false);
     QCOMPARE(settings.value(QStringLiteral("applyReverb")).toBool(), false);
     QCOMPARE(settings.value(QStringLiteral("reverbRoomSize")).toDouble(), 0.55);
     QCOMPARE(settings.value(QStringLiteral("reverbDamping")).toDouble(), 0.35);
@@ -1256,6 +1259,50 @@ void BatchAudioConverterServiceTest::runsSequentialBatchConversion()
     QCOMPARE(reportItems.at(0).toMap().value(QStringLiteral("sourceFile")).toString(), firstPath);
     QCOMPARE(reportItems.at(1).toMap().value(QStringLiteral("sourceFile")).toString(), secondPath);
     QVERIFY(service.currentReportText(QStringLiteral("txt")).contains(QStringLiteral("Parallelism decision")));
+}
+
+void BatchAudioConverterServiceTest::runsSequentialBatchConversionWithReversePlayback()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("wavenc")
+        || !hasFactory("filesink")) {
+        QSKIP("Required GStreamer conversion elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+    const QString outputDir = tempDir.filePath(QStringLiteral("rev_out"));
+    QVERIFY(QDir().mkpath(outputDir));
+
+    const QString firstPath = tempDir.filePath(QStringLiteral("first.wav"));
+    writeSilentWavFile(firstPath, 44100, 1, 300);
+
+    BatchAudioConverterService service;
+    QSignalSpy startedSpy(&service, &BatchAudioConverterService::batchStarted);
+    QSignalSpy finishedSpy(&service, &BatchAudioConverterService::batchFinished);
+
+    service.setOutputDirectory(outputDir);
+    service.setFormat(QStringLiteral("wav"));
+    service.setReversePlayback(true);
+    QCOMPARE(service.reversePlayback(), true);
+    service.setSourceFiles(QStringList{firstPath});
+
+    QVERIFY(service.startBatch());
+    QCOMPARE(startedSpy.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 15000);
+    QCOMPARE(service.isRunning(), false);
+    QCOMPARE(service.succeededCount(), 1);
+    QCOMPARE(service.failedCount(), 0);
+
+    const QVariantList items = service.items();
+    QCOMPARE(items.size(), 1);
+    const QVariantMap item = items.at(0).toMap();
+    QCOMPARE(item.value(QStringLiteral("state")).toString(), QStringLiteral("succeeded"));
+    QVERIFY(QFileInfo::exists(item.value(QStringLiteral("resultFile")).toString()));
 }
 
 void BatchAudioConverterServiceTest::v1SimpleBatchFlowStillWorksUnchanged()

@@ -220,12 +220,18 @@ AppDialog {
             appendResetChange(changes, root.tr("settings.sidebarVisible"), appSettings.sidebarVisible, true,
                               appSettings.sidebarVisible ? root.tr("settings.valueEnabled") : root.tr("settings.valueDisabled"),
                               root.tr("settings.valueEnabled"))
+            appendResetChange(changes, root.tr("settings.collectionsSidebarVisible"), appSettings.collectionsSidebarVisible, true,
+                              appSettings.collectionsSidebarVisible ? root.tr("settings.valueEnabled") : root.tr("settings.valueDisabled"),
+                              root.tr("settings.valueEnabled"))
             appendResetChange(changes, root.tr("settings.sidebarPlaylistsSectionTitle"), appSettings.sidebarPlaylistsSectionVisible, true,
                               appSettings.sidebarPlaylistsSectionVisible ? root.tr("settings.valueEnabled") : root.tr("settings.valueDisabled"),
                               root.tr("settings.valueEnabled"))
             appendResetChange(changes, root.tr("settings.sidebarCollectionsSectionTitle"), appSettings.sidebarCollectionsSectionVisible, true,
                               appSettings.sidebarCollectionsSectionVisible ? root.tr("settings.valueEnabled") : root.tr("settings.valueDisabled"),
                               root.tr("settings.valueEnabled"))
+            appendResetChange(changes, root.tr("settings.showLyricsPanel"), appSettings.lyricsPanelVisible, false,
+                              appSettings.lyricsPanelVisible ? root.tr("settings.valueEnabled") : root.tr("settings.valueDisabled"),
+                              root.tr("settings.valueDisabled"))
             appendResetChange(changes, root.tr("settings.compactPlaylistTrackNumberVisible"), appSettings.compactPlaylistTrackNumberVisible, true,
                               appSettings.compactPlaylistTrackNumberVisible ? root.tr("settings.valueEnabled") : root.tr("settings.valueDisabled"),
                               root.tr("settings.valueEnabled"))
@@ -331,8 +337,10 @@ AppDialog {
 
         if (scope === "playlist" || scope === "all") {
             appSettings.sidebarVisible = true
+            appSettings.collectionsSidebarVisible = true
             appSettings.sidebarPlaylistsSectionVisible = true
             appSettings.sidebarCollectionsSectionVisible = true
+            appSettings.lyricsPanelVisible = false
             appSettings.compactPlaylistTrackNumberVisible = true
             appSettings.showPlaylistChapterBadge = true
             appSettings.playlistScrollBarVisible = true

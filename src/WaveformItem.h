@@ -207,6 +207,7 @@ private:
     QTimer m_repaintTimer;
     QElapsedTimer m_repaintClock;
     QTimer m_loadingAnimationTimer;
+    QTimer m_layerRebuildTimer;
     
     QColor m_waveformColor{QGuiApplication::palette().color(QPalette::Mid)};
     QColor m_progressColor{QGuiApplication::palette().color(QPalette::Highlight)};

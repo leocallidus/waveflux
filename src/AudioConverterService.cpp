@@ -5,6 +5,7 @@
 #include "playback/PlaybackBackendRouting.h"
 
 #include <QDir>
+#include <QCoreApplication>
 #include <QDataStream>
 #include <QFile>
 #include <QFileInfo>
@@ -14,6 +15,7 @@
 #include <QUrl>
 #include <QDebug>
 #include <QtGlobal>
+#include <QtEndian>
 #include <gst/gst.h>
 #include <gst/gstchildproxy.h>
 #include <taglib/fileref.h>
@@ -439,6 +441,312 @@ bool renderTrackerModuleToWaveFile(const QString &sourcePath,
     outputFile.close();
     return true;
 }
+
+bool reverseWaveFileInPlace(const QString &filePath, QString *errorMessage)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadWrite)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Failed to open WAV file for in-place reversal: %1").arg(file.errorString());
+        }
+        return false;
+    }
+
+    if (file.size() < 44) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("WAV file too small: %1 bytes").arg(file.size());
+        }
+        return false;
+    }
+
+    char riffHeader[12];
+    if (file.read(riffHeader, 12) != 12) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Failed to read RIFF header");
+        }
+        return false;
+    }
+
+    if (std::memcmp(riffHeader, "RIFF", 4) != 0 || std::memcmp(riffHeader + 8, "WAVE", 4) != 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Not a valid RIFF/WAVE file");
+        }
+        return false;
+    }
+
+    bool fmtFound = false;
+    bool dataFound = false;
+    quint16 blockAlign = 0;
+    qint64 dataOffset = 0;
+    qint64 dataSize = 0;
+
+    while (!file.atEnd()) {
+        char chunkHeader[8];
+        if (file.read(chunkHeader, 8) != 8) {
+            break;
+        }
+        quint32 chunkSize = 0;
+        std::memcpy(&chunkSize, chunkHeader + 4, 4);
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
+        chunkSize = qbswap(chunkSize);
+#endif
+
+        const qint64 currentPos = file.pos();
+
+        if (std::memcmp(chunkHeader, "fmt ", 4) == 0) {
+            if (chunkSize >= 16) {
+                char fmtData[16];
+                if (file.read(fmtData, 16) == 16) {
+                    quint16 ba = 0;
+                    std::memcpy(&ba, fmtData + 12, 2);
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
+                    ba = qbswap(ba);
+#endif
+                    blockAlign = ba;
+                    fmtFound = true;
+                }
+            }
+            file.seek(currentPos + chunkSize);
+        } else if (std::memcmp(chunkHeader, "data", 4) == 0) {
+            dataFound = true;
+            dataOffset = currentPos;
+            dataSize = chunkSize;
+            file.seek(currentPos + chunkSize);
+        } else {
+            file.seek(currentPos + chunkSize);
+        }
+
+        if (chunkSize % 2 != 0) {
+            file.seek(file.pos() + 1);
+        }
+    }
+
+    if (!fmtFound || !dataFound) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("fmt or data chunk missing in WAV file");
+        }
+        return false;
+    }
+
+    if (blockAlign == 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Invalid blockAlign (0) in WAV file");
+        }
+        return false;
+    }
+
+    const qint64 fileSize = file.size();
+    const qint64 actualDataSize = qMin(dataSize, fileSize - dataOffset);
+    const qint64 totalFrames = actualDataSize / blockAlign;
+    if (totalFrames <= 1) {
+        return true;
+    }
+
+    qint64 leftFrame = 0;
+    qint64 rightFrame = totalFrames - 1;
+
+    const qint64 chunkFrames = qMax<qint64>(1, 65536 / blockAlign);
+    QByteArray leftBuf;
+    QByteArray rightBuf;
+    QByteArray revLeftBuf;
+    QByteArray revRightBuf;
+
+    while (leftFrame < rightFrame) {
+        qint64 framesToSwap = qMin(chunkFrames, (rightFrame - leftFrame + 1) / 2);
+        if (framesToSwap <= 0) {
+            framesToSwap = 1;
+        }
+
+        const qint64 bytesToSwap = framesToSwap * blockAlign;
+        const qint64 leftPos = dataOffset + leftFrame * blockAlign;
+        const qint64 rightPos = dataOffset + (rightFrame - framesToSwap + 1) * blockAlign;
+
+        if (!file.seek(leftPos)) {
+            if (errorMessage) *errorMessage = QStringLiteral("Failed to seek left position in WAV");
+            return false;
+        }
+        leftBuf = file.read(bytesToSwap);
+        if (leftBuf.size() != bytesToSwap) {
+            if (errorMessage) *errorMessage = QStringLiteral("Failed to read left chunk in WAV");
+            return false;
+        }
+
+        if (!file.seek(rightPos)) {
+            if (errorMessage) *errorMessage = QStringLiteral("Failed to seek right position in WAV");
+            return false;
+        }
+        rightBuf = file.read(bytesToSwap);
+        if (rightBuf.size() != bytesToSwap) {
+            if (errorMessage) *errorMessage = QStringLiteral("Failed to read right chunk in WAV");
+            return false;
+        }
+
+        revRightBuf.resize(bytesToSwap);
+        const char *rightData = rightBuf.constData();
+        char *revRightData = revRightBuf.data();
+        for (qint64 i = 0; i < framesToSwap; ++i) {
+            const qint64 srcIdx = (framesToSwap - 1 - i) * blockAlign;
+            const qint64 dstIdx = i * blockAlign;
+            std::memcpy(revRightData + dstIdx, rightData + srcIdx, blockAlign);
+        }
+
+        revLeftBuf.resize(bytesToSwap);
+        const char *leftData = leftBuf.constData();
+        char *revLeftData = revLeftBuf.data();
+        for (qint64 i = 0; i < framesToSwap; ++i) {
+            const qint64 srcIdx = (framesToSwap - 1 - i) * blockAlign;
+            const qint64 dstIdx = i * blockAlign;
+            std::memcpy(revLeftData + dstIdx, leftData + srcIdx, blockAlign);
+        }
+
+        if (!file.seek(leftPos) || file.write(revRightBuf) != bytesToSwap) {
+            if (errorMessage) *errorMessage = QStringLiteral("Failed to write reversed right chunk to left");
+            return false;
+        }
+
+        if (!file.seek(rightPos) || file.write(revLeftBuf) != bytesToSwap) {
+            if (errorMessage) *errorMessage = QStringLiteral("Failed to write reversed left chunk to right");
+            return false;
+        }
+
+        leftFrame += framesToSwap;
+        rightFrame -= framesToSwap;
+    }
+
+    file.flush();
+    return true;
+}
+
+bool decodeAudioToWaveFile(const QString &sourceUri,
+                           const QString &outputPath,
+                           qint64 startMs,
+                           qint64 endMs,
+                           QString *errorMessage)
+{
+    GstElement *pipeline = gst_pipeline_new("waveflux-intermediate-decoder");
+    GstElement *source = gst_element_factory_make("uridecodebin", "intermediate-source");
+    GstElement *convert = gst_element_factory_make("audioconvert", "intermediate-convert");
+    GstElement *resample = gst_element_factory_make("audioresample", "intermediate-resample");
+    GstElement *encoder = gst_element_factory_make("wavenc", "intermediate-wavenc");
+    GstElement *sink = gst_element_factory_make("filesink", "intermediate-sink");
+
+    if (!pipeline || !source || !convert || !resample || !encoder || !sink) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Failed to create GStreamer elements for intermediate decode");
+        }
+        if (pipeline) gst_object_unref(pipeline);
+        else {
+            if (source) gst_object_unref(source);
+            if (convert) gst_object_unref(convert);
+            if (resample) gst_object_unref(resample);
+            if (encoder) gst_object_unref(encoder);
+            if (sink) gst_object_unref(sink);
+        }
+        return false;
+    }
+
+    g_object_set(source, "uri", sourceUri.toUtf8().constData(), nullptr);
+    g_object_set(sink, "location", outputPath.toUtf8().constData(), nullptr);
+
+    gst_bin_add_many(GST_BIN(pipeline), source, convert, resample, encoder, sink, nullptr);
+
+    if (!gst_element_link_many(convert, resample, encoder, sink, nullptr)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Failed to link intermediate decode elements");
+        }
+        gst_object_unref(pipeline);
+        return false;
+    }
+
+    g_signal_connect(source,
+                     "pad-added",
+                     G_CALLBACK(+[](GstElement *, GstPad *newPad, gpointer userData) {
+                         auto *targetConvert = static_cast<GstElement *>(userData);
+                         if (!targetConvert) return;
+                         GstPad *sinkPad = gst_element_get_static_pad(targetConvert, "sink");
+                         if (!sinkPad) return;
+                         if (gst_pad_is_linked(sinkPad)) {
+                             gst_object_unref(sinkPad);
+                             return;
+                         }
+                         GstCaps *caps = gst_pad_query_caps(newPad, nullptr);
+                         bool isAudio = false;
+                         if (caps) {
+                             const GstStructure *structure = gst_caps_get_structure(caps, 0);
+                             if (structure) {
+                                 const gchar *name = gst_structure_get_name(structure);
+                                 isAudio = name && g_str_has_prefix(name, "audio/");
+                             }
+                             gst_caps_unref(caps);
+                         }
+                         if (isAudio) {
+                             gst_pad_link(newPad, sinkPad);
+                         }
+                         gst_object_unref(sinkPad);
+                     }),
+                     convert);
+
+    GstBus *bus = gst_element_get_bus(pipeline);
+    if (!bus) {
+        gst_object_unref(pipeline);
+        return false;
+    }
+
+    if (startMs > 0 || endMs > 0) {
+        gst_element_set_state(pipeline, GST_STATE_PAUSED);
+        gst_element_get_state(pipeline, nullptr, nullptr, 5 * GST_SECOND);
+
+        const GstSeekType stopType = (endMs > startMs && endMs > 0) ? GST_SEEK_TYPE_SET : GST_SEEK_TYPE_NONE;
+        const gint64 stopNs = (endMs > startMs && endMs > 0) ? endMs * GST_MSECOND : GST_CLOCK_TIME_NONE;
+        const gint64 startNs = qMax<qint64>(0, startMs) * GST_MSECOND;
+        gst_element_seek(pipeline,
+                         1.0,
+                         GST_FORMAT_TIME,
+                         static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                         GST_SEEK_TYPE_SET,
+                         startNs,
+                         stopType,
+                         stopNs);
+    }
+
+    gst_element_set_state(pipeline, GST_STATE_PLAYING);
+
+    bool success = false;
+    while (true) {
+        GstMessage *msg = gst_bus_timed_pop_filtered(bus,
+                                                     25 * GST_MSECOND,
+                                                     static_cast<GstMessageType>(GST_MESSAGE_EOS | GST_MESSAGE_ERROR));
+        if (msg) {
+            if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
+                success = true;
+            } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
+                GError *err = nullptr;
+                gchar *dbg = nullptr;
+                gst_message_parse_error(msg, &err, &dbg);
+                if (errorMessage && err) {
+                    *errorMessage = QString::fromUtf8(err->message);
+                }
+                if (err) g_error_free(err);
+                if (dbg) g_free(dbg);
+            }
+            gst_message_unref(msg);
+            break;
+        }
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 5);
+    }
+
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+    gst_object_unref(bus);
+    gst_object_unref(pipeline);
+
+    if (success && (!QFile::exists(outputPath) || QFileInfo(outputPath).size() < 44)) {
+        if (errorMessage && errorMessage->isEmpty()) {
+            *errorMessage = QStringLiteral("Intermediate decode produced an invalid or empty file");
+        }
+        success = false;
+    }
+    return success;
+}
 } // namespace
 
 AudioConverterService::AudioConverterService(QObject *parent)
@@ -603,6 +911,10 @@ bool AudioConverterService::startConversion()
             m_progressDurationMs = effectiveEndMs - m_progressStartMs;
         }
     }
+    if (m_reverseSourceAlreadyTrimmed) {
+        m_progressStartMs = 0;
+        m_sourceDurationMs = m_progressDurationMs;
+    }
     setProgress(m_pendingTrackerRenderFile.isEmpty() ? 0.0 : 0.15);
     setErrorPresentation(QString());
     setStatusPresentation(QStringLiteral("audioConverter.runtimeStarted"),
@@ -611,7 +923,7 @@ bool AudioConverterService::startConversion()
     setIsRunning(true);
     emit conversionStarted();
 
-    const GstState targetInitialState = m_trimEnabled ? GST_STATE_PAUSED : GST_STATE_PLAYING;
+    const GstState targetInitialState = (m_trimEnabled && !m_reverseSourceAlreadyTrimmed) ? GST_STATE_PAUSED : GST_STATE_PLAYING;
     const GstStateChangeReturn stateResult = gst_element_set_state(m_pipeline, targetInitialState);
     if (stateResult == GST_STATE_CHANGE_FAILURE) {
         failConversion(QStringLiteral("audioConverter.runtimeFailedStartPlayback"),
@@ -622,7 +934,7 @@ bool AudioConverterService::startConversion()
     }
 
     refreshSourceDurationFromPipeline();
-    if (m_trimEnabled) {
+    if (m_trimEnabled && !m_reverseSourceAlreadyTrimmed) {
         GstState currentState = GST_STATE_NULL;
         GstState pendingState = GST_STATE_NULL;
         const GstStateChangeReturn prerollResult =
@@ -763,6 +1075,7 @@ void AudioConverterService::resetDspSettings()
     setVoiceSuppression(false);
     setApplyEqualizer(false);
     setApplyReverb(false);
+    setReversePlayback(false);
 }
 
 void AudioConverterService::resetParameter(const QString &paramId)
@@ -778,6 +1091,8 @@ void AudioConverterService::resetParameter(const QString &paramId)
         setPitchSemitones(0);
     } else if (id == QStringLiteral("playbackrate") || id == QStringLiteral("rate")) {
         setPlaybackRate(1.0);
+    } else if (id == QStringLiteral("reverseplayback") || id == QStringLiteral("reverse")) {
+        setReversePlayback(false);
     } else if (id == QStringLiteral("echo") || id == QStringLiteral("echomix")) {
         setEchoMix(0.0);
     } else if (id == QStringLiteral("chorus") || id == QStringLiteral("chorusmix")) {
@@ -1011,6 +1326,23 @@ void AudioConverterService::setPitchSemitones(int pitchSemitones)
     applyPreviewPitchParameters();
     emit pitchSemitonesChanged();
     emit preflightChanged();
+}
+
+void AudioConverterService::setReversePlayback(bool reversePlayback)
+{
+    if (m_reversePlayback == reversePlayback) {
+        return;
+    }
+
+    m_reversePlayback = reversePlayback;
+    emit reversePlaybackChanged();
+    emit preflightChanged();
+
+    if (m_isPreviewPlaying) {
+        const qint64 startMs = m_previewStartMs;
+        const qint64 endMs = m_previewEndMs;
+        startPreview(startMs, endMs);
+    }
 }
 
 void AudioConverterService::setApplyEqualizer(bool applyEqualizer)
@@ -1341,6 +1673,7 @@ void AudioConverterService::teardownConversionPipeline()
     m_encoderElement = nullptr;
     m_muxerElement = nullptr;
     m_sinkElement = nullptr;
+    cleanupTemporaryReversedSource();
 }
 
 void AudioConverterService::teardownPreviewPipeline()
@@ -1368,6 +1701,7 @@ void AudioConverterService::teardownPreviewPipeline()
     m_previewPitchElement = nullptr;
     m_previewDspIdentityElement = nullptr;
     m_previewPendingSeekMs = -1;
+    cleanupTemporaryPreviewReversed();
 }
 
 void AudioConverterService::applyPreviewPitchParameters()
@@ -1450,13 +1784,34 @@ bool AudioConverterService::seekPreview(qint64 positionMs)
 
     m_previewPositionMs = clampedMs;
     const qint64 durationMs = qMax<qint64>(500, endMs - startMs);
-    const qint64 elapsedMs = qMax<qint64>(0, clampedMs - startMs);
+    const qint64 elapsedMs = m_reversePlayback
+        ? qMax<qint64>(0, endMs - clampedMs)
+        : qMax<qint64>(0, clampedMs - startMs);
     m_previewProgress = qBound(0.0, static_cast<double>(elapsedMs) / static_cast<double>(durationMs), 1.0);
     emit previewPositionMsChanged();
     emit previewProgressChanged();
 
     if (!m_previewPipeline) {
         return true;
+    }
+
+    if (m_reversePlayback) {
+        const qint64 filePosMs = qBound<qint64>(0, endMs - clampedMs, durationMs);
+        const gint64 startPosNs = filePosMs * GST_MSECOND;
+        bool ok = gst_element_seek_simple(m_previewPipeline,
+                                          GST_FORMAT_TIME,
+                                          static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                                          startPosNs);
+        if (!ok) {
+            ok = gst_element_seek_simple(m_previewPipeline,
+                                         GST_FORMAT_TIME,
+                                         static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH),
+                                         startPosNs);
+        }
+        if (ok) {
+            m_previewPendingSeekMs = -1;
+        }
+        return ok;
     }
 
     const gint64 startPosNs = clampedMs * GST_MSECOND;
@@ -1488,7 +1843,9 @@ bool AudioConverterService::seekPreviewProgress(double progress)
     const qint64 startMs = (m_previewActualStartMs >= 0) ? m_previewActualStartMs : (m_previewStartMs >= 0 ? m_previewStartMs : 0);
     const qint64 endMs = (m_previewActualEndMs > startMs) ? m_previewActualEndMs : (m_previewEndMs > startMs ? m_previewEndMs : startMs + 15000);
     const qint64 durationMs = qMax<qint64>(500, endMs - startMs);
-    const qint64 targetMs = startMs + static_cast<qint64>(qBound(0.0, progress, 1.0) * durationMs);
+    const qint64 targetMs = m_reversePlayback
+        ? endMs - static_cast<qint64>(qBound(0.0, progress, 1.0) * durationMs)
+        : startMs + static_cast<qint64>(qBound(0.0, progress, 1.0) * durationMs);
     return seekPreview(targetMs);
 }
 
@@ -1509,6 +1866,18 @@ bool AudioConverterService::startPreview(qint64 startMs, qint64 endMs)
     if (sourceUri.isEmpty()) {
         return false;
     }
+
+    const qint64 effectiveStart = (startMs >= 0)
+        ? startMs
+        : (m_previewStartMs >= 0 ? m_previewStartMs : (m_trimEnabled ? m_trimStartMs : 0));
+    const qint64 effectiveEnd = (endMs > effectiveStart)
+        ? endMs
+        : (m_previewEndMs > effectiveStart ? m_previewEndMs : (effectiveStart + 15000));
+
+    m_previewActualStartMs = effectiveStart;
+    m_previewActualEndMs = effectiveEnd;
+    m_previewDurationMs = qMax<qint64>(500, effectiveEnd - effectiveStart);
+    m_previewPendingSeekMs = (m_previewActualStartMs > 0 && !m_reversePlayback) ? m_previewActualStartMs : -1;
 
     m_previewPipeline = gst_element_factory_make("playbin3", "waveflux-audio-converter-preview");
     if (!m_previewPipeline) {
@@ -1597,8 +1966,31 @@ bool AudioConverterService::startPreview(qint64 startMs, qint64 endMs)
     gst_element_add_pad(audioSinkBin, ghostPad);
     gst_object_unref(sinkPad);
 
+    cleanupTemporaryPreviewReversed();
+    QString effectivePreviewUri = sourceUri;
+    if (m_reversePlayback) {
+        const QString revPreviewPath = createTemporaryPreviewReversedPath();
+        QString decodeErr;
+        if (!decodeAudioToWaveFile(sourceUri, revPreviewPath, effectiveStart, effectiveEnd, &decodeErr)) {
+            gst_object_unref(audioSinkBin);
+            gst_object_unref(m_previewPipeline);
+            m_previewPipeline = nullptr;
+            return false;
+        }
+        QString revErr;
+        if (!reverseWaveFileInPlace(revPreviewPath, &revErr)) {
+            QFile::remove(revPreviewPath);
+            gst_object_unref(audioSinkBin);
+            gst_object_unref(m_previewPipeline);
+            m_previewPipeline = nullptr;
+            return false;
+        }
+        m_pendingPreviewReversedFile = revPreviewPath;
+        effectivePreviewUri = localFileUri(revPreviewPath);
+    }
+
     g_object_set(m_previewPipeline, "audio-sink", audioSinkBin, nullptr);
-    g_object_set(m_previewPipeline, "uri", sourceUri.toUtf8().constData(), nullptr);
+    g_object_set(m_previewPipeline, "uri", effectivePreviewUri.toUtf8().constData(), nullptr);
 
     m_previewDspIdentityElement = dspIdentity;
     GstPad *dspPad = gst_element_get_static_pad(m_previewDspIdentityElement, "src");
@@ -1634,18 +2026,6 @@ bool AudioConverterService::startPreview(qint64 startMs, qint64 endMs)
     m_previewQualitySimulator.setEqualizerBandGains(gainsDb);
     m_previewQualitySimulator.reset();
 
-    const qint64 effectiveStart = (startMs >= 0)
-        ? startMs
-        : (m_previewStartMs >= 0 ? m_previewStartMs : (m_trimEnabled ? m_trimStartMs : 0));
-    const qint64 effectiveEnd = (endMs > effectiveStart)
-        ? endMs
-        : (m_previewEndMs > effectiveStart ? m_previewEndMs : (effectiveStart + 15000));
-
-    m_previewActualStartMs = effectiveStart;
-    m_previewActualEndMs = effectiveEnd;
-    m_previewDurationMs = qMax<qint64>(500, effectiveEnd - effectiveStart);
-    m_previewPendingSeekMs = (m_previewActualStartMs > 0) ? m_previewActualStartMs : -1;
-
     m_previewBus = gst_pipeline_get_bus(GST_PIPELINE(m_previewPipeline));
 
     GstStateChangeReturn stateRet = gst_element_set_state(m_previewPipeline, GST_STATE_PAUSED);
@@ -1656,7 +2036,7 @@ bool AudioConverterService::startPreview(qint64 startMs, qint64 endMs)
 
     gst_element_get_state(m_previewPipeline, nullptr, nullptr, 300 * GST_MSECOND);
 
-    if (m_previewActualStartMs > 0) {
+    if (!m_reversePlayback && m_previewActualStartMs > 0) {
         const gint64 startPosNs = m_previewActualStartMs * GST_MSECOND;
         const gint64 stopPosNs = (m_previewActualEndMs > m_previewActualStartMs) ? (m_previewActualEndMs * GST_MSECOND) : GST_CLOCK_TIME_NONE;
         const GstSeekType stopType = (m_previewActualEndMs > m_previewActualStartMs) ? GST_SEEK_TYPE_SET : GST_SEEK_TYPE_NONE;
@@ -1688,7 +2068,7 @@ bool AudioConverterService::startPreview(qint64 startMs, qint64 endMs)
 
     m_isPreviewPlaying = true;
     m_previewProgress = 0.0;
-    m_previewPositionMs = m_previewActualStartMs;
+    m_previewPositionMs = m_reversePlayback ? m_previewActualEndMs : m_previewActualStartMs;
     emit isPreviewPlayingChanged();
     emit previewProgressChanged();
     emit previewPositionMsChanged();
@@ -1733,7 +2113,7 @@ void AudioConverterService::pollPreviewProgress()
             } else if (type == GST_MESSAGE_EOS) {
                 gst_message_unref(msg);
                 if (m_previewLoop) {
-                    seekPreview(m_previewActualStartMs);
+                    seekPreview(m_reversePlayback ? m_previewActualEndMs : m_previewActualStartMs);
                     return;
                 }
                 stopPreview();
@@ -1769,27 +2149,43 @@ void AudioConverterService::pollPreviewProgress()
         if (m_previewPendingSeekMs > 0 && currentPosMs < m_previewPendingSeekMs) {
             return;
         }
-        m_previewPositionMs = qMax<qint64>(m_previewActualStartMs, currentPosMs);
-        if (currentPosMs >= m_previewActualEndMs || (m_trimEnabled && m_trimEndMs > 0 && currentPosMs >= m_trimEndMs)) {
-            if (m_previewLoop) {
-                seekPreview(m_previewActualStartMs);
+
+        if (m_reversePlayback) {
+            if (currentPosMs >= m_previewDurationMs) {
+                if (m_previewLoop) {
+                    seekPreview(m_previewActualEndMs);
+                    return;
+                }
+                stopPreview();
                 return;
             }
-            stopPreview();
-            return;
-        }
-        const qint64 elapsedMs = qMax<qint64>(0, currentPosMs - m_previewActualStartMs);
-        if (elapsedMs >= m_previewDurationMs) {
-            if (m_previewLoop) {
-                seekPreview(m_previewActualStartMs);
+            m_previewPositionMs = qBound(m_previewActualStartMs, m_previewActualEndMs - currentPosMs, m_previewActualEndMs);
+            m_previewProgress = qBound(0.0, static_cast<double>(currentPosMs) / static_cast<double>(m_previewDurationMs), 1.0);
+            emit previewProgressChanged();
+            emit previewPositionMsChanged();
+        } else {
+            m_previewPositionMs = qMax<qint64>(m_previewActualStartMs, currentPosMs);
+            if (currentPosMs >= m_previewActualEndMs || (m_trimEnabled && m_trimEndMs > 0 && currentPosMs >= m_trimEndMs)) {
+                if (m_previewLoop) {
+                    seekPreview(m_previewActualStartMs);
+                    return;
+                }
+                stopPreview();
                 return;
             }
-            stopPreview();
-            return;
+            const qint64 elapsedMs = qMax<qint64>(0, currentPosMs - m_previewActualStartMs);
+            if (elapsedMs >= m_previewDurationMs) {
+                if (m_previewLoop) {
+                    seekPreview(m_previewActualStartMs);
+                    return;
+                }
+                stopPreview();
+                return;
+            }
+            m_previewProgress = qBound(0.0, static_cast<double>(elapsedMs) / static_cast<double>(m_previewDurationMs), 1.0);
+            emit previewProgressChanged();
+            emit previewPositionMsChanged();
         }
-        m_previewProgress = qBound(0.0, static_cast<double>(elapsedMs) / static_cast<double>(m_previewDurationMs), 1.0);
-        emit previewProgressChanged();
-        emit previewPositionMsChanged();
     }
 }
 
@@ -2061,6 +2457,13 @@ bool AudioConverterService::setupConversionPipeline(QString *errorMessage)
     QString pipelineSourcePath = m_sourceFile;
     if (!prepareTrackerSourceForConversion(&pipelineSourcePath, errorMessage)) {
         cleanupTemporaryTrackerSource();
+        cleanupTemporaryReversedSource();
+        return false;
+    }
+
+    if (!prepareReversedSourceIfNeeded(&pipelineSourcePath, errorMessage)) {
+        cleanupTemporaryTrackerSource();
+        cleanupTemporaryReversedSource();
         return false;
     }
 
@@ -2514,6 +2917,108 @@ void AudioConverterService::cleanupTemporaryTrackerSource()
     m_pendingTrackerRenderFile.clear();
 }
 
+QString AudioConverterService::createTemporaryReversedSourcePath() const
+{
+    const QString basePath = !m_outputFile.isEmpty() ? m_outputFile : m_sourceFile;
+    const QFileInfo info(basePath);
+    const QString directory = info.dir().exists() ? info.absolutePath() : QDir::tempPath();
+    return QDir(directory).filePath(
+        QStringLiteral(".%1.waveflux-tmp-rev-%2.wav")
+            .arg(info.completeBaseName().isEmpty() ? QStringLiteral("audio") : info.completeBaseName(),
+                 QString::number(QDateTime::currentMSecsSinceEpoch())));
+}
+
+QString AudioConverterService::createTemporaryPreviewReversedPath() const
+{
+    const QString basePath = !m_sourceFile.isEmpty() ? m_sourceFile : m_outputFile;
+    const QFileInfo info(basePath);
+    const QString directory = info.dir().exists() ? info.absolutePath() : QDir::tempPath();
+    return QDir(directory).filePath(
+        QStringLiteral(".%1.waveflux-tmp-prev-rev-%2.wav")
+            .arg(info.completeBaseName().isEmpty() ? QStringLiteral("preview") : info.completeBaseName(),
+                 QString::number(QDateTime::currentMSecsSinceEpoch())));
+}
+
+void AudioConverterService::cleanupTemporaryReversedSource()
+{
+    if (m_pendingReversedSourceFile.isEmpty()) {
+        return;
+    }
+
+    QFile::remove(m_pendingReversedSourceFile);
+    m_pendingReversedSourceFile.clear();
+}
+
+void AudioConverterService::cleanupTemporaryPreviewReversed()
+{
+    if (m_pendingPreviewReversedFile.isEmpty()) {
+        return;
+    }
+
+    QFile::remove(m_pendingPreviewReversedFile);
+    m_pendingPreviewReversedFile.clear();
+}
+
+bool AudioConverterService::prepareReversedSourceIfNeeded(QString *pipelineSourcePath,
+                                                          QString *errorMessage)
+{
+    if (!m_reversePlayback) {
+        m_reverseSourceAlreadyTrimmed = false;
+        return true;
+    }
+
+    cleanupTemporaryReversedSource();
+
+    const QString revPath = createTemporaryReversedSourcePath();
+    if (revPath.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = localizedConverterText(QStringLiteral("audioConverter.errorTempOutputPath"));
+        }
+        return false;
+    }
+
+    const QString inputPath = pipelineSourcePath ? *pipelineSourcePath : m_sourceFile;
+    const QString inputUri = localFileUri(inputPath);
+
+    qint64 startMs = 0;
+    qint64 endMs = 0;
+    if (m_trimEnabled) {
+        startMs = qMax<qint64>(0, m_trimStartMs);
+        endMs = m_trimEndMs;
+        m_reverseSourceAlreadyTrimmed = true;
+    } else {
+        m_reverseSourceAlreadyTrimmed = false;
+    }
+
+    QString decodeError;
+    if (!decodeAudioToWaveFile(inputUri, revPath, startMs, endMs, &decodeError)) {
+        if (errorMessage) {
+            *errorMessage = decodeError.isEmpty()
+                ? QStringLiteral("Failed to decode audio source for reverse playback.")
+                : decodeError;
+        }
+        QFile::remove(revPath);
+        return false;
+    }
+
+    QString revError;
+    if (!reverseWaveFileInPlace(revPath, &revError)) {
+        if (errorMessage) {
+            *errorMessage = revError.isEmpty()
+                ? QStringLiteral("Failed to reverse audio frames in temporary file.")
+                : revError;
+        }
+        QFile::remove(revPath);
+        return false;
+    }
+
+    m_pendingReversedSourceFile = revPath;
+    if (pipelineSourcePath) {
+        *pipelineSourcePath = revPath;
+    }
+    return true;
+}
+
 void AudioConverterService::finalizeSuccessfulConversion()
 {
     if (m_completionHandled) {
@@ -2564,17 +3069,21 @@ void AudioConverterService::finalizeSuccessfulConversion()
     m_lastConversionUsedTemporaryFile = !m_pendingTempOutputFile.isEmpty();
     m_pendingTempOutputFile.clear();
     m_pendingFinalOutputFile.clear();
+
     QString metadataWarning;
     QElapsedTimer metadataTimer;
     metadataTimer.start();
     const bool metadataCopied = copyBasicSourceTagsToOutput(outputPath, &metadataWarning);
     m_lastConversionMetadataCopyDurationUs = metadataTimer.nsecsElapsed() / 1000;
+    m_lastConversionFinishedAtMs = QDateTime::currentMSecsSinceEpoch();
+    m_lastConversionWallClockMs = qMax<qint64>(0, m_lastConversionFinishedAtMs - m_lastConversionStartedAtMs);
     m_lastConversionMetadataCopyAttempted = true;
     m_lastConversionMetadataCopySucceeded = metadataCopied;
     m_lastConversionFinalBytes = QFileInfo(outputPath).exists()
         ? qMax<qint64>(0, QFileInfo(outputPath).size())
         : 0;
     cleanupTemporaryTrackerSource();
+    cleanupTemporaryReversedSource();
     setProgress(1.0);
     setErrorPresentation(QString());
     setStatusPresentation(metadataCopied || metadataWarning.isEmpty()
@@ -2615,6 +3124,7 @@ void AudioConverterService::failConversion(const QString &messageKey,
         QFile::remove(m_pendingTempOutputFile);
     }
     cleanupTemporaryTrackerSource();
+    cleanupTemporaryReversedSource();
     m_pendingTempOutputFile.clear();
     m_pendingFinalOutputFile.clear();
     setIsRunning(false);
@@ -2630,7 +3140,7 @@ void AudioConverterService::failConversion(const QString &messageKey,
 
 bool AudioConverterService::applyTrimSegmentSeek(QString *errorMessage)
 {
-    if (!m_pipeline || !m_trimEnabled) {
+    if (!m_pipeline || !m_trimEnabled || m_reverseSourceAlreadyTrimmed) {
         return true;
     }
 
@@ -3095,9 +3605,13 @@ QVariantMap AudioConverterService::buildPreflight() const
     const QString outputPath = normalizeLocalPath(m_outputFile);
     const bool sameAsSource = !sourcePath.isEmpty() && sourcePath == outputPath;
     const FormatProfile *profile = findFormatProfile(m_format);
-    const QStringList requiredElements = requiredGStreamerElements(profile,
-                                                                   m_applyEqualizer,
-                                                                   m_applyReverb);
+    QStringList requiredElements = requiredGStreamerElements(profile,
+                                                             m_applyEqualizer,
+                                                             m_applyReverb);
+    if (m_reversePlayback) {
+        requiredElements.push_back(QStringLiteral("wavenc"));
+        requiredElements.removeDuplicates();
+    }
     const QStringList missingElements = missingGStreamerElements(requiredElements);
 
     result.insert(QStringLiteral("canStart"), false);
@@ -3129,6 +3643,7 @@ QVariantMap AudioConverterService::buildPreflight() const
     summary.insert(QStringLiteral("channelMode"), m_channelMode);
     summary.insert(QStringLiteral("playbackRate"), m_playbackRate);
     summary.insert(QStringLiteral("pitchSemitones"), m_pitchSemitones);
+    summary.insert(QStringLiteral("reversePlayback"), m_reversePlayback);
     summary.insert(QStringLiteral("applyEqualizer"), m_applyEqualizer);
     summary.insert(QStringLiteral("equalizerBandGains"), m_equalizerBandGains);
     summary.insert(QStringLiteral("applyReverb"), m_applyReverb);
@@ -3195,7 +3710,7 @@ QVariantMap AudioConverterService::buildPreflight() const
     if (!outputDir.exists()) {
         setMessage(QStringLiteral("error"),
                    QStringLiteral("audioConverter.preflightOutputDirectoryMissing"),
-                   {outputDir.absolutePath()});
+                   QVariantList{outputDir.absolutePath()});
         return result;
     }
 
@@ -3203,7 +3718,7 @@ QVariantMap AudioConverterService::buildPreflight() const
     if (!outputDirInfo.isWritable()) {
         setMessage(QStringLiteral("error"),
                    QStringLiteral("audioConverter.preflightOutputDirectoryNotWritable"),
-                   {outputDir.absolutePath()});
+                   QVariantList{outputDir.absolutePath()});
         return result;
     }
 
@@ -3212,7 +3727,7 @@ QVariantMap AudioConverterService::buildPreflight() const
     if (!writeProbe.open()) {
         setMessage(QStringLiteral("error"),
                    QStringLiteral("audioConverter.preflightOutputDirectoryWriteProbeFailed"),
-                   {outputDir.absolutePath()});
+                   QVariantList{outputDir.absolutePath()});
         return result;
     }
 
@@ -3221,7 +3736,7 @@ QVariantMap AudioConverterService::buildPreflight() const
     if (!missingElements.isEmpty()) {
         setMessage(QStringLiteral("error"),
                    QStringLiteral("audioConverter.preflightMissingPlugins"),
-                   {QString::fromLatin1(profile->label), missingElements.join(QStringLiteral(", "))},
+                   QVariantList{QString::fromLatin1(profile->label), missingElements.join(QStringLiteral(", "))},
                    false,
                    false,
                    true);
@@ -3254,7 +3769,7 @@ QVariantMap AudioConverterService::buildPreflight() const
         if (!outputInfo.isWritable()) {
             setMessage(QStringLiteral("error"),
                        QStringLiteral("audioConverter.preflightExistingOutputNotWritable"),
-                       {outputPath},
+                       QVariantList{outputPath},
                        false,
                        false,
                        true);
@@ -3264,7 +3779,7 @@ QVariantMap AudioConverterService::buildPreflight() const
         if (!m_overwriteExisting) {
             setMessage(QStringLiteral("warning"),
                        QStringLiteral("audioConverter.preflightExistingOutputConfirm"),
-                       {outputPath},
+                       QVariantList{outputPath},
                        false,
                        true,
                        true);

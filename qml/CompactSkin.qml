@@ -152,8 +152,8 @@ Item {
     readonly property int responsiveWidthBucket: playlistColumnLayoutManager.widthBucket("compact", compactPlaylist.width - (appSettings.playlistScrollBarVisible ? 8 : 0))
     readonly property var effectiveColumns: {
         const _rev = playlistColumnLayoutManager.layoutRevision
-        const _avail = Math.max(0, compactPlaylist.width - (appSettings.playlistScrollBarVisible ? 8 : 0))
-        return playlistColumnLayoutManager.effectiveVisibleColumns("compact", _avail)
+        const _bucket = root.responsiveWidthBucket
+        return playlistColumnLayoutManager.effectiveVisibleColumns("compact", _bucket)
     }
     readonly property bool compactHeaderVisible: {
         const mode = playlistColumnLayoutManager.compactHeaderMode
@@ -1774,6 +1774,15 @@ Item {
                                 onTriggered: root.settingsRequested()
                             }
 
+                            AccentMenuItem {
+                                objectName: "compactLyricsToggle"
+                                text: root.tr("menu.viewLyrics")
+                                icon.source: IconResolver.themed("document-edit", themeManager.darkMode)
+                                checkable: true
+                                checked: appSettings.lyricsPanelVisible
+                                onTriggered: appSettings.lyricsPanelVisible = checked
+                            }
+
                             AccentMenuSeparator {}
 
                             AccentMenuItem {
@@ -2215,7 +2224,12 @@ Item {
                     }
                     onHeightChanged: {
                         root.applyPendingTrackListViewState()
-                        root.scheduleFilterViewportSync()
+                        if (compactPlaylist && compactPlaylist.height > 0) {
+                            const topY = Number(compactPlaylist.originY || 0)
+                            const maxOffset = Math.max(0, compactPlaylist.contentHeight - compactPlaylist.height)
+                            const offset = Number(compactPlaylist.contentY || 0) - topY
+                            compactPlaylist.contentY = topY + Math.max(0, Math.min(maxOffset, offset))
+                        }
                     }
 
                     ScrollBar {

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtCore
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
+import WaveFlux
 import "components"
 import "IconResolver.js" as IconResolver
 
@@ -23,6 +24,11 @@ Kirigami.ApplicationWindow {
     flags: Qt.Window
 
     property bool isQuittingWithFade: false
+    readonly property bool lyricsDocked: appSettings.lyricsPanelVisible && !appSettings.lyricsSeparateWindow && !root.isCompactSkin
+
+    LyricsWindow {
+        transientParent: root
+    }
 
     Timer {
         id: quitFadeTimer
@@ -33,7 +39,7 @@ Kirigami.ApplicationWindow {
 
     // Handle window close based on actual tray runtime state.
     onClosing: function(close) {
-        if (appSettings.trayEnabled && trayManager.enabled) {
+        if ((appSettings.closeToTray || appSettings.trayEnabled) && trayManager.enabled) {
             // Tray is enabled - hide window instead of closing
             close.accepted = false
             root.hide()
@@ -205,24 +211,10 @@ Kirigami.ApplicationWindow {
     Settings {
         id: sidebarSectionSettings
         category: "App"
-        property bool sidebarPlaylistsSectionVisible: true
-        property bool sidebarCollectionsSectionVisible: true
         property bool githubStarToastDismissed: false
     }
-    property bool sidebarPlaylistsSectionVisible: true
-    property bool sidebarCollectionsSectionVisible: true
-
-    onSidebarPlaylistsSectionVisibleChanged: {
-        if (sidebarSectionSettings.sidebarPlaylistsSectionVisible !== root.sidebarPlaylistsSectionVisible) {
-            sidebarSectionSettings.sidebarPlaylistsSectionVisible = root.sidebarPlaylistsSectionVisible
-        }
-    }
-
-    onSidebarCollectionsSectionVisibleChanged: {
-        if (sidebarSectionSettings.sidebarCollectionsSectionVisible !== root.sidebarCollectionsSectionVisible) {
-            sidebarSectionSettings.sidebarCollectionsSectionVisible = root.sidebarCollectionsSectionVisible
-        }
-    }
+    readonly property bool sidebarPlaylistsSectionVisible: appSettings.sidebarPlaylistsSectionVisible
+    readonly property bool sidebarCollectionsSectionVisible: appSettings.sidebarCollectionsSectionVisible
 
     // Keep control/icon foreground colors aligned with the active app theme.
     // Qt Quick Controls icons follow control text/palette roles by default.
@@ -2429,8 +2421,6 @@ Kirigami.ApplicationWindow {
     }
 
     Component.onCompleted: {
-        root.sidebarPlaylistsSectionVisible = sidebarSectionSettings.sidebarPlaylistsSectionVisible
-        root.sidebarCollectionsSectionVisible = sidebarSectionSettings.sidebarCollectionsSectionVisible
         root.githubStarToastPreviousPlaylistCount = trackModel ? trackModel.count : 0
         root.githubStarToastCountInitialized = true
         loadPersistedContextProgress()
@@ -2529,6 +2519,7 @@ Kirigami.ApplicationWindow {
         readonly property var viewToggleCollectionsSidebar: actionViewToggleCollectionsSidebar
         readonly property var viewToggleInfoSidebar: actionViewToggleInfoSidebar
         readonly property var viewToggleSpeedPitch: actionViewToggleSpeedPitch
+        readonly property var viewToggleLyrics: actionViewToggleLyrics
         readonly property var viewToggleFullscreen: actionViewToggleFullscreen
         readonly property var viewToggleQueuePanel: actionViewToggleQueuePanel
         readonly property var viewOpenCollectionsPanel: actionViewOpenCollectionsPanel
@@ -2602,6 +2593,7 @@ Kirigami.ApplicationWindow {
             actionViewToggleCollectionsSidebar,
             actionViewToggleInfoSidebar,
             actionViewToggleSpeedPitch,
+            actionViewToggleLyrics,
             actionViewToggleFullscreen,
             actionViewToggleQueuePanel,
             actionViewOpenCollectionsPanel,
@@ -2870,6 +2862,16 @@ Kirigami.ApplicationWindow {
         checkable: true
         checked: appSettings.showSpeedPitchControls
         onTriggered: root.cmdToggleSpeedPitchControls()
+    }
+
+    Action {
+        id: actionViewToggleLyrics
+        objectName: "view.toggleLyrics"
+        text: root.tr("lyrics.toggleLyrics")
+        shortcut: root.actionShortcut(objectName)
+        checkable: true
+        checked: appSettings.lyricsPanelVisible
+        onTriggered: appSettings.lyricsPanelVisible = !appSettings.lyricsPanelVisible
     }
 
     Action {
@@ -3551,6 +3553,9 @@ Kirigami.ApplicationWindow {
         onActivated: {
             const nextRate = Math.max(0.25, Math.round((audioEngine.playbackRate - 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
+            if (typeof dspSettings !== "undefined" && dspSettings) {
+                dspSettings.speed = nextRate
+            }
             root.showSpeedShortcutBadge(nextRate)
         }
     }
@@ -3560,6 +3565,9 @@ Kirigami.ApplicationWindow {
         onActivated: {
             const nextRate = Math.min(3.0, Math.round((audioEngine.playbackRate + 0.1) * 100) / 100)
             audioEngine.playbackRate = nextRate
+            if (typeof dspSettings !== "undefined" && dspSettings) {
+                dspSettings.speed = nextRate
+            }
             root.showSpeedShortcutBadge(nextRate)
         }
     }
@@ -3568,6 +3576,9 @@ Kirigami.ApplicationWindow {
         enabled: root.shortcutActive("playback.speedReset") && audioEngine.rateAvailable
         onActivated: {
             audioEngine.playbackRate = 1.0
+            if (typeof dspSettings !== "undefined" && dspSettings) {
+                dspSettings.speed = 1.0
+            }
             root.showSpeedShortcutBadge(1.0)
         }
     }
@@ -3577,6 +3588,9 @@ Kirigami.ApplicationWindow {
         onActivated: {
             const nextPitch = Math.max(-10, audioEngine.pitchSemitones - 1)
             audioEngine.pitchSemitones = nextPitch
+            if (typeof dspSettings !== "undefined" && dspSettings) {
+                dspSettings.tonalitySemitones = nextPitch
+            }
             root.showPitchShortcutBadge(nextPitch)
         }
     }
@@ -3586,6 +3600,9 @@ Kirigami.ApplicationWindow {
         onActivated: {
             const nextPitch = Math.min(10, audioEngine.pitchSemitones + 1)
             audioEngine.pitchSemitones = nextPitch
+            if (typeof dspSettings !== "undefined" && dspSettings) {
+                dspSettings.tonalitySemitones = nextPitch
+            }
             root.showPitchShortcutBadge(nextPitch)
         }
     }
@@ -3594,6 +3611,9 @@ Kirigami.ApplicationWindow {
         enabled: root.shortcutActive("playback.pitchReset") && audioEngine.pitchAvailable
         onActivated: {
             audioEngine.pitchSemitones = 0
+            if (typeof dspSettings !== "undefined" && dspSettings) {
+                dspSettings.tonalitySemitones = 0.0
+            }
             root.showPitchShortcutBadge(0)
         }
     }
@@ -4010,6 +4030,48 @@ Kirigami.ApplicationWindow {
                     }
                     onTablePressed: root.clearSearchFieldFocusFromPlaylistTable()
                     onConfigureColumnsRequested: playlistColumnsDialog.open()
+                    visible: !root.lyricsDocked || (root.width >= 750)
+                }
+
+                Rectangle {
+                    id: lyricsSplitter
+                    visible: root.lyricsDocked && (root.width >= 750)
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: 4
+                    color: splitterMouse.containsMouse || splitterMouse.pressed ? themeManager.accentColor : themeManager.borderColor
+
+                    MouseArea {
+                        id: splitterMouse
+                        anchors.fill: parent
+                        anchors.margins: -3
+                        cursorShape: Qt.SizeHorCursor
+                        hoverEnabled: true
+                        property int startX: 0
+                        property int startWidth: 0
+                        onPressed: function(mouse) {
+                            startX = mouse.x
+                            startWidth = appSettings.lyricsPanelWidth
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (pressed) {
+                                const delta = mouse.x - startX
+                                appSettings.lyricsPanelWidth = startWidth - delta
+                            }
+                        }
+                    }
+                }
+
+                Loader {
+                    id: lyricsPanelLoader
+                    objectName: "lyricsPanelLoader"
+                    Layout.fillHeight: true
+                    Layout.fillWidth: root.width < 750
+                    Layout.preferredWidth: (root.width >= 750) ? appSettings.lyricsPanelWidth : -1
+                    Layout.minimumWidth: (root.width >= 750) ? 260 : 0
+                    Layout.maximumWidth: (root.width >= 750) ? 600 : -1
+                    active: root.lyricsDocked
+                    visible: active
+                    source: "LyricsPanel.qml"
                 }
 
                 Loader {

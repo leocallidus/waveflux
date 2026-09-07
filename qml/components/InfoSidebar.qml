@@ -573,6 +573,14 @@ Rectangle {
                         }
                     }
                 }
+
+                Loader {
+                    objectName: "lyricsInfoLoader"
+                    Layout.fillWidth: true
+                    active: appSettings.lyricsInfoPanelVisible && typeof lyricsController !== "undefined" && lyricsController !== null
+                    visible: active
+                    source: "LyricsInfoBlock.qml"
+                }
             }
         }
     }

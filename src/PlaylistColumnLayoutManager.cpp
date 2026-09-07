@@ -803,7 +803,7 @@ QVariantList PlaylistColumnLayoutManager::effectiveVisibleColumns(const QString 
         } else if (item.visibility == VisibilityMode::Automatic) {
             const ColumnDescriptor *desc = findDescriptor(item.id);
             const int minWidth = desc ? desc->automaticMinWidth : 500;
-            if (availableWidth <= 0 || availableWidth >= minWidth) {
+            if (availableWidth < 0 || (availableWidth > 0 && availableWidth >= minWidth)) {
                 candidateColumns.push_back(&item);
             }
         }

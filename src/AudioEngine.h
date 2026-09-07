@@ -98,6 +98,7 @@ public:
     bool reversePlayback() const { return m_reversePlayback; }
     QString audioQualityProfile() const { return m_audioQualityProfile; }
     int pitchSemitones() const { return m_pitchSemitones; }
+    double effectivePitchRatio() const;
     PlaybackState state() const { return m_state; }
     
     QString title() const { return m_title; }
@@ -207,6 +208,7 @@ private:
     void teardownPipeline();
     static QString normalizeAudioQualityProfile(const QString &profile);
     void applyAudioQualityProfileToPipeline();
+    void ensureDspBound();
     void bindDspSettings();
     void applyDspSettings();
     void applyDspTransport();
@@ -290,6 +292,8 @@ private:
     bool m_reversePlayback = false;
     QString m_audioQualityProfile = QStringLiteral("standard");
     int m_pitchSemitones = 0;
+    bool m_syncingWithDsp = false;
+    bool m_dspBound = false;
     PlaybackState m_state = StoppedState;
     
     QString m_title;
@@ -368,6 +372,10 @@ private:
         int silenceMinDurationMs = 500;
         double silenceThresholdDbfs = -60.0;
         int sampleRate = 48000;
+        bool smoothChanges = false;
+        bool logarithmicControl = false;
+        bool loudnessCompensation = false;
+        double normalizationGain = 1.0;
     };
     mutable std::mutex m_dspMutex;
     DspRuntimeSnapshot m_dspSnapshot;
@@ -378,6 +386,21 @@ private:
     WaveFlux::Dsp::LowShelfFilter m_bassFilter;
     WaveFlux::Dsp::GainRamp m_gainRamp;
     WaveFlux::Dsp::SilenceDetector m_silenceDetector;
+    QTimer m_fadeOutTimer;
+    QTimer m_volumeRampTimer;
+    double m_currentPipelineVolume = 1.0;
+    double m_normalizationGain = 1.0;
+    bool m_hasTrackGain = false;
+    bool m_hasTrackPeak = false;
+    bool m_hasAlbumGain = false;
+    bool m_hasAlbumPeak = false;
+    double m_trackGainDb = 0.0;
+    double m_trackPeak = 1.0;
+    double m_albumGainDb = 0.0;
+    double m_albumPeak = 1.0;
+    float m_measuredPeakLevel = 0.0f;
+    bool m_autoFadeOutEngaged = false;
+    qint64 m_lastSilenceSkipTimeMs = 0;
 
     static constexpr int kSeekCoalesceIntervalMs = 35;
     // Stability-first mode: rely on EOS/manual fallback transitions instead of

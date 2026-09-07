@@ -62,7 +62,7 @@ ColumnLayout {
             description: root.tr("settings.closeToTrayDescription")
             checked: appSettings.closeToTray
             searchQuery: root.searchQuery
-            highlighted: root.targetSettingId === settingId
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "system.desktop.closeToTray"
             onToggled: function(val) {
                 appSettings.closeToTray = val
             }
@@ -74,7 +74,7 @@ ColumnLayout {
             description: root.tr("settings.minimizeToTrayDescription")
             checked: appSettings.minimizeToTray
             searchQuery: root.searchQuery
-            highlighted: root.targetSettingId === settingId
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "system.desktop.minimizeToTray"
             onToggled: function(val) {
                 appSettings.minimizeToTray = val
             }
@@ -86,7 +86,7 @@ ColumnLayout {
             description: root.tr("settings.startMinimizedToTrayDescription")
             checked: appSettings.startMinimizedToTray
             searchQuery: root.searchQuery
-            highlighted: root.targetSettingId === settingId
+            highlighted: root.targetSettingId === settingId || root.targetSettingId === "system.desktop.startMinimizedToTray"
             onToggled: function(val) {
                 appSettings.startMinimizedToTray = val
             }

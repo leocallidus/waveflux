@@ -1587,7 +1587,7 @@ TrackModel::AppendReport TrackModel::insertAcceptedTracks(int index,
             const Track &t = m_tracks.at(trackIdx);
             const bool hasFullMetadata = t.cueSegment
                 ? (t.bitrate > 0 || t.sampleRate > 0 || t.bitDepth > 0 || t.bpm > 0 || t.channelCount > 0)
-                : (!t.title.isEmpty() && !t.artist.isEmpty() && !t.album.isEmpty() && t.duration > 0 && t.bitrate > 0 && t.sampleRate > 0);
+                : (t.duration > 0 && (t.bitrate > 0 || t.sampleRate > 0 || !t.title.isEmpty()));
             if (!hasFullMetadata) {
                 const QString normalizedPath = t.filePath.trimmed();
                 if (!normalizedPath.isEmpty() && isLocalSourcePath(normalizedPath) && !m_inFlightMetadataReads.contains(normalizedPath)) {
@@ -1966,7 +1966,7 @@ void TrackModel::setTracks(QVector<Track> tracks)
         const Track &t = m_tracks.at(i);
         const bool hasFullMetadata = t.cueSegment
             ? (t.bitrate > 0 || t.sampleRate > 0 || t.bitDepth > 0 || t.bpm > 0 || t.channelCount > 0)
-            : (!t.title.isEmpty() && !t.artist.isEmpty() && !t.album.isEmpty() && t.duration > 0 && t.bitrate > 0 && t.sampleRate > 0);
+            : (t.duration > 0 && (t.bitrate > 0 || t.sampleRate > 0 || !t.title.isEmpty()));
         if (!hasFullMetadata) {
             const QString normalizedPath = t.filePath.trimmed();
             if (!normalizedPath.isEmpty() && isLocalSourcePath(normalizedPath) && !m_inFlightMetadataReads.contains(normalizedPath)) {

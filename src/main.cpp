@@ -58,6 +58,8 @@
 #include "library/MigrationManager.h"
 #include "library/SmartCollectionsEngine.h"
 #include "SettingsRegistry.h"
+#include "lyrics/LyricsController.h"
+#include "lyrics/LyricsLineModel.h"
 
 #ifdef Q_OS_WIN
 #include <shobjidl.h>
@@ -355,6 +357,7 @@ int main(int argc, char *argv[])
             appSettingsManager.restorePlaybackPausedOnStartup());
         playlistExportService.initialize(&trackModel);
         ytDlpImportService.setAppSettingsManager(&appSettingsManager);
+        WaveFlux::Lyrics::LyricsController lyricsController(&audioEngine, &playbackController, &trackModel, &appSettingsManager);
 
         const auto applyShuffleSettings = [&]() {
             const bool deterministic = appSettingsManager.deterministicShuffleEnabled();
@@ -680,6 +683,9 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("playlistColumnLayoutManager", &playlistColumnLayoutManager);
         engine.rootContext()->setContextProperty("smartCollectionsEngine", &smartCollectionsEngine);
         engine.rootContext()->setContextProperty("settingsRegistry", SettingsRegistry::instance());
+        qmlRegisterUncreatableType<WaveFlux::Lyrics::LyricsController>("WaveFlux", 1, 0, "LyricsController", QStringLiteral("LyricsController cannot be created in QML"));
+        qmlRegisterUncreatableType<WaveFlux::Lyrics::LyricsLineModel>("WaveFlux", 1, 0, "LyricsLineModel", QStringLiteral("LyricsLineModel cannot be created in QML"));
+        engine.rootContext()->setContextProperty("lyricsController", &lyricsController);
 
         // Load main QML file
         const QUrl mainQmlUrl(QStringLiteral("qrc:/WaveFlux/qml/Main.qml"));
@@ -701,6 +707,14 @@ int main(int argc, char *argv[])
         globalKeyMonitor.setMainWindow(mainWindow);
         performanceProfiler.attachWindow(qobject_cast<QQuickWindow *>(mainWindow));
         trayManager.initialize(mainWindow, &audioEngine, &playbackController, &appSettingsManager, &trackModel);
+        if (mainWindow && appSettingsManager.startMinimizedToTray() && trayManager.enabled()) {
+            mainWindow->hide();
+            QTimer::singleShot(0, mainWindow, [mainWindow]() {
+                if (mainWindow) {
+                    mainWindow->hide();
+                }
+            });
+        }
 #ifdef Q_OS_WIN
         windowsMediaControlsService.setMainWindow(mainWindow);
 #endif

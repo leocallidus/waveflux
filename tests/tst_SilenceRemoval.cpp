@@ -11,7 +11,36 @@ private slots:
     void testPureSilenceDetection();
     void testAudibleSignalNoSilence();
     void testSilenceIntervalsWithHysteresis();
+    void testStreamingSilenceDetection();
 };
+
+void tst_SilenceRemoval::testStreamingSilenceDetection()
+{
+    WaveFlux::Dsp::SilenceDetector detector(48000);
+    detector.setThresholdDbfs(-50.0);
+    detector.setMinimumSilenceDurationMs(100);
+    detector.setTrimEdges(true);
+
+    const std::size_t chunkFrames = 480; // 10ms per chunk at 48kHz
+    std::vector<float> silentChunk(chunkFrames * 2, 0.0f);
+
+    // Feed 9 chunks = 90ms (less than 100ms threshold)
+    for (int i = 0; i < 9; ++i) {
+        bool chunkSilent = detector.processFrameChunk(silentChunk.data(), chunkFrames, 2);
+        QVERIFY(chunkSilent);
+        QVERIFY(!detector.isQualifiedSilence());
+    }
+
+    // 10th chunk brings accumulated silence to 100ms -> should become qualified
+    bool chunkSilent = detector.processFrameChunk(silentChunk.data(), chunkFrames, 2);
+    QVERIFY(chunkSilent);
+    QVERIFY(detector.isQualifiedSilence());
+
+    // Reset clears state
+    detector.reset();
+    QVERIFY(!detector.isQualifiedSilence());
+    QCOMPARE(detector.currentSilenceDurationMs(), static_cast<qint64>(0));
+}
 
 void tst_SilenceRemoval::testPureSilenceDetection()
 {

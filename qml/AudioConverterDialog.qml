@@ -267,6 +267,7 @@ AppDialog {
         audioConverterService.stereoWidth = 1.0
         audioConverterService.voiceSuppression = false
         audioConverterService.applyCurrentEqualizer = false
+        audioConverterService.reversePlayback = false
     }
 
     function bitrateOptions(profile) {
@@ -489,6 +490,9 @@ AppDialog {
         }
         if (audioConverterService.pitchSemitones !== 0) {
             parts.push((audioConverterService.pitchSemitones > 0 ? "+" : "") + audioConverterService.pitchSemitones + "st")
+        }
+        if (audioConverterService.reversePlayback) {
+            parts.push(root.tr("audioConverter.reversePlaybackActive"))
         }
         return parts.join(" • ")
     }
@@ -1102,6 +1106,36 @@ AppDialog {
                                         audioConverterService.tonalitySemitones = value
                                         audioConverterService.pitchSemitones = Math.round(value)
                                     }
+                                }
+                            }
+
+                            // Reverse Playback Toggle
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.spaceM
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: UiMetrics.spaceXS
+
+                                    Label {
+                                        text: root.tr("audioConverter.reversePlayback")
+                                        color: themeManager.textColor
+                                        font.weight: Font.Medium
+                                    }
+
+                                    Label {
+                                        text: root.tr("audioConverter.reversePlaybackDescription")
+                                        color: themeManager.textMutedColor
+                                        font.pointSize: UiMetrics.captionPointSize
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                AccentSwitch {
+                                    checked: audioConverterService.reversePlayback
+                                    onToggled: audioConverterService.reversePlayback = checked
                                 }
                             }
                         }

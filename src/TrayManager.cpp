@@ -80,10 +80,17 @@ void TrayManager::initialize(QWindow *mainWindow,
 
     if (m_settingsManager) {
         auto syncTrayVisibility = [this]() {
-            setEnabled(m_settingsManager->trayEnabled() || m_settingsManager->trayIconAlwaysVisible());
+            setEnabled(m_settingsManager->trayEnabled()
+                    || m_settingsManager->trayIconAlwaysVisible()
+                    || m_settingsManager->closeToTray()
+                    || m_settingsManager->minimizeToTray()
+                    || m_settingsManager->startMinimizedToTray());
         };
         connect(m_settingsManager, &AppSettingsManager::trayEnabledChanged, this, syncTrayVisibility);
         connect(m_settingsManager, &AppSettingsManager::trayIconAlwaysVisibleChanged, this, syncTrayVisibility);
+        connect(m_settingsManager, &AppSettingsManager::closeToTrayChanged, this, syncTrayVisibility);
+        connect(m_settingsManager, &AppSettingsManager::minimizeToTrayChanged, this, syncTrayVisibility);
+        connect(m_settingsManager, &AppSettingsManager::startMinimizedToTrayChanged, this, syncTrayVisibility);
         connect(m_settingsManager, &AppSettingsManager::translationsChanged, this, [this]() {
             updateMenuText();
         });
@@ -108,8 +115,10 @@ void TrayManager::setEnabled(bool enabled)
 
     if (enabled) {
         createTray();
+        QGuiApplication::setQuitOnLastWindowClosed(false);
     } else {
         destroyTray();
+        QGuiApplication::setQuitOnLastWindowClosed(true);
     }
 
     m_enabled = enabled;
@@ -124,22 +133,36 @@ void TrayManager::requestQuit()
 
 bool TrayManager::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == m_mainWindow && event->type() == QEvent::Close) {
-        if (m_forceQuit) {
-            // Force quit requested - let the event through
-            return false;
-        }
-
-        const bool closeToTrayEnabled = m_settingsManager && m_settingsManager->trayEnabled();
-        const bool trayIsActive = m_enabled && m_trayIcon && m_trayIcon->isVisible();
-        if (closeToTrayEnabled && trayIsActive) {
-            // Tray is enabled - hide window instead of closing
-            auto *closeEvent = static_cast<QCloseEvent *>(event);
-            closeEvent->ignore();
-            if (m_mainWindow) {
-                m_mainWindow->hide();
+    if (watched == m_mainWindow) {
+        if (event->type() == QEvent::Close) {
+            if (m_forceQuit) {
+                // Force quit requested - let the event through
+                return false;
             }
-            return true;
+
+            const bool closeToTrayEnabled = m_settingsManager && (m_settingsManager->closeToTray() || m_settingsManager->trayEnabled());
+            const bool trayIsActive = m_enabled && m_trayIcon && m_trayIcon->isVisible();
+            if (closeToTrayEnabled && trayIsActive) {
+                // Tray is enabled - hide window instead of closing
+                auto *closeEvent = static_cast<QCloseEvent *>(event);
+                closeEvent->ignore();
+                if (m_mainWindow) {
+                    m_mainWindow->hide();
+                }
+                return true;
+            }
+        } else if (event->type() == QEvent::WindowStateChange) {
+            const bool minimizeToTrayEnabled = m_settingsManager && m_settingsManager->minimizeToTray();
+            const bool trayIsActive = m_enabled && m_trayIcon && m_trayIcon->isVisible();
+            if (minimizeToTrayEnabled && trayIsActive && m_mainWindow) {
+                if (m_mainWindow->windowState() & Qt::WindowMinimized) {
+                    QMetaObject::invokeMethod(this, [this]() {
+                        if (m_mainWindow && (m_mainWindow->windowState() & Qt::WindowMinimized)) {
+                            m_mainWindow->hide();
+                        }
+                    }, Qt::QueuedConnection);
+                }
+            }
         }
     }
 

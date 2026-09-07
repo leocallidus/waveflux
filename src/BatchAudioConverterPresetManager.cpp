@@ -287,6 +287,8 @@ QVariantMap BatchAudioConverterPresetManager::normalizePresetSettings(const QVar
                       normalizePlaybackRate(settings.value(QStringLiteral("playbackRate")).toDouble()));
     normalized.insert(QStringLiteral("pitchSemitones"),
                       normalizePitchSemitones(settings.value(QStringLiteral("pitchSemitones")).toInt()));
+    normalized.insert(QStringLiteral("reversePlayback"),
+                      settings.value(QStringLiteral("reversePlayback"), false).toBool());
     normalized.insert(QStringLiteral("speed"),
                       qBound(0.25, settings.value(QStringLiteral("speed"), 1.0).toDouble(), 3.0));
     normalized.insert(QStringLiteral("tempo"),

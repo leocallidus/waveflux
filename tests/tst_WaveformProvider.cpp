@@ -39,6 +39,7 @@ private slots:
     void cancelStopsInFlightTrackerRender();
     void placeholderStatesDifferentiateUnsupportedFailedAndSilent();
     void loadingPlaceholderAnimationAdvancesSmoothly();
+    void resizingWaveformItemDoesNotCrashAndPaintsCorrectly();
 };
 
 void WaveformProviderTest::initTestCase()
@@ -174,6 +175,44 @@ void WaveformProviderTest::loadingPlaceholderAnimationAdvancesSmoothly()
     item.setLoading(false);
     QCOMPARE(item.loadingAnimationRunning(), false);
     QCOMPARE(item.displayedGenerationProgress(), item.generationProgress());
+}
+
+void WaveformProviderTest::resizingWaveformItemDoesNotCrashAndPaintsCorrectly()
+{
+    WaveformItem item;
+    item.setWidth(480);
+    item.setHeight(120);
+    item.setPeaks({0.1f, 0.5f, 0.9f, 0.3f, 0.7f});
+
+    QImage frame1(480, 120, QImage::Format_ARGB32_Premultiplied);
+    frame1.fill(Qt::transparent);
+    {
+        QPainter painter(&frame1);
+        item.paint(&painter);
+    }
+
+    // Simulate rapid resizing
+    item.setWidth(640);
+    item.setHeight(150);
+
+    QImage frame2(640, 150, QImage::Format_ARGB32_Premultiplied);
+    frame2.fill(Qt::transparent);
+    {
+        QPainter painter(&frame2);
+        item.paint(&painter);
+    }
+    QVERIFY(!frame2.isNull());
+
+    // Wait for the layer rebuild timer to expire (100ms)
+    QTest::qWait(150);
+
+    QImage frame3(640, 150, QImage::Format_ARGB32_Premultiplied);
+    frame3.fill(Qt::transparent);
+    {
+        QPainter painter(&frame3);
+        item.paint(&painter);
+    }
+    QVERIFY(!frame3.isNull());
 }
 
 QTEST_MAIN(WaveformProviderTest)

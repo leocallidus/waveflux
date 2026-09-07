@@ -26,6 +26,8 @@ public:
     ~DesktopNotificationService() override = default;
 
     void setTrayManager(TrayManager *trayManager);
+    QString lastNotifiedKey() const { return m_lastNotifiedKey; }
+    int notificationCount() const { return m_notificationCount; }
 
 public slots:
     void notifyTrackChanged();
@@ -48,6 +50,7 @@ private:
     QTimer m_coalesceTimer;
     QString m_lastNotifiedKey;
     qint64 m_lastNotificationTimeMs = 0;
+    int m_notificationCount = 0;
 
 #if defined(Q_OS_WIN) || !defined(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
     QSystemTrayIcon *m_fallbackTrayIcon = nullptr;

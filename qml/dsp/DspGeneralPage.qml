@@ -106,7 +106,10 @@ ScrollView {
                         value: dspSettings ? dspSettings.speed : 1.00
                         available: root.capabilityAvailable("dsp.speedVarispeed")
                         availabilityReason: root.capabilityReason("dsp.speedVarispeed")
-                        onValueModified: function(val) { if (dspSettings) dspSettings.speed = val }
+                        onValueModified: function(val) {
+                            if (dspSettings) dspSettings.speed = val
+                            if (typeof audioEngine !== "undefined" && audioEngine) audioEngine.playbackRate = val
+                        }
                     }
 
                     DspParameterSlider {
@@ -208,7 +211,10 @@ ScrollView {
                         value: dspSettings ? dspSettings.tonalitySemitones : 0.00
                         available: root.capabilityAvailable("dsp.tonality")
                         availabilityReason: root.capabilityReason("dsp.tonality")
-                        onValueModified: function(val) { if (dspSettings) dspSettings.tonalitySemitones = val }
+                        onValueModified: function(val) {
+                            if (dspSettings) dspSettings.tonalitySemitones = val
+                            if (typeof audioEngine !== "undefined" && audioEngine) audioEngine.pitchSemitones = Math.round(val)
+                        }
                     }
                 }
             }

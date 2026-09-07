@@ -176,6 +176,8 @@ private slots:
     void resetsIndividualParameters();
     void controlsSamplePreviewLifecycle();
     void completesWavConversionWithDspSettings();
+    void completesReverseWavConversion();
+    void controlsReversePreviewLifecycle();
     void supportsPauseAndResumeControls();
 };
 
@@ -1343,6 +1345,10 @@ void AudioConverterServiceTest::exposesDspDefaultsAndNormalizesProperties()
 
     service.setVoiceSuppression(true);
     QCOMPARE(service.voiceSuppression(), true);
+
+    QCOMPARE(service.reversePlayback(), false);
+    service.setReversePlayback(true);
+    QCOMPARE(service.reversePlayback(), true);
 }
 
 void AudioConverterServiceTest::resetsDspSettingsToDefaults()
@@ -1361,6 +1367,7 @@ void AudioConverterServiceTest::resetsDspSettingsToDefaults()
     service.setVoiceSuppression(true);
     service.setApplyEqualizer(true);
     service.setApplyReverb(true);
+    service.setReversePlayback(true);
 
     service.resetDspSettings();
 
@@ -1376,11 +1383,17 @@ void AudioConverterServiceTest::resetsDspSettingsToDefaults()
     QCOMPARE(service.voiceSuppression(), false);
     QCOMPARE(service.applyEqualizer(), false);
     QCOMPARE(service.applyReverb(), false);
+    QCOMPARE(service.reversePlayback(), false);
 }
 
 void AudioConverterServiceTest::resetsIndividualParameters()
 {
     AudioConverterService service;
+
+    // Reset reverse playback
+    service.setReversePlayback(true);
+    service.resetParameter(QStringLiteral("reverseplayback"));
+    QCOMPARE(service.reversePlayback(), false);
 
     // Reset speed
     service.setSpeed(2.5);
@@ -1617,6 +1630,131 @@ void AudioConverterServiceTest::completesWavConversionWithDspSettings()
     QCOMPARE(failedSpy.count(), 0);
     QVERIFY(QFileInfo::exists(outputPath));
     QVERIFY(QFileInfo(outputPath).size() > 44);
+}
+
+void AudioConverterServiceTest::completesReverseWavConversion()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("identity")
+        || !hasFactory("wavenc")
+        || !hasFactory("filesink")) {
+        QSKIP("Required GStreamer conversion elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("reverse_source.wav"));
+    const QString outputPath = tempDir.filePath(QStringLiteral("reverse_output.wav"));
+
+    const int sampleRate = 44100;
+    const int channels = 1;
+    const int durationMs = 400;
+    const int sampleCount = (sampleRate * durationMs) / 1000;
+    const int dataBytes = sampleCount * channels * 2;
+    {
+        QFile file(sourcePath);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QDataStream stream(&file);
+        stream.setByteOrder(QDataStream::LittleEndian);
+        stream.writeRawData("RIFF", 4);
+        stream << quint32(36 + dataBytes);
+        stream.writeRawData("WAVE", 4);
+        stream.writeRawData("fmt ", 4);
+        stream << quint32(16);
+        stream << quint16(1);
+        stream << quint16(channels);
+        stream << quint32(sampleRate);
+        stream << quint32(sampleRate * channels * 2);
+        stream << quint16(channels * 2);
+        stream << quint16(16);
+        stream.writeRawData("data", 4);
+        stream << quint32(dataBytes);
+
+        for (int i = 0; i < sampleCount; ++i) {
+            const qint16 val = (i < sampleCount / 2) ? 500 : 15000;
+            stream << val;
+        }
+        file.close();
+    }
+
+    AudioConverterService service;
+    service.setSourceFile(sourcePath);
+    service.setFormat(QStringLiteral("wav"));
+    service.setOutputFile(outputPath);
+    service.setReversePlayback(true);
+    QCOMPARE(service.reversePlayback(), true);
+
+    QSignalSpy finishedSpy(&service, &AudioConverterService::conversionFinished);
+    QSignalSpy failedSpy(&service, &AudioConverterService::conversionFailed);
+
+    QVERIFY(service.startConversion());
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(failedSpy.count(), 0);
+    QVERIFY(QFileInfo::exists(outputPath));
+    QVERIFY(QFileInfo(outputPath).size() >= 44 + dataBytes / 2);
+
+    {
+        QFile outFile(outputPath);
+        QVERIFY(outFile.open(QIODevice::ReadOnly));
+        outFile.seek(44);
+        QDataStream stream(&outFile);
+        stream.setByteOrder(QDataStream::LittleEndian);
+
+        qint16 firstSample = 0;
+        stream >> firstSample;
+        QVERIFY2(firstSample > 5000, "First sample of reversed WAV should be from high amplitude tail");
+        outFile.close();
+    }
+}
+
+void AudioConverterServiceTest::controlsReversePreviewLifecycle()
+{
+    if (!hasFactory("uridecodebin")
+        || !hasFactory("audioconvert")
+        || !hasFactory("audioresample")
+        || !hasFactory("pitch")
+        || !hasFactory("capsfilter")
+        || !hasFactory("identity")
+        || !hasFactory("autoaudiosink")
+        || !hasFactory("wavenc")) {
+        QSKIP("Required GStreamer elements are unavailable.");
+    }
+
+    QTemporaryDir tempDir;
+    QVERIFY2(tempDir.isValid(), "failed to create temp dir");
+
+    const QString sourcePath = tempDir.filePath(QStringLiteral("rev_preview_source.wav"));
+    writeSilentWavFile(sourcePath, 44100, 2, 6000);
+
+    AudioConverterService service;
+    service.setSourceFile(sourcePath);
+    service.setReversePlayback(true);
+    QCOMPARE(service.reversePlayback(), true);
+
+    const bool started = service.startPreview(1000, 4000);
+    if (!started) {
+        QSKIP("Autoaudiosink could not initialize audio device in test environment.");
+    }
+
+    QVERIFY(service.isPreviewPlaying());
+    QCOMPARE(service.previewPositionMs(), 4000);
+
+    service.seekPreviewProgress(0.5);
+    QCOMPARE(service.previewPositionMs(), 2500);
+
+    service.seekPreviewProgress(1.0);
+    QCOMPARE(service.previewPositionMs(), 1000);
+
+    service.seekPreviewProgress(0.0);
+    QCOMPARE(service.previewPositionMs(), 4000);
+
+    service.stopPreview();
+    QVERIFY(!service.isPreviewPlaying());
 }
 
 void AudioConverterServiceTest::supportsPauseAndResumeControls()

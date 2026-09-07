@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(waveflux VERSION 1.4.0 LANGUAGES CXX)
+project(waveflux VERSION 1.4.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CheckCXXSourceCompiles)
@@ -160,6 +160,15 @@ set(SOURCES
     src/library/SearchRepository.cpp
     src/library/SmartCollectionsEngine.cpp
     src/SettingsRegistry.cpp
+    src/lyrics/LyricsTypes.cpp
+    src/lyrics/LrcParser.cpp
+    src/lyrics/LyricsMatcher.cpp
+    src/lyrics/LyricsCache.cpp
+    src/lyrics/LocalLyricsProvider.cpp
+    src/lyrics/LrclibProvider.cpp
+    src/lyrics/LyricsOvhProvider.cpp
+    src/lyrics/LyricsLineModel.cpp
+    src/lyrics/LyricsController.cpp
 )
 
 if(WAVEFLUX_ENABLE_DBUS_INTEGRATION)
@@ -229,6 +238,16 @@ set(HEADERS
     src/library/SearchRepository.h
     src/library/SmartCollectionsEngine.h
     src/SettingsRegistry.h
+    src/lyrics/LyricsTypes.h
+    src/lyrics/LrcParser.h
+    src/lyrics/LyricsMatcher.h
+    src/lyrics/LyricsCache.h
+    src/lyrics/ILyricsProvider.h
+    src/lyrics/LocalLyricsProvider.h
+    src/lyrics/LrclibProvider.h
+    src/lyrics/LyricsOvhProvider.h
+    src/lyrics/LyricsLineModel.h
+    src/lyrics/LyricsController.h
 )
 
 if(WIN32)
@@ -342,6 +361,11 @@ qt_add_qml_module(waveflux
         qml/components/PlaylistColumnHeader.qml
         qml/components/PlaylistColumnCell.qml
         qml/components/CollectionsSidebar.qml
+        qml/LyricsPanel.qml
+        qml/LyricsWindow.qml
+        qml/components/LyricsInfoBlock.qml
+        qml/LyricsSearchDialog.qml
+        qml/components/AccentTextField.qml
     RESOURCES
         qml/IconResolver.js
         ${WAVEFLUX_ICON_RESOURCES}

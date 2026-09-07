@@ -82,6 +82,7 @@ class AppSettingsManagerTest : public QObject
     Q_OBJECT
 
 private slots:
+    void persistsLyricsPresentationPreferences();
     void initTestCase();
     void init();
     void cleanup();
@@ -129,6 +130,9 @@ void AppSettingsManagerTest::defaultsNewPlaylistFolderAutoAddToEnabled()
     AppSettingsManager settings;
     QCOMPARE(settings.autoAddTracksFromPlaylistFolder(), true);
     QCOMPARE(settings.separateWindowDialogs(), false);
+    QCOMPARE(settings.lyricsPanelVisible(), false);
+    QCOMPARE(settings.lyricsSeparateWindow(), false);
+    QCOMPARE(settings.lyricsInfoPanelVisible(), true);
     QCOMPARE(settings.notifyOnTrackChange(), true);
     QCOMPARE(settings.autoCheckUpdates(), true);
     QCOMPARE(settings.includePrereleaseUpdates(), false);
@@ -137,7 +141,33 @@ void AppSettingsManagerTest::defaultsNewPlaylistFolderAutoAddToEnabled()
     QCOMPARE(settings.trackInfoWindowTitleFormat(), settings.defaultTrackInfoWindowTitleFormat());
     QCOMPARE(settings.trackInfoWaveformTooltipFormat(), QString());
     QCOMPARE(settings.trackInfoWaveformOverlayFormats(), settings.defaultTrackInfoWaveformOverlayFormats());
+    QCOMPARE(settings.closeToTray(), false);
+    QCOMPARE(settings.minimizeToTray(), false);
+    QCOMPARE(settings.startMinimizedToTray(), false);
+    QCOMPARE(settings.sidebarPlaylistsSectionVisible(), true);
+    QCOMPARE(settings.sidebarCollectionsSectionVisible(), true);
     QVERIFY(!settings.lastUpdateCheckAt().isValid());
+}
+
+void AppSettingsManagerTest::persistsLyricsPresentationPreferences()
+{
+    {
+        AppSettingsManager settings;
+        QSignalSpy separateChanged(&settings, &AppSettingsManager::lyricsSeparateWindowChanged);
+        QSignalSpy infoChanged(&settings, &AppSettingsManager::lyricsInfoPanelVisibleChanged);
+        settings.setLyricsPanelVisible(true);
+        settings.setLyricsSeparateWindow(true);
+        settings.setLyricsSeparateWindow(true);
+        settings.setLyricsInfoPanelVisible(false);
+        settings.setLyricsInfoPanelVisible(false);
+        QCOMPARE(separateChanged.size(), 1);
+        QCOMPARE(infoChanged.size(), 1);
+    }
+    AppSettingsManager restored;
+    QVERIFY(restored.lyricsPanelVisible());
+    QVERIFY(restored.lyricsSeparateWindow());
+    QVERIFY(!restored.lyricsInfoPanelVisible());
+    QVERIFY(!restored.lyricsOnlineEnabled());
 }
 
 void AppSettingsManagerTest::persistsAndReloadsSettings()
@@ -167,6 +197,7 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     batchLastSettings.insert(QStringLiteral("channelMode"), QStringLiteral("mono"));
     batchLastSettings.insert(QStringLiteral("playbackRate"), 1.15);
     batchLastSettings.insert(QStringLiteral("pitchSemitones"), -2);
+    batchLastSettings.insert(QStringLiteral("reversePlayback"), false);
     batchLastSettings.insert(QStringLiteral("addResultsToPlaylist"), true);
     batchLastSettings.insert(QStringLiteral("applyEqualizer"), false);
     batchLastSettings.insert(QStringLiteral("applyReverb"), false);
@@ -309,6 +340,11 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         settings.setYtDlpImportRecentSources(ytDlpRecentSources);
         settings.setYtDlpImportRecentCanonicalSources(ytDlpRecentCanonicalSources);
         settings.setYtDlpImportRecentOutputDirectories(ytDlpRecentOutputDirectories);
+        settings.setCloseToTray(true);
+        settings.setMinimizeToTray(true);
+        settings.setStartMinimizedToTray(true);
+        settings.setSidebarPlaylistsSectionVisible(false);
+        settings.setSidebarCollectionsSectionVisible(false);
     }
 
     QSettings persisted(QStringLiteral("WaveFlux"), QStringLiteral("WaveFlux"));
@@ -374,7 +410,12 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
         QStringLiteral("ytDlpImport.draft"),
         QStringLiteral("ytDlpImport.recentSources"),
         QStringLiteral("ytDlpImport.recentCanonicalSources"),
-        QStringLiteral("ytDlpImport.recentOutputDirectories")
+        QStringLiteral("ytDlpImport.recentOutputDirectories"),
+        QStringLiteral("closeToTray"),
+        QStringLiteral("minimizeToTray"),
+        QStringLiteral("startMinimizedToTray"),
+        QStringLiteral("sidebarPlaylistsSectionVisible"),
+        QStringLiteral("sidebarCollectionsSectionVisible")
     };
     for (const QString &key : expectedKeys) {
         QVERIFY2(keys.contains(key), qPrintable(QStringLiteral("missing key: %1").arg(key)));
@@ -450,6 +491,11 @@ void AppSettingsManagerTest::persistsAndReloadsSettings()
     QCOMPARE(reloaded.ytDlpImportRecentSources(), ytDlpRecentSources);
     QCOMPARE(reloaded.ytDlpImportRecentCanonicalSources(), ytDlpRecentCanonicalSources);
     QCOMPARE(reloaded.ytDlpImportRecentOutputDirectories(), ytDlpRecentOutputDirectories);
+    QCOMPARE(reloaded.closeToTray(), true);
+    QCOMPARE(reloaded.minimizeToTray(), true);
+    QCOMPARE(reloaded.startMinimizedToTray(), true);
+    QCOMPARE(reloaded.sidebarPlaylistsSectionVisible(), false);
+    QCOMPARE(reloaded.sidebarCollectionsSectionVisible(), false);
 }
 
 void AppSettingsManagerTest::sanitizesInvalidStoredValues()
@@ -657,6 +703,39 @@ void AppSettingsManagerTest::signalsOnlyOnEffectiveChangesAndPersistsBurstUpdate
     QCOMPARE(seedSpy.count(), 1);
     settings.setShuffleSeed(42u);
     QCOMPARE(seedSpy.count(), 1);
+
+    QSignalSpy closeToTraySpy(&settings, &AppSettingsManager::closeToTrayChanged);
+    QSignalSpy minimizeToTraySpy(&settings, &AppSettingsManager::minimizeToTrayChanged);
+    QSignalSpy startMinimizedSpy(&settings, &AppSettingsManager::startMinimizedToTrayChanged);
+    QSignalSpy playlistsSectionSpy(&settings, &AppSettingsManager::sidebarPlaylistsSectionVisibleChanged);
+    QSignalSpy collectionsSectionSpy(&settings, &AppSettingsManager::sidebarCollectionsSectionVisibleChanged);
+
+    settings.setCloseToTray(false);
+    QCOMPARE(closeToTraySpy.count(), 0);
+    settings.setCloseToTray(true);
+    QCOMPARE(closeToTraySpy.count(), 1);
+    settings.setCloseToTray(true);
+    QCOMPARE(closeToTraySpy.count(), 1);
+
+    settings.setMinimizeToTray(false);
+    QCOMPARE(minimizeToTraySpy.count(), 0);
+    settings.setMinimizeToTray(true);
+    QCOMPARE(minimizeToTraySpy.count(), 1);
+
+    settings.setStartMinimizedToTray(false);
+    QCOMPARE(startMinimizedSpy.count(), 0);
+    settings.setStartMinimizedToTray(true);
+    QCOMPARE(startMinimizedSpy.count(), 1);
+
+    settings.setSidebarPlaylistsSectionVisible(true);
+    QCOMPARE(playlistsSectionSpy.count(), 0);
+    settings.setSidebarPlaylistsSectionVisible(false);
+    QCOMPARE(playlistsSectionSpy.count(), 1);
+
+    settings.setSidebarCollectionsSectionVisible(true);
+    QCOMPARE(collectionsSectionSpy.count(), 0);
+    settings.setSidebarCollectionsSectionVisible(false);
+    QCOMPARE(collectionsSectionSpy.count(), 1);
 
     settings.setWaveformHeight(120);
     settings.setWaveformHeight(130);
@@ -880,6 +959,14 @@ void AppSettingsManagerTest::translatesSettingsDialogKeys()
              QStringLiteral("Confirm General Reset"));
     QCOMPARE(settings.translate(QStringLiteral("settings.resetConfirmTitleAppearance")),
              QStringLiteral("Confirm Appearance Reset"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.quickResetAll")),
+             QStringLiteral("Reset All to Default"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.showLyricsPanel")),
+             QStringLiteral("Show lyrics panel"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.aboutVersion")),
+             QStringLiteral("WaveFlux v1.4.1"));
+    QCOMPARE(settings.translate(QStringLiteral("help.aboutVersionValue")),
+             QStringLiteral("1.4.1"));
 
     // Russian
     settings.setLanguage(QStringLiteral("ru"));
@@ -895,6 +982,14 @@ void AppSettingsManagerTest::translatesSettingsDialogKeys()
              QStringLiteral("Подтвердите сброс основных настроек"));
     QCOMPARE(settings.translate(QStringLiteral("settings.resetConfirmTitleAppearance")),
              QStringLiteral("Подтвердите сброс внешнего вида"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.quickResetAll")),
+             QStringLiteral("Сбросить всё к дефолту"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.showLyricsPanel")),
+             QStringLiteral("Показывать панель текста"));
+    QCOMPARE(settings.translate(QStringLiteral("settings.aboutVersion")),
+             QStringLiteral("WaveFlux v1.4.1"));
+    QCOMPARE(settings.translate(QStringLiteral("help.aboutVersionValue")),
+             QStringLiteral("1.4.1"));
 }
 
 QTEST_MAIN(AppSettingsManagerTest)

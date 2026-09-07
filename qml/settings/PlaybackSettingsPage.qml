@@ -275,4 +275,110 @@ ColumnLayout {
             }
         }
     }
+
+    // Group: Lyrics
+    SettingsGroup {
+        groupId: "lyrics"
+        title: root.tr("settings.lyrics")
+        searchQuery: root.searchQuery
+
+        SettingSwitchRow {
+            settingId: "lyricsPanelVisible"
+            highlighted: root.targetSettingId === settingId
+            title: root.tr("menu.viewLyrics")
+            description: root.tr("settings.lyricsPanelVisibleDescription")
+            searchQuery: root.searchQuery
+            checked: appSettings.lyricsPanelVisible
+            onToggled: function(val) { appSettings.lyricsPanelVisible = val }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsSeparateWindow"
+            highlighted: root.targetSettingId === settingId
+            title: root.tr("settings.lyricsSeparateWindow")
+            description: root.tr("settings.lyricsSeparateWindowDescription")
+            searchQuery: root.searchQuery
+            checked: appSettings.lyricsSeparateWindow
+            onToggled: function(val) { appSettings.lyricsSeparateWindow = val }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsInfoPanelVisible"
+            highlighted: root.targetSettingId === settingId
+            title: root.tr("settings.lyricsInfoPanelVisible")
+            description: root.tr("settings.lyricsInfoPanelVisibleDescription")
+            searchQuery: root.searchQuery
+            checked: appSettings.lyricsInfoPanelVisible
+            onToggled: function(val) { appSettings.lyricsInfoPanelVisible = val }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsOnlineEnabled"
+            title: root.tr("settings.lyricsOnlineEnabled")
+            description: root.tr("settings.lyricsOnlineEnabledDescription")
+            searchQuery: root.searchQuery
+            checked: typeof appSettings !== "undefined" && appSettings && appSettings.lyricsOnlineEnabled
+            onToggled: function(val) {
+                if (typeof appSettings !== "undefined" && appSettings) {
+                    appSettings.lyricsOnlineEnabled = val
+                }
+            }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsAutomaticLookup"
+            title: root.tr("settings.lyricsAutomaticLookup")
+            description: root.tr("settings.lyricsAutomaticLookupDescription")
+            searchQuery: root.searchQuery
+            checked: typeof appSettings !== "undefined" && appSettings && appSettings.lyricsAutomaticLookup
+            onToggled: function(val) {
+                if (typeof appSettings !== "undefined" && appSettings) {
+                    appSettings.lyricsAutomaticLookup = val
+                }
+            }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsPreferSynced"
+            title: root.tr("settings.lyricsPreferSynced")
+            description: root.tr("settings.lyricsPreferSyncedDescription")
+            searchQuery: root.searchQuery
+            checked: typeof appSettings !== "undefined" && appSettings && appSettings.lyricsPreferSynced
+            onToggled: function(val) {
+                if (typeof appSettings !== "undefined" && appSettings) {
+                    appSettings.lyricsPreferSynced = val
+                }
+            }
+        }
+
+        SettingSwitchRow {
+            settingId: "lyricsAutoFollow"
+            title: root.tr("settings.lyricsAutoFollow")
+            description: root.tr("settings.lyricsAutoFollowDescription")
+            searchQuery: root.searchQuery
+            checked: typeof appSettings !== "undefined" && appSettings && appSettings.lyricsAutoFollow
+            onToggled: function(val) {
+                if (typeof appSettings !== "undefined" && appSettings) {
+                    appSettings.lyricsAutoFollow = val
+                }
+            }
+        }
+
+        SettingSliderRow {
+            settingId: "lyricsFontScale"
+            title: root.tr("settings.lyricsFontScale")
+            description: root.tr("settings.lyricsFontScaleDescription")
+            searchQuery: root.searchQuery
+            from: 0.8
+            to: 1.5
+            stepSize: 0.05
+            value: typeof appSettings !== "undefined" && appSettings ? appSettings.lyricsFontScale : 1.0
+            valueText: Math.round(value * 100) + "%"
+            onMoved: function(val) {
+                if (typeof appSettings !== "undefined" && appSettings) {
+                    appSettings.lyricsFontScale = val
+                }
+            }
+        }
+    }
 }

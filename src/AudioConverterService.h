@@ -35,6 +35,7 @@ class AudioConverterService : public QObject
     Q_PROPERTY(double bass READ bass WRITE setBass NOTIFY bassChanged)
     Q_PROPERTY(double stereoWidth READ stereoWidth WRITE setStereoWidth NOTIFY stereoWidthChanged)
     Q_PROPERTY(bool voiceSuppression READ voiceSuppression WRITE setVoiceSuppression NOTIFY voiceSuppressionChanged)
+    Q_PROPERTY(bool reversePlayback READ reversePlayback WRITE setReversePlayback NOTIFY reversePlaybackChanged)
     Q_PROPERTY(bool isPreviewPlaying READ isPreviewPlaying NOTIFY isPreviewPlayingChanged)
     Q_PROPERTY(double previewProgress READ previewProgress NOTIFY previewProgressChanged)
     Q_PROPERTY(qint64 previewPositionMs READ previewPositionMs NOTIFY previewPositionMsChanged)
@@ -105,6 +106,7 @@ public:
     double bass() const { return m_bass; }
     double stereoWidth() const { return m_stereoWidth; }
     bool voiceSuppression() const { return m_voiceSuppression; }
+    bool reversePlayback() const { return m_reversePlayback; }
     bool isPreviewPlaying() const { return m_isPreviewPlaying; }
     double previewProgress() const { return m_previewProgress; }
     qint64 previewPositionMs() const { return m_previewPositionMs; }
@@ -176,6 +178,7 @@ public slots:
     void setBass(double bass);
     void setStereoWidth(double stereoWidth);
     void setVoiceSuppression(bool voiceSuppression);
+    void setReversePlayback(bool reversePlayback);
     void setPreviewStartMs(qint64 startMs);
     void setPreviewEndMs(qint64 endMs);
     void setPreviewLoop(bool previewLoop);
@@ -210,6 +213,7 @@ signals:
     void bassChanged();
     void stereoWidthChanged();
     void voiceSuppressionChanged();
+    void reversePlaybackChanged();
     void isPreviewPlayingChanged();
     void previewProgressChanged();
     void previewPositionMsChanged();
@@ -297,6 +301,11 @@ private:
     bool copyBasicSourceTagsToOutput(const QString &outputPath, QString *warningMessage);
     bool prepareTrackerSourceForConversion(QString *pipelineSourcePath, QString *errorMessage);
     void cleanupTemporaryTrackerSource();
+    QString createTemporaryReversedSourcePath() const;
+    QString createTemporaryPreviewReversedPath() const;
+    bool prepareReversedSourceIfNeeded(QString *pipelineSourcePath, QString *errorMessage);
+    void cleanupTemporaryReversedSource();
+    void cleanupTemporaryPreviewReversed();
 
     TrackModel *m_trackModel = nullptr;
     QString m_sourceFile;
@@ -317,6 +326,8 @@ private:
     double m_bass = 1.0;
     double m_stereoWidth = 1.0;
     bool m_voiceSuppression = false;
+    bool m_reversePlayback = false;
+    bool m_reverseSourceAlreadyTrimmed = false;
     WaveFlux::Dsp::LowShelfFilter m_bassFilter;
     WaveFlux::Dsp::DelayEffect m_echoEffect;
     WaveFlux::Dsp::ModulatedDelayEffect m_chorusEffect{WaveFlux::Dsp::ModulatedDelayEffect::Mode::Chorus};
@@ -388,6 +399,8 @@ private:
     QTimer m_busPollTimer;
     QTimer m_progressTimer;
     QString m_pendingTrackerRenderFile;
+    QString m_pendingReversedSourceFile;
+    QString m_pendingPreviewReversedFile;
     QString m_pendingTempOutputFile;
     QString m_pendingFinalOutputFile;
     qint64 m_sourceDurationMs = 0;

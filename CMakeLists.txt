@@ -278,6 +278,14 @@ set_source_files_properties(qml/components/UiMetrics.qml PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE
 )
 
+# Keep the generated QML module layout stable across the Qt versions used by
+# local development and the rolling Linux images in CI.  QTP0004 is required
+# for QML files in nested directories such as components/, settings/, and dsp/.
+if(COMMAND qt_policy)
+    qt_policy(SET QTP0001 OLD)
+    qt_policy(SET QTP0004 NEW)
+endif()
+
 qt_add_qml_module(waveflux
     URI WaveFlux
     VERSION 1.4

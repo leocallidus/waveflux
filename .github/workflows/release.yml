@@ -49,7 +49,7 @@ jobs:
             qt6-base qt6-declarative qt6-multimedia qt6-tools \
             kirigami qqc2-desktop-style breeze-icons kcoreaddons ki18n \
             gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
-            libopenmpt taglib patchelf file desktop-file-utils zsync wget tar gzip awk
+            libopenmpt taglib patchelf file desktop-file-utils zsync wget tar gzip awk zstd xz
           git config --global --add safe.directory '*'
 
       - name: Install appimagetool
@@ -144,7 +144,7 @@ jobs:
             qt6-base qt6-declarative qt6-multimedia \
             kirigami kcoreaddons ki18n \
             gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
-            libopenmpt taglib sudo tar gzip awk
+            libopenmpt taglib sudo tar gzip awk zstd xz
 
       - name: Build Pacman package
         run: |

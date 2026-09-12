@@ -195,10 +195,30 @@ fi
 echo "==> Running makepkg in ${WORK_DIR}"
 (
     cd "${WORK_DIR}"
-    makepkg "${MAKEPKG_ARGS[@]}"
+    PKGEXT='.pkg.tar.zst' makepkg "${MAKEPKG_ARGS[@]}"
 )
 
-mapfile -t BUILT_PACKAGES < <(find "${WORK_DIR}" -maxdepth 1 -type f -name '*.pkg.tar.zst' -print | sort)
+mapfile -t BUILT_PACKAGES < <(find "${WORK_DIR}" -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.*' \) -print | sort)
+for pkg_path in "${BUILT_PACKAGES[@]}"; do
+    if [[ "${pkg_path}" != *".pkg.tar.zst" && "${pkg_path}" == *".pkg.tar."* ]]; then
+        zst_path="${pkg_path%.*}.zst"
+        echo "Converting ${pkg_path} to ${zst_path}..."
+        if command -v zstd >/dev/null 2>&1; then
+            case "${pkg_path}" in
+                *.pkg.tar.xz) xz -dc "${pkg_path}" | zstd -T0 -19 -o "${zst_path}" ;;
+                *.pkg.tar.gz) gzip -dc "${pkg_path}" | zstd -T0 -19 -o "${zst_path}" ;;
+                *) cat "${pkg_path}" | zstd -T0 -19 -o "${zst_path}" ;;
+            esac
+            rm -f "${pkg_path}"
+        fi
+    fi
+done
+
+mapfile -t BUILT_PACKAGES < <(find "${WORK_DIR}" -type f -name '*.pkg.tar.zst' -print | sort)
+if [[ "${#BUILT_PACKAGES[@]}" -eq 0 ]]; then
+    # Fallback to any pkg.tar package if zstd wasn't available
+    mapfile -t BUILT_PACKAGES < <(find "${WORK_DIR}" -type f -name '*.pkg.tar.*' -print | sort)
+fi
 if [[ "${#BUILT_PACKAGES[@]}" -eq 0 ]]; then
     echo "Package artifact was not produced." >&2
     exit 1

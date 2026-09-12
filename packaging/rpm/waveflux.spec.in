@@ -70,6 +70,7 @@ install -Dm0644 README.md \
 %{_bindir}/waveflux
 %{_datadir}/applications/waveflux.desktop
 %{_datadir}/icons/hicolor/scalable/apps/waveflux.svg
+%{_datadir}/metainfo/io.github.leocallidus.waveflux.metainfo.xml
 %doc %{_datadir}/doc/%{name}/README.md
 
 %changelog

@@ -37,6 +37,8 @@ jobs:
 
       - name: Initialize keyring
         run: |
+          grep -q '^DisableSandbox' /etc/pacman.conf || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+          id -u alpm &>/dev/null || useradd -r -s /usr/bin/nologin alpm || true
           pacman-key --init || true
           pacman-key --populate || true
 
@@ -130,6 +132,8 @@ jobs:
 
       - name: Initialize keyring
         run: |
+          grep -q '^DisableSandbox' /etc/pacman.conf || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+          id -u alpm &>/dev/null || useradd -r -s /usr/bin/nologin alpm || true
           pacman-key --init || true
           pacman-key --populate || true
 
@@ -196,12 +200,13 @@ jobs:
 
   build-windows:
     name: Build Windows (${{ matrix.arch }})
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x64
+            runner: windows-latest
             msystem: UCRT64
             packages: >-
               git
@@ -223,6 +228,7 @@ jobs:
               mingw-w64-ucrt-x86_64-libopenmpt
               mingw-w64-ucrt-x86_64-taglib
           - arch: arm64
+            runner: windows-11-arm
             msystem: CLANGARM64
             packages: >-
               git

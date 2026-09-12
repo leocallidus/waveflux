@@ -470,4 +470,8 @@ if(UNIX AND NOT APPLE)
     install(FILES resources/icons/waveflux.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
     )
+    install(FILES packaging/flatpak/io.github.leocallidus.waveflux.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
+        OPTIONAL
+    )
 endif()

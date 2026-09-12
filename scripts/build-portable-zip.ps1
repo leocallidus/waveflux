@@ -4,12 +4,21 @@ param(
     [string]$MsysPrefix = "C:\msys64\ucrt64",
     [string]$DistDir = "dist\windows",
     [string]$Version,
+    [string]$Arch = "x64",
     [switch]$RunTests,
     [switch]$SkipBuild,
     [switch]$SkipZip
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($Arch) -or $Arch -eq "x64") {
+    if ($MsysPrefix -match '(?i)(clangarm64|aarch64|arm64)') {
+        $Arch = "arm64"
+    } else {
+        $Arch = "x64"
+    }
+}
 
 function Resolve-NormalizedPath {
     param([string]$PathValue)
@@ -75,17 +84,28 @@ $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 
 $effectiveMsysPrefix = $MsysPrefix
-if (-not (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe"))) {
+if (-not ((Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\clang.exe")))) {
     $candidates = @()
     if ($env:RUNNER_TEMP) {
-        $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        if ($Arch -eq "arm64") {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\clangarm64")
+        } else {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        }
     }
-    $candidates += @(
-        "C:\msys64\ucrt64",
-        "C:\tools\msys64\ucrt64"
-    )
+    if ($Arch -eq "arm64") {
+        $candidates += @(
+            "C:\msys64\clangarm64",
+            "C:\tools\msys64\clangarm64"
+        )
+    } else {
+        $candidates += @(
+            "C:\msys64\ucrt64",
+            "C:\tools\msys64\ucrt64"
+        )
+    }
     foreach ($cand in $candidates) {
-        if ($cand -and (Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe"))) {
+        if ($cand -and ((Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $cand "bin\clang.exe")))) {
             $effectiveMsysPrefix = $cand
             break
         }
@@ -115,7 +135,8 @@ $buildScriptArgs = @(
     "-File", $buildScriptPath,
     "-BuildDir", $buildDir,
     "-Target", $Target,
-    "-MsysPrefix", $effectiveMsysPrefix
+    "-MsysPrefix", $effectiveMsysPrefix,
+    "-Arch", $Arch
 )
 if ($RunTests) {
     $buildScriptArgs += "-RunTests"
@@ -134,7 +155,7 @@ if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Built executable was not found at '$exePath'."
 }
 
-$packageBaseName = "WaveFlux-$effectiveVersion-windows-portable"
+$packageBaseName = "WaveFlux-$effectiveVersion-windows-portable-$Arch"
 $stageRoot = Join-Path $distDir $packageBaseName
 $zipPath = Join-Path $distDir "$packageBaseName.zip"
 
@@ -217,6 +238,10 @@ Notes:
 
 if (-not $SkipZip) {
     Compress-Archive -Path (Join-Path $stageRoot "*") -DestinationPath $zipPath -CompressionLevel Optimal
+    if ($Arch -eq "x64") {
+        $legacyZipPath = Join-Path $distDir "WaveFlux-$effectiveVersion-windows-portable.zip"
+        Copy-Item -LiteralPath $zipPath -Destination $legacyZipPath -Force
+    }
 }
 
 Write-Host "Portable staging directory prepared at '$stageRoot'."

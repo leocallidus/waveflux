@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.leocallidus.waveflux</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>WaveFlux</name>
+  <summary>Modern audio player with dynamic waveform navigation and lyrics</summary>
+  <description>
+    <p>
+      WaveFlux is a high-performance cross-platform audio player crafted in modern C++
+      and Qt 6 Quick / Kirigami. It offers high-precision audio rendering, synchronized
+      lyrics display, interactive audio waveform visualization, and a 10-band graphic equalizer.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Dynamic interactive waveform visualizer with A-B fragment looping</li>
+      <li>Synchronized LRC lyrics with auto-follow scrolling and local/online lookups</li>
+      <li>Comprehensive format support (FLAC, MP3, AAC, OGG, Opus, WAV, ALAC, DSD, tracker modules)</li>
+      <li>DSP processing engine: 10-band graphic EQ, ReplayGain, loudness compensation, crossfade, silence trimming</li>
+      <li>Full desktop integration with MPRIS 2.0 transport controls</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.leocallidus.waveflux.desktop</launchable>
+  <url type="homepage">https://github.com/leocallidus/waveflux</url>
+  <url type="bugtracker">https://github.com/leocallidus/waveflux/issues</url>
+  <provides>
+    <binary>waveflux</binary>
+  </provides>
+  <developer id="io.github.leocallidus">
+    <name>leocallidus</name>
+  </developer>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/leocallidus/waveflux/main/resources/icons/waveflux.svg</image>
+      <caption>WaveFlux Main Interface</caption>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.4.1" date="2026-09-12">
+      <description>
+        <p>WaveFlux 1.4.1 release with lyrics subsystem and expanded platform packaging.</p>
+      </description>
+    </release>
+  </releases>
+</component>

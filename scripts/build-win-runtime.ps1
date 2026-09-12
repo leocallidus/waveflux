@@ -2,14 +2,27 @@ param(
     [string]$BuildDir = "build-win-runtime",
     [string]$Target = "waveflux",
     [string]$MsysPrefix = "C:\msys64\ucrt64",
+    [string]$Arch = "x64",
     [switch]$RunTests,
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
 
+if ([string]::IsNullOrWhiteSpace($Arch) -or $Arch -eq "x64") {
+    if ($MsysPrefix -match '(?i)(clangarm64|aarch64|arm64)') {
+        $Arch = "arm64"
+    } else {
+        $Arch = "x64"
+    }
+}
+
 function Resolve-NormalizedPath {
     param([string]$PathValue)
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        throw "Path value must not be empty."
+    }
 
     if ([System.IO.Path]::IsPathRooted($PathValue)) {
         return [System.IO.Path]::GetFullPath($PathValue)
@@ -22,17 +35,28 @@ $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 
 $effectiveMsysPrefix = $MsysPrefix
-if (-not (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe"))) {
+if (-not ((Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\clang.exe")))) {
     $candidates = @()
     if ($env:RUNNER_TEMP) {
-        $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        if ($Arch -eq "arm64") {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\clangarm64")
+        } else {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        }
     }
-    $candidates += @(
-        "C:\msys64\ucrt64",
-        "C:\tools\msys64\ucrt64"
-    )
+    if ($Arch -eq "arm64") {
+        $candidates += @(
+            "C:\msys64\clangarm64",
+            "C:\tools\msys64\clangarm64"
+        )
+    } else {
+        $candidates += @(
+            "C:\msys64\ucrt64",
+            "C:\tools\msys64\ucrt64"
+        )
+    }
     foreach ($cand in $candidates) {
-        if ($cand -and (Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe"))) {
+        if ($cand -and ((Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $cand "bin\clang.exe")))) {
             $effectiveMsysPrefix = $cand
             break
         }
@@ -63,8 +87,13 @@ if (Test-Path -LiteralPath $msysBinDir) {
     $env:PATH = "$msysBinDir;$msysPrefix\..\usr\bin;" + ($filtered -join ';')
 }
 
-$cCandidateNames = @("gcc.exe", "x86_64-w64-mingw32-gcc.exe", "clang.exe")
-$cxxCandidateNames = @("g++.exe", "c++.exe", "x86_64-w64-mingw32-g++.exe", "x86_64-w64-mingw32-c++.exe", "clang++.exe")
+if ($Arch -eq "arm64") {
+    $cCandidateNames = @("clang.exe", "aarch64-w64-mingw32-clang.exe", "gcc.exe")
+    $cxxCandidateNames = @("clang++.exe", "aarch64-w64-mingw32-clang++.exe", "g++.exe", "c++.exe")
+} else {
+    $cCandidateNames = @("gcc.exe", "x86_64-w64-mingw32-gcc.exe", "clang.exe")
+    $cxxCandidateNames = @("g++.exe", "c++.exe", "x86_64-w64-mingw32-g++.exe", "clang++.exe")
+}
 
 $cCompiler = ""
 foreach ($name in $cCandidateNames) {
@@ -86,17 +115,19 @@ foreach ($name in $cxxCandidateNames) {
 $cmakePrefixPath = $msysPrefix.Replace("\", "/")
 
 Write-Host "MSYS2 prefix: $msysPrefix"
+Write-Host "Target architecture: $Arch"
 Write-Host "C compiler: $cCompiler"
 Write-Host "CXX compiler: $cxxCompiler"
 Write-Host "CMake path: $cmakePath"
 
 if (-not $SkipBuild) {
+    $buildTesting = if ($Arch -eq "arm64" -or -not $RunTests) { "OFF" } else { "ON" }
     $cmakeArgs = @(
         "-S", $repoRoot,
         "-B", $buildDir,
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
-        "-DBUILD_TESTING=ON",
+        "-DBUILD_TESTING=$buildTesting",
         "-DCMAKE_PREFIX_PATH=$cmakePrefixPath",
         "-DCMAKE_FIND_ROOT_PATH=$cmakePrefixPath",
         "-DWAVEFLUX_MSYS2_UCRT64_ROOT=$cmakePrefixPath"

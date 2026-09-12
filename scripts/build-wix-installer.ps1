@@ -5,11 +5,20 @@ param(
     [string]$DistDir = "dist\windows",
     [string]$WixExe = "C:\Program Files\WiX Toolset v6.0\bin\wix.exe",
     [string]$Version,
+    [string]$Arch = "x64",
     [switch]$RunTests,
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($Arch) -or $Arch -eq "x64") {
+    if ($MsysPrefix -match '(?i)(clangarm64|aarch64|arm64)') {
+        $Arch = "arm64"
+    } else {
+        $Arch = "x64"
+    }
+}
 
 function Resolve-NormalizedPath {
     param([string]$PathValue)
@@ -174,17 +183,28 @@ $buildDir = Resolve-NormalizedPath -PathValue $BuildDir
 $distDir = Resolve-NormalizedPath -PathValue $DistDir
 
 $effectiveMsysPrefix = $MsysPrefix
-if (-not (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe"))) {
+if (-not ((Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\clang.exe")))) {
     $candidates = @()
     if ($env:RUNNER_TEMP) {
-        $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        if ($Arch -eq "arm64") {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\clangarm64")
+        } else {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        }
     }
-    $candidates += @(
-        "C:\msys64\ucrt64",
-        "C:\tools\msys64\ucrt64"
-    )
+    if ($Arch -eq "arm64") {
+        $candidates += @(
+            "C:\msys64\clangarm64",
+            "C:\tools\msys64\clangarm64"
+        )
+    } else {
+        $candidates += @(
+            "C:\msys64\ucrt64",
+            "C:\tools\msys64\ucrt64"
+        )
+    }
     foreach ($cand in $candidates) {
-        if ($cand -and (Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe"))) {
+        if ($cand -and ((Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $cand "bin\clang.exe")))) {
             $effectiveMsysPrefix = $cand
             break
         }
@@ -250,6 +270,7 @@ $portableScriptArgs = @(
     "-MsysPrefix", $effectiveMsysPrefix,
     "-DistDir", $distDir,
     "-Version", $effectiveVersion,
+    "-Arch", $Arch,
     "-SkipZip"
 )
 if ($RunTests) {
@@ -264,10 +285,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "Portable staging step failed."
 }
 
-$packageBaseName = "WaveFlux-$effectiveVersion-windows-portable"
+$packageBaseName = "WaveFlux-$effectiveVersion-windows-portable-$Arch"
 $stageRoot = Join-Path $distDir $packageBaseName
 if (-not (Test-Path -LiteralPath $stageRoot)) {
-    throw "Portable staging directory was not found at '$stageRoot'."
+    $fallbackStageRoot = Join-Path $distDir "WaveFlux-$effectiveVersion-windows-portable"
+    if (Test-Path -LiteralPath $fallbackStageRoot) {
+        $stageRoot = $fallbackStageRoot
+    } else {
+        throw "Portable staging directory was not found at '$stageRoot'."
+    }
 }
 
 $wixWorkRoot = Join-Path $distDir "wix"
@@ -275,7 +301,7 @@ $wixWorkDir = Join-Path $wixWorkRoot "WaveFlux-$effectiveVersion"
 Ensure-CleanDirectory -Path $wixWorkDir
 
 $filesWxsPath = Join-Path $wixWorkDir "WaveFlux.Files.wxs"
-$msiPath = Join-Path $distDir "WaveFlux-$effectiveVersion-windows-x64.msi"
+$msiPath = Join-Path $distDir "WaveFlux-$effectiveVersion-windows-$Arch.msi"
 if (Test-Path -LiteralPath $msiPath) {
     Remove-Item -LiteralPath $msiPath -Force
 }
@@ -318,7 +344,7 @@ if (-not (Test-Path -LiteralPath $wxlPath)) {
     $filesWxsPath `
     $wxlPath `
     -ext WixToolset.UI.wixext `
-    -arch x64 `
+    -arch $Arch `
     -d ProductName=WaveFlux `
     -d Manufacturer=WaveFlux `
     -d ProductVersion=$effectiveVersion `

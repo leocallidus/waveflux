@@ -5,10 +5,19 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$QmlDir,
 
-    [string]$MsysPrefix = "C:\msys64\ucrt64"
+    [string]$MsysPrefix = "C:\msys64\ucrt64",
+    [string]$Arch = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($Arch)) {
+    if ($MsysPrefix -match '(?i)(clangarm64|aarch64|arm64)') {
+        $Arch = "arm64"
+    } else {
+        $Arch = "x64"
+    }
+}
 
 function Resolve-NormalizedPath {
     param([string]$PathValue)
@@ -29,7 +38,7 @@ function Get-ImportedDllNames {
 
     $imports = New-Object 'System.Collections.Generic.List[string]'
     foreach ($line in $output) {
-        if ($line -match 'DLL Name:\s+(.+)$') {
+        if ($line -match '(?:DLL Name|Import Name):\s+(.+)$') {
             $imports.Add($Matches[1].Trim())
         }
     }
@@ -81,17 +90,28 @@ $exePath = Resolve-NormalizedPath -PathValue $ExePath
 $qmlDir = Resolve-NormalizedPath -PathValue $QmlDir
 
 $effectiveMsysPrefix = $MsysPrefix
-if (-not (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe"))) {
+if (-not ((Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $effectiveMsysPrefix "bin\clang.exe")))) {
     $candidates = @()
     if ($env:RUNNER_TEMP) {
-        $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        if ($Arch -eq "arm64") {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\clangarm64")
+        } else {
+            $candidates += (Join-Path $env:RUNNER_TEMP "setup-msys2\msys64\ucrt64")
+        }
     }
-    $candidates += @(
-        "C:\msys64\ucrt64",
-        "C:\tools\msys64\ucrt64"
-    )
+    if ($Arch -eq "arm64") {
+        $candidates += @(
+            "C:\msys64\clangarm64",
+            "C:\tools\msys64\clangarm64"
+        )
+    } else {
+        $candidates += @(
+            "C:\msys64\ucrt64",
+            "C:\tools\msys64\ucrt64"
+        )
+    }
     foreach ($cand in $candidates) {
-        if ($cand -and (Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe"))) {
+        if ($cand -and ((Test-Path -LiteralPath (Join-Path $cand "bin\gcc.exe")) -or (Test-Path -LiteralPath (Join-Path $cand "bin\clang.exe")))) {
             $effectiveMsysPrefix = $cand
             break
         }
@@ -106,12 +126,25 @@ $qtPluginsSourceDir = Join-Path $qtShareDir "plugins"
 $qtQmlSourceDir = Join-Path $qtShareDir "qml"
 $gstPluginSourceDir = Join-Path $msysPrefix "lib\gstreamer-1.0"
 
-$objdumpPath = if (Test-Path -LiteralPath (Join-Path $msysBinDir "objdump.exe")) {
-    Join-Path $msysBinDir "objdump.exe"
-} elseif (Get-Command objdump.exe -ErrorAction SilentlyContinue) {
-    (Get-Command objdump.exe).Source
+$objdumpCandidates = if ($Arch -eq "arm64") {
+    @("llvm-objdump.exe", "aarch64-w64-mingw32-objdump.exe", "objdump.exe")
 } else {
-    "objdump.exe"
+    @("objdump.exe", "x86_64-w64-mingw32-objdump.exe", "llvm-objdump.exe")
+}
+$objdumpPath = ""
+foreach ($name in $objdumpCandidates) {
+    $p = Join-Path $msysBinDir $name
+    if (Test-Path -LiteralPath $p) {
+        $objdumpPath = $p
+        break
+    }
+    if (Get-Command $name -ErrorAction SilentlyContinue) {
+        $objdumpPath = (Get-Command $name).Source
+        break
+    }
+}
+if (-not $objdumpPath) {
+    $objdumpPath = "objdump.exe"
 }
 
 if (Test-Path -LiteralPath $msysBinDir) {

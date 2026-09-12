@@ -16,12 +16,29 @@ permissions:
 
 jobs:
   build-appimage:
-    name: Build AppImage
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
+    name: Build AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            container: archlinux:base-devel
+            appimage_arch: x86_64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            container: menci/archlinuxarm:base-devel
+            appimage_arch: aarch64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Initialize keyring
+        run: |
+          pacman-key --init || true
+          pacman-key --populate || true
 
       - name: Install dependencies
         run: |
@@ -35,7 +52,7 @@ jobs:
 
       - name: Install appimagetool
         run: |
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage -O /usr/local/bin/appimagetool
           chmod +x /usr/local/bin/appimagetool
 
       - name: Build AppImage
@@ -47,7 +64,7 @@ jobs:
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: appimage-package
+          name: appimage-package-${{ matrix.arch }}
           path: dist/*.AppImage
           if-no-files-found: error
 
@@ -94,12 +111,27 @@ jobs:
           if-no-files-found: error
 
   build-pacman:
-    name: Build Pacman (Arch) Package
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
+    name: Build Pacman (Arch) Package (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            container: archlinux:base-devel
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            container: menci/archlinuxarm:base-devel
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Initialize keyring
+        run: |
+          pacman-key --init || true
+          pacman-key --populate || true
 
       - name: Install dependencies
         run: |
@@ -112,7 +144,7 @@ jobs:
 
       - name: Build Pacman package
         run: |
-          useradd -m builder
+          useradd -m builder || true
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           git config --global --add safe.directory '*'
           chown -R builder:builder .
@@ -121,7 +153,7 @@ jobs:
       - name: Upload Pacman artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pacman-package
+          name: pacman-package-${{ matrix.arch }}
           path: dist/pacman/*.pkg.tar.zst
           if-no-files-found: error
 
@@ -163,8 +195,54 @@ jobs:
           if-no-files-found: error
 
   build-windows:
-    name: Build Windows (Portable & MSI)
+    name: Build Windows (${{ matrix.arch }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            msystem: UCRT64
+            packages: >-
+              git
+              mingw-w64-ucrt-x86_64-toolchain
+              mingw-w64-ucrt-x86_64-gcc
+              mingw-w64-ucrt-x86_64-cmake
+              mingw-w64-ucrt-x86_64-ninja
+              mingw-w64-ucrt-x86_64-pkgconf
+              mingw-w64-ucrt-x86_64-qt6-base
+              mingw-w64-ucrt-x86_64-qt6-declarative
+              mingw-w64-ucrt-x86_64-qt6-multimedia
+              mingw-w64-ucrt-x86_64-kirigami
+              mingw-w64-ucrt-x86_64-kcoreaddons
+              mingw-w64-ucrt-x86_64-ki18n
+              mingw-w64-ucrt-x86_64-gstreamer
+              mingw-w64-ucrt-x86_64-gst-plugins-base
+              mingw-w64-ucrt-x86_64-gst-plugins-good
+              mingw-w64-ucrt-x86_64-gst-plugins-bad
+              mingw-w64-ucrt-x86_64-libopenmpt
+              mingw-w64-ucrt-x86_64-taglib
+          - arch: arm64
+            msystem: CLANGARM64
+            packages: >-
+              git
+              mingw-w64-clang-aarch64-toolchain
+              mingw-w64-clang-aarch64-clang
+              mingw-w64-clang-aarch64-cmake
+              mingw-w64-clang-aarch64-ninja
+              mingw-w64-clang-aarch64-pkgconf
+              mingw-w64-clang-aarch64-qt6-base
+              mingw-w64-clang-aarch64-qt6-declarative
+              mingw-w64-clang-aarch64-qt6-multimedia
+              mingw-w64-clang-aarch64-kirigami
+              mingw-w64-clang-aarch64-kcoreaddons
+              mingw-w64-clang-aarch64-ki18n
+              mingw-w64-clang-aarch64-gstreamer
+              mingw-w64-clang-aarch64-gst-plugins-base
+              mingw-w64-clang-aarch64-gst-plugins-good
+              mingw-w64-clang-aarch64-gst-plugins-bad
+              mingw-w64-clang-aarch64-libopenmpt
+              mingw-w64-clang-aarch64-taglib
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -172,28 +250,10 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: UCRT64
+          msystem: ${{ matrix.msystem }}
           update: true
           path-type: inherit
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-qt6-base
-            mingw-w64-ucrt-x86_64-qt6-declarative
-            mingw-w64-ucrt-x86_64-qt6-multimedia
-            mingw-w64-ucrt-x86_64-kirigami
-            mingw-w64-ucrt-x86_64-kcoreaddons
-            mingw-w64-ucrt-x86_64-ki18n
-            mingw-w64-ucrt-x86_64-gstreamer
-            mingw-w64-ucrt-x86_64-gst-plugins-base
-            mingw-w64-ucrt-x86_64-gst-plugins-good
-            mingw-w64-ucrt-x86_64-gst-plugins-bad
-            mingw-w64-ucrt-x86_64-libopenmpt
-            mingw-w64-ucrt-x86_64-taglib
+          install: ${{ matrix.packages }}
 
       - name: Install WiX Toolset
         shell: pwsh
@@ -205,17 +265,53 @@ jobs:
         shell: msys2 {0}
         run: |
           WIN_MSYS_PREFIX=$(cygpath -w "$MINGW_PREFIX")
-          echo "Detected MSYS2 UCRT64 prefix: $WIN_MSYS_PREFIX"
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "$WIN_MSYS_PREFIX"
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "$WIN_MSYS_PREFIX" -SkipBuild
+          echo "Detected MSYS2 prefix: $WIN_MSYS_PREFIX"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable-zip.ps1 -MsysPrefix "$WIN_MSYS_PREFIX" -Arch "${{ matrix.arch }}"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-wix-installer.ps1 -MsysPrefix "$WIN_MSYS_PREFIX" -Arch "${{ matrix.arch }}" -SkipBuild
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-packages
+          name: windows-packages-${{ matrix.arch }}
           path: |
             dist/windows/*.zip
             dist/windows/*.msi
+          if-no-files-found: error
+
+  build-flatpak:
+    name: Build Flatpak (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure safe.directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Build Flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: waveflux-${{ matrix.arch }}.flatpak
+          manifest-path: packaging/flatpak/io.github.leocallidus.waveflux.yml
+          arch: ${{ matrix.arch }}
+          verbose: true
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-package-${{ matrix.arch }}
+          path: '*.flatpak'
           if-no-files-found: error
 
   publish-release:
@@ -226,6 +322,7 @@ jobs:
       - build-pacman
       - build-rpm
       - build-windows
+      - build-flatpak
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -273,14 +370,20 @@ jobs:
           echo "=== Release Assets ==="
           ls -lh release-assets/
 
+          mapfile -t ASSET_FILES < <(find release-assets/ -type f | sort)
+          if [ "${#ASSET_FILES[@]}" -eq 0 ]; then
+            echo "Error: No release assets found!" >&2
+            exit 1
+          fi
+
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME already exists, updating notes and uploading assets..."
             gh release edit "$TAG_NAME" --title "WaveFlux $VERSION" --notes-file release_notes.md
-            gh release upload "$TAG_NAME" release-assets/* --clobber
+            gh release upload "$TAG_NAME" "${ASSET_FILES[@]}" --clobber
           else
             echo "Creating release $TAG_NAME..."
             gh release create "$TAG_NAME" \
               --title "WaveFlux $VERSION" \
               --notes-file release_notes.md \
-              release-assets/*
+              "${ASSET_FILES[@]}"
           fi
